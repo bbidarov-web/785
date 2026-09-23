@@ -1,4 +1,5 @@
 import type { PrismaClient } from '@prisma/client';
+import { isRole, type Permission, type SecondHandAction } from '@kontur785/shared';
 import type { Repos } from './domain/ports.js';
 import { SystemClock } from './infra/memory/systemClock.js';
 import { ConsoleNotifier } from './infra/memory/notifier.js';
@@ -20,6 +21,15 @@ import { WalkService } from './walk/service.js';
 import { StaffService } from './clinic/staffService.js';
 import { PlanService } from './clinic/planService.js';
 import { CapaService } from './clinic/capaService.js';
+import { StageService } from './clinic/stageService.js';
+import { CatalogService } from './panel/catalogService.js';
+import { PaymentService } from './panel/paymentService.js';
+
+export interface SecondHandHandler {
+  /** Право, которым должен обладать ПОДТВЕРЖДАЮЩИЙ — своё для каждого типа операции (SERVER.md §4). */
+  confirmPermission: Permission;
+  apply: (payload: Record<string, unknown>, confirmedById: string) => Promise<unknown>;
+}
 
 /**
  * Сборка приложения на реальных (Prisma) адаптерах. Тесты используют
@@ -55,16 +65,43 @@ export function buildContainer(prisma: PrismaClient) {
  * конкретного хранилища не зависят.
  */
 export function buildContainerFromRepos(repos: Repos) {
+  const secondHand = new SecondHandService(repos);
+  const payment = new PaymentService(repos, secondHand);
+
+  // Реестр операций «второй руки»: по типу запроса — кто вправе подтвердить
+  // и что применить при подтверждении. Единая точка, а не разбросанные по
+  // роутам ветки — добавляя новую операцию, трогаем только этот объект и
+  // сам сервис, не общий эндпоинт подтверждения (apps/api/src/http/routes/secondHand.ts).
+  const secondHandHandlers: Partial<Record<SecondHandAction, SecondHandHandler>> = {
+    'role:elevate': {
+      confirmPermission: 'role:manage',
+      apply: async (payload) => {
+        const accountId = String(payload.accountId);
+        const newRole = String(payload.newRole);
+        if (!isRole(newRole)) throw new Error('Неизвестная роль в запросе');
+        return repos.accounts.update(accountId, { role: newRole });
+      },
+    },
+    'money:confirm': {
+      confirmPermission: 'money:write',
+      apply: payment.applyFromSecondHand,
+    },
+  };
+
   return {
     repos,
     auth: new AuthService(repos),
-    secondHand: new SecondHandService(repos),
+    secondHand,
+    secondHandHandlers,
     documents: new DocumentService(repos),
     executor: new ExecutorService(repos),
     walk: new WalkService(repos),
     staff: new StaffService(repos),
     plan: new PlanService(repos),
     capa: new CapaService(repos),
+    stage: new StageService(repos),
+    catalog: new CatalogService(repos),
+    payment,
   };
 }
 

@@ -104,3 +104,74 @@ export interface CapaItem {
   createdBy: string;
   closedAt: string | null;
 }
+
+/**
+ * Документ внутри блока этапа. `template` — текст с плейсхолдерами
+ * `{{org}}`, `{{inn}}`, `{{date}}`, `{{responsible}}` (последний берётся из
+ * матрицы ответственных, `docasg[name]`) — перенос идеи «бланк выбирается по
+ * виду документа, в переменные подставляются реквизиты профиля и
+ * ответственный по направлению» из README, без полноценного профиля клиники
+ * (адрес, лицензия и т.д. — этого поля ещё нет, см. README «Известные
+ * ограничения»).
+ */
+export interface StageDoc {
+  name: string;
+  template: string;
+}
+
+/**
+ * Блок документов внутри этапа — реальные названия и состав перенесены из
+ * `reference/prototype/Личный кабинет ВКК.dc.html` (каталог `b01`…`b09`,
+ * строки ~6585–6593), а не выдуманы заново.
+ */
+export interface StageBlock {
+  key: string;
+  num: string;
+  name: string;
+  docs: StageDoc[];
+}
+
+/**
+ * Этап внедрения. Цены — из прототипа (offer-карточки этапов, строки
+ * ~7346–7349): 68 000 / 68 000 / 54 000 / 42 000 ₽.
+ */
+export interface Stage {
+  code: number;
+  name: string;
+  price: number;
+  blocks: StageBlock[];
+}
+
+export type StagePaymentStatus = 'none' | 'pending' | 'paid';
+
+/** Строка канала `stage_paid` — одна на этап (SERVER.md §3, §5). */
+export interface StagePaymentState {
+  status: StagePaymentStatus;
+  requestedAt: string | null;
+  requestedBy: string | null;
+  confirmedAt: string | null;
+  confirmedBy: string | null;
+  amount: number;
+}
+
+/**
+ * Годовой цикл — эталон методиста (`cycle_master`, платформенный канал).
+ * Публикуется методистом, разбор в помесячный план проверок клиники
+ * (`cycle_live`) не перенесён (README «Что дальше») — здесь только
+ * публикация самого эталона: направление, месяцы проверок, срок CAPA.
+ */
+export interface CycleDirection {
+  name: string;
+  months: number[]; // 0–11, в какие месяцы проводится проверка направления
+}
+
+export interface CapaTerm {
+  level: string; // например "критическое несоответствие"
+  days: number; // срок устранения в днях
+}
+
+export interface CycleMaster {
+  year: number;
+  dirs: CycleDirection[];
+  capaTerms: CapaTerm[];
+}

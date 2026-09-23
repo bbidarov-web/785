@@ -43,6 +43,32 @@ interface Finding {
   comment: string;
 }
 
+interface StagePayment {
+  status: 'none' | 'pending' | 'paid';
+  amount: number;
+  confirmedAt: string | null;
+}
+
+interface StageDocView {
+  name: string;
+  granted: boolean;
+}
+
+interface StageBlockView {
+  key: string;
+  num: string;
+  name: string;
+  docs: StageDocView[];
+}
+
+interface StageView {
+  code: number;
+  name: string;
+  price: number;
+  payment: StagePayment;
+  blocks: StageBlockView[];
+}
+
 interface CapaItem {
   id: string;
   auditName: string;
@@ -56,7 +82,7 @@ interface CapaItem {
   closedAt: string | null;
 }
 
-type Tab = 'staff' | 'plan' | 'findings' | 'capa';
+type Tab = 'stages' | 'staff' | 'plan' | 'findings' | 'capa';
 const ALLOWED_ROLES = ['clinic_admin', 'vkk_lead', 'auditor', 'observer'];
 
 const cardStyle: React.CSSProperties = { background: 'var(--bg-card)', border: '1px solid var(--border-2)', borderRadius: 11, padding: '14px 16px' };
@@ -71,10 +97,12 @@ export default function ClinicCabinetPage() {
   const [aInn, setAInn] = useState('');
   const [aLogin, setALogin] = useState('');
   const [aPass, setAPass] = useState('');
-  const [tab, setTab] = useState<Tab>('staff');
+  const [tab, setTab] = useState<Tab>('stages');
   const [toast, setToast] = useState('');
+  const [docView, setDocView] = useState<{ name: string; content: string } | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const [stages, setStages] = useState<StageView[]>([]);
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [assignments, setAssignments] = useState<Record<string, string>>({});
   const [plan, setPlan] = useState<PlanItem[]>([]);
@@ -88,13 +116,15 @@ export default function ClinicCabinetPage() {
   }, []);
 
   const loadAll = useCallback(async () => {
-    const [s, a, p, f, c] = await Promise.all([
+    const [st, s, a, p, f, c] = await Promise.all([
+      api.get<{ ok: true; stages: StageView[] }>('/api/clinic/stages'),
       api.get<{ ok: true; staff: StaffMember[] }>('/api/clinic/staff'),
       api.get<{ ok: true; assignments: Record<string, string> }>('/api/clinic/assignments'),
       api.get<{ ok: true; plan: PlanItem[] }>('/api/clinic/plan'),
       api.get<{ ok: true; findings: Finding[] }>('/api/clinic/capa/findings'),
       api.get<{ ok: true; items: CapaItem[] }>('/api/clinic/capa'),
     ]);
+    if (st.ok) setStages(st.stages);
     if (s.ok) setStaff(s.staff);
     if (a.ok) setAssignments(a.assignments);
     if (p.ok) setPlan(p.plan);
@@ -160,12 +190,14 @@ export default function ClinicCabinetPage() {
     );
   }
 
+  const canOrderStages = session.role === 'clinic_admin';
   const canManageStaff = session.role === 'clinic_admin';
   const canAssign = session.role === 'clinic_admin' || session.role === 'vkk_lead';
   const canManagePlan = canAssign;
   const canCreateCapa = canAssign;
 
   const tabs: { key: Tab; label: string }[] = [
+    { key: 'stages', label: `Этапы и документы · ${stages.length}` },
     { key: 'staff', label: `Сотрудники · ${staff.length}` },
     { key: 'plan', label: `План проверок · ${plan.length}` },
     { key: 'findings', label: `Находки · ${findings.length}` },
@@ -188,6 +220,21 @@ export default function ClinicCabinetPage() {
             </button>
           ))}
         </div>
+
+        {tab === 'stages' && (
+          <StagesTab stages={stages} canOrder={canOrderStages}
+            onOrder={async (code) => {
+              const r = await api.post<{ ok: true } | { ok: false; error: string }>(`/api/clinic/stages/${code}/request-payment`, {});
+              if (!r.ok) { say(r.error); return; }
+              await loadAll(); say('Счёт выставлен, ожидает подтверждения оператора');
+            }}
+            onOpen={async (name) => {
+              const r = await api.get<{ ok: true; content: string } | { ok: false; error: string }>(`/api/clinic/documents/${encodeURIComponent(name)}/content`);
+              if (!r.ok) { say(r.error); return; }
+              setDocView({ name, content: r.content });
+            }}
+          />
+        )}
 
         {tab === 'staff' && (
           <StaffTab staff={staff} assignments={assignments} canManageStaff={canManageStaff} canAssign={canAssign}
@@ -250,11 +297,67 @@ export default function ClinicCabinetPage() {
         )}
       </div>
 
+      {docView && (
+        <div onClick={() => setDocView(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(16,32,31,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, zIndex: 50 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 14, padding: 22, maxWidth: 560, width: '100%', maxHeight: '80vh', overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ fontSize: 14, fontWeight: 800 }}>{docView.name}</div>
+            <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'var(--font-mono)', fontSize: 12, lineHeight: 1.6, background: 'var(--bg-app)', borderRadius: 9, padding: 14 }}>{docView.content}</pre>
+            <button onClick={() => setDocView(null)} style={{ ...outlineBtn, alignSelf: 'flex-start' }}>Закрыть</button>
+          </div>
+        </div>
+      )}
+
       {toast && (
         <div style={{ position: 'fixed', left: '50%', bottom: 22, transform: 'translateX(-50%)', maxWidth: 520, background: 'var(--text-primary)', color: '#fff', padding: '12px 18px', borderRadius: 10, fontSize: 12.5, fontWeight: 600, boxShadow: 'var(--shadow-toast)', zIndex: 40 }}>
           {toast}
         </div>
       )}
+    </div>
+  );
+}
+
+function StagesTab({ stages, canOrder, onOrder, onOpen }: { stages: StageView[]; canOrder: boolean; onOrder: (code: number) => void; onOpen: (name: string) => void }) {
+  const statusLabel: Record<StagePayment['status'], string> = { none: 'не заказан', pending: 'счёт выставлен', paid: 'оплачен' };
+  const statusColor: Record<StagePayment['status'], string> = { none: 'var(--text-muted)', pending: 'var(--warn)', paid: 'var(--accent-hover)' };
+  const statusBg: Record<StagePayment['status'], string> = { none: 'var(--bg-app)', pending: 'var(--warn-bg)', paid: 'var(--accent-bg-light)' };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {stages.length === 0 && <EmptyState text="Каталог этапов ещё не опубликован методистом." />}
+      {stages.map((s) => (
+        <div key={s.code} style={cardStyle}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', alignItems: 'baseline' }}>
+            <div style={{ fontSize: 14, fontWeight: 800 }}>Этап {s.code} · {s.name}</div>
+            <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 5, color: statusColor[s.payment.status], background: statusBg[s.payment.status] }}>
+              {statusLabel[s.payment.status]} · {s.price.toLocaleString('ru-RU')} ₽
+            </span>
+          </div>
+          {s.payment.status === 'none' && canOrder && (
+            <button onClick={() => onOrder(s.code)} style={{ ...primaryBtn, marginTop: 10 }}>Заказать (выставить счёт)</button>
+          )}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
+            {s.blocks.map((b) => (
+              <div key={b.key}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 6 }}>{b.num} · {b.name}</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {b.docs.map((d) => (
+                    <div key={d.name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid var(--border-3)' }}>
+                      <div style={{ fontSize: 12, fontWeight: 600 }}>{d.name}</div>
+                      {s.payment.status === 'paid' && d.granted ? (
+                        <button onClick={() => onOpen(d.name)} style={outlineBtn}>Открыть</button>
+                      ) : (
+                        <span style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-caption)' }}>
+                          {!d.granted ? 'ожидает выдачи' : 'ожидает оплаты'}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

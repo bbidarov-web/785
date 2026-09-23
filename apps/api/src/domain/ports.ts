@@ -50,6 +50,7 @@ export interface AuditLog {
 export interface SecondHandRepo {
   create(req: Omit<SecondHandRequest, 'id' | 'requestedAt' | 'status' | 'confirmedById' | 'confirmedAt'>): Promise<SecondHandRequest>;
   findById(id: string): Promise<SecondHandRequest | null>;
+  listPending(): Promise<SecondHandRequest[]>;
   setStatus(id: string, status: SecondHandStatus, confirmedById: string | null): Promise<SecondHandRequest>;
 }
 

@@ -148,4 +148,30 @@ export async function clinicRoutes(app: FastifyInstance): Promise<void> {
     if (r === undefined) return;
     return reply.code(r.ok ? 200 : 400).send(r);
   });
+
+  app.get('/api/clinic/stages', async (req, reply) => {
+    const ctx = requireAuth(req, reply);
+    if (!ctx) return;
+    const stages = await guarded(() => app.container.stage.getClinicView(ctx.account), reply);
+    if (stages === undefined) return;
+    return reply.send({ ok: true, stages });
+  });
+
+  app.post('/api/clinic/stages/:code/request-payment', async (req, reply) => {
+    const ctx = requireAuth(req, reply);
+    if (!ctx) return;
+    const { code } = z.object({ code: z.coerce.number().int() }).parse(req.params);
+    const r = await guarded(() => app.container.stage.requestPayment(ctx.account, code), reply);
+    if (r === undefined) return;
+    return reply.code(r.ok ? 200 : 400).send(r);
+  });
+
+  app.get('/api/clinic/documents/:name/content', async (req, reply) => {
+    const ctx = requireAuth(req, reply);
+    if (!ctx) return;
+    const { name } = z.object({ name: z.string() }).parse(req.params);
+    const r = await guarded(() => app.container.stage.getDocumentContent(ctx.account, decodeURIComponent(name)), reply);
+    if (r === undefined) return;
+    return reply.code(r.ok ? 200 : 400).send(r);
+  });
 }

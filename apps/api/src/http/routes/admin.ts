@@ -65,25 +65,4 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     return reply.send({ ok: true, request });
   });
 
-  // Шаг 2 «второй руки»: подтверждает ДРУГОЙ сотрудник с правом role:manage
-  app.post('/api/second-hand/:id/confirm', async (req, reply) => {
-    const ctx = await requireRoleManage(req, reply);
-    if (!ctx) return;
-    const { id } = z.object({ id: z.string() }).parse(req.params);
-    const result = await app.container.secondHand.confirm(id, ctx.account.id, async (payload) => {
-      const accountId = String(payload.accountId);
-      const newRole = String(payload.newRole);
-      if (!isRole(newRole)) throw new Error('Неизвестная роль в запросе');
-      return app.container.repos.accounts.update(accountId, { role: newRole });
-    });
-    return reply.code(result.ok ? 200 : 400).send(result);
-  });
-
-  app.post('/api/second-hand/:id/reject', async (req, reply) => {
-    const ctx = await requireRoleManage(req, reply);
-    if (!ctx) return;
-    const { id } = z.object({ id: z.string() }).parse(req.params);
-    const result = await app.container.secondHand.reject(id, ctx.account.id);
-    return reply.code(result.ok ? 200 : 400).send(result);
-  });
 }

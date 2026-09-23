@@ -23,6 +23,10 @@ export class InMemorySecondHandRepo implements SecondHandRepo {
     return this.rows.find((r) => r.id === id) ?? null;
   }
 
+  async listPending(): Promise<SecondHandRequest[]> {
+    return this.rows.filter((r) => r.status === 'pending').sort((a, b) => b.requestedAt.getTime() - a.requestedAt.getTime());
+  }
+
   async setStatus(id: string, status: SecondHandStatus, confirmedById: string | null): Promise<SecondHandRequest> {
     const row = this.rows.find((r) => r.id === id);
     if (!row) throw new Error('Запрос не найден');

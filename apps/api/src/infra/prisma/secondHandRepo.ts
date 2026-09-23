@@ -23,6 +23,11 @@ export class PrismaSecondHandRepo implements SecondHandRepo {
     return row ? { ...row, payload: row.payload as Record<string, unknown> } : null;
   }
 
+  async listPending(): Promise<SecondHandRequest[]> {
+    const rows = await this.prisma.secondHandRequest.findMany({ where: { status: 'pending' }, orderBy: { requestedAt: 'desc' } });
+    return rows.map((row) => ({ ...row, payload: row.payload as Record<string, unknown> }));
+  }
+
   async setStatus(id: string, status: SecondHandStatus, confirmedById: string | null): Promise<SecondHandRequest> {
     const row = await this.prisma.secondHandRequest.update({
       where: { id },

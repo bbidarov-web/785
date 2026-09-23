@@ -12,8 +12,10 @@ import { InMemoryExecutorMarkRepo } from '../infra/memory/executorMarkRepo.js';
 import { InMemoryFileStorage } from '../infra/memory/fileStorage.js';
 import { InMemoryNotifier } from '../infra/memory/notifier.js';
 
+export type MemoryRepos = Repos & { clock: TestClock; notifier: InMemoryNotifier };
+
 /** Полный набор in-memory адаптеров — используется во всех юнит/интеграционных тестах API. */
-export function createMemoryRepos(): Repos & { clock: TestClock; notifier: InMemoryNotifier } {
+export function createMemoryRepos(): MemoryRepos {
   const clock = new TestClock();
   return {
     clock,

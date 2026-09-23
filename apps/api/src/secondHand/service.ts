@@ -28,7 +28,7 @@ export class SecondHandService {
   async confirm<T>(
     requestId: string,
     confirmedById: string,
-    apply: (payload: Record<string, unknown>) => Promise<T>,
+    apply: (payload: Record<string, unknown>, confirmedById: string) => Promise<T>,
   ): Promise<SecondHandResult<{ request: SecondHandRequest; result: T }>> {
     const req = await this.repos.secondHand.findById(requestId);
     if (!req) return { ok: false, error: 'Запрос не найден' };
@@ -50,7 +50,7 @@ export class SecondHandService {
       });
       return { ok: false, error: 'Подтвердить может только другой сотрудник, не автор запроса' };
     }
-    const result = await apply(req.payload);
+    const result = await apply(req.payload, confirmedById);
     const confirmed = await this.repos.secondHand.setStatus(requestId, 'confirmed', confirmedById);
     await this.repos.auditLog.append({
       actorId: confirmedById,
@@ -62,6 +62,16 @@ export class SecondHandService {
       allowed: true,
     });
     return { ok: true, request: confirmed, result };
+  }
+
+  /** Нужен обобщённому эндпоинту подтверждения — по типу запроса решить, какое право и какой apply нужны. */
+  async get(requestId: string): Promise<SecondHandRequest | null> {
+    return this.repos.secondHand.findById(requestId);
+  }
+
+  /** Для панели: все открытые запросы второй руки — фильтрацию "могу ли я подтвердить" делает вызывающий по типу. */
+  async listPending(): Promise<SecondHandRequest[]> {
+    return this.repos.secondHand.listPending();
   }
 
   async reject(requestId: string, byId: string): Promise<SecondHandResult<{ request: SecondHandRequest }>> {

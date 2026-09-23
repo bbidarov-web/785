@@ -10,6 +10,8 @@ import { walkRoutes } from './http/routes/walk.js';
 import { clinicRoutes } from './http/routes/clinic.js';
 import { documentRoutes } from './http/routes/documents.js';
 import { adminRoutes } from './http/routes/admin.js';
+import { panelRoutes } from './http/routes/panel.js';
+import { secondHandRoutes } from './http/routes/secondHand.js';
 
 export interface AppOptions {
   cookieSecret: string;
@@ -39,6 +41,8 @@ export async function buildApp(container: Container, opts: AppOptions) {
   await app.register(clinicRoutes);
   await app.register(documentRoutes);
   await app.register(adminRoutes);
+  await app.register(panelRoutes);
+  await app.register(secondHandRoutes);
 
   app.get('/api/health', async () => ({ ok: true }));
 
