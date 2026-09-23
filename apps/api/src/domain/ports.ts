@@ -12,6 +12,12 @@ import type {
   Session,
 } from './types.js';
 
+/** Арендатор — клиника, ключ ИНН (SERVER.md §2). Заводится при первой регистрации клиники. */
+export interface TenantRepo {
+  upsert(inn: string, name: string): Promise<void>;
+  findByInn(inn: string): Promise<{ inn: string; name: string } | null>;
+}
+
 /** Порт репозитория учётных записей. Реализации: infra/memory (тесты), infra/prisma (прод). */
 export interface AccountRepo {
   create(acc: Omit<Account, 'id' | 'createdAt' | 'lastLoginAt' | 'approvedById' | 'approvedAt' | 'passwordChangedAt'>): Promise<Account>;
@@ -56,14 +62,31 @@ export interface DocumentGrantRepo {
 
 export interface ChannelStore {
   get<T = unknown>(scope: 'platform' | 'tenant', tenantInn: string | null, key: string, fallback: T): Promise<ChannelRecord<T>>;
-  /** Запись с проверкой версии — конфликт возвращается вызывающему, а не затирается молча. */
+  /**
+   * Запись с проверкой версии — конфликт возвращается вызывающему, а не затирается молча.
+   * `opId`, если передан и совпадает с последним применённым для этого канала —
+   * операция не повторяется повторно, возвращается прежний результат (`idempotent: true`).
+   * Это то самое "у каждой операции идентификатор... защита от дублей" из SERVER.md §6.5:
+   * офлайн-очередь обхода повторяет неподтверждённую запись, пока не получит ответ,
+   * и повтор не должен применяться дважды.
+   */
   set<T = unknown>(
     scope: 'platform' | 'tenant',
     tenantInn: string | null,
     key: string,
     value: T,
-    opts: { expectedVersion?: number; updatedBy: string | null },
-  ): Promise<{ ok: true; version: number } | { ok: false; conflict: true; version: number }>;
+    opts: { expectedVersion?: number; updatedBy: string | null; opId?: string | null },
+  ): Promise<{ ok: true; version: number; idempotent?: boolean } | { ok: false; conflict: true; version: number }>;
+}
+
+/**
+ * Объектное хранилище файлов (SERVER.md §6.4). Локальный диск в деве — временная
+ * реализация; продовый адаптер под S3-совместимое хранилище подключается той же
+ * сигнатурой (см. infra/files/localDisk.ts).
+ */
+export interface FileStorage {
+  save(tenantInn: string, contentType: string, data: Buffer): Promise<{ id: string; sizeBytes: number }>;
+  read(tenantInn: string, id: string): Promise<{ contentType: string; data: Buffer } | null>;
 }
 
 export interface ExecutorMarkRepo {
@@ -82,6 +105,7 @@ export interface Clock {
 }
 
 export interface Repos {
+  tenants: TenantRepo;
   accounts: AccountRepo;
   sessions: SessionRepo;
   otps: OtpRepo;
@@ -90,6 +114,7 @@ export interface Repos {
   documentGrants: DocumentGrantRepo;
   channels: ChannelStore;
   executorMarks: ExecutorMarkRepo;
+  files: FileStorage;
   notifier: Notifier;
   clock: Clock;
 }

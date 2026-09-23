@@ -42,7 +42,6 @@ model Tenant {
   name      String
   createdAt DateTime @default(now())
 
-  accounts       Account[]
   documentGrants DocumentGrant[]
   channels       TenantChannel[]
   auditEntries   AuditLogEntry[]
@@ -75,10 +74,13 @@ model Account {
   approvedAt       DateTime?
   passwordChangedAt DateTime?
 
-  tenant   Tenant?   @relation(fields: [inn], references: [inn], onDelete: Cascade, map: "fk_account_tenant")
   sessions Session[]
   otps     OtpCode[]
 
+  // ВАЖНО: без FK на Tenant.inn. У side=clinic это ИНН арендатора (есть в Tenant),
+  // у side=platform — ИНН оператора (своя запись, не арендатор в смысле SERVER.md §2).
+  // Жёсткая связь тут была багом: создание сотрудника платформы падало бы на
+  // ограничении внешнего ключа, потому что для его ИНН нет и не должно быть Tenant.
   @@unique([inn, login])
   @@index([inn, phone])
   @@map("accounts")
@@ -202,6 +204,7 @@ model PlatformChannel {
   version   Int      @default(1)
   updatedAt DateTime @updatedAt
   updatedBy String?
+  lastOpId  String? // защита от повтора офлайн-очереди (SERVER.md §6.5) — см. PrismaChannelStore
 
   @@map("platform_channels")
 }
@@ -215,6 +218,7 @@ model TenantChannel {
   version   Int      @default(1)
   updatedAt DateTime @updatedAt
   updatedBy String?
+  lastOpId  String? // защита от повтора офлайн-очереди (SERVER.md §6.5) — см. PrismaChannelStore
 
   tenant Tenant @relation(fields: [tenantInn], references: [inn], onDelete: Cascade)
 

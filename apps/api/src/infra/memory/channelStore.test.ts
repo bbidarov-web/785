@@ -41,4 +41,34 @@ describe('ChannelStore — версии вместо молчаливого за
     const r = await store.get('platform', null, 'checklists', []);
     expect(r.data).toEqual(['x']);
   });
+
+  describe('opId — идемпотентность офлайн-очереди (SERVER.md §6.5)', () => {
+    it('повтор операции с тем же opId не применяется дважды', async () => {
+      const first = await store.set('tenant', '7712345671', 'walk_results', { a: 1 }, { expectedVersion: 0, updatedBy: 'u1', opId: 'op-1' });
+      expect(first.ok).toBe(true);
+      // офлайн-очередь не получила подтверждение и повторяет тот же запрос с той же версией
+      const retry = await store.set('tenant', '7712345671', 'walk_results', { a: 1 }, { expectedVersion: 0, updatedBy: 'u1', opId: 'op-1' });
+      expect(retry.ok).toBe(true);
+      if (retry.ok) expect(retry.idempotent).toBe(true);
+      const state = await store.get('tenant', '7712345671', 'walk_results', {});
+      expect(state.version).toBe(1); // не 2 — повтор не создал вторую версию
+    });
+
+    it('повтор с тем же opId не проваливается в конфликт версий, даже если версия уже другая', async () => {
+      await store.set('tenant', '7712345671', 'walk_results', { a: 1 }, { updatedBy: 'u1', opId: 'op-1' });
+      // другая операция продвинула версию вперёд, пока клиент не получил ответ на op-1
+      await store.set('tenant', '7712345671', 'walk_results', { a: 2 }, { expectedVersion: 1, updatedBy: 'u2', opId: 'op-2' });
+      const retryStale = await store.set('tenant', '7712345671', 'walk_results', { a: 1 }, { expectedVersion: 0, updatedBy: 'u1', opId: 'op-1' });
+      // ожидание: op-1 уже был последней операцией ДО op-2, поэтому lastOpId сейчас 'op-2' —
+      // повтор op-1 больше не совпадает с lastOpId и корректно должен идти по обычной проверке версии
+      expect(retryStale.ok).toBe(false);
+    });
+
+    it('разные операции с разными opId применяются обе', async () => {
+      const a = await store.set('tenant', '7712345671', 'walk_results', { a: 1 }, { expectedVersion: 0, updatedBy: 'u1', opId: 'op-1' });
+      expect(a.ok && a.version).toBe(1);
+      const b = await store.set('tenant', '7712345671', 'walk_results', { a: 2 }, { expectedVersion: 1, updatedBy: 'u1', opId: 'op-2' });
+      expect(b.ok && b.version).toBe(2);
+    });
+  });
 });

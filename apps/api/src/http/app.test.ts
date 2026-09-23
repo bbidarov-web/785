@@ -126,6 +126,95 @@ describe('HTTP: /api/auth и защита эндпоинтов правами', 
     expect(updated?.role).toBe('platform_admin');
   });
 
+  it('мобильный обход: список → ответ на пункт → завершение, полный HTTP-цикл', async () => {
+    await repos.channels.set('platform', null, 'checklists', [
+      { name: 'Чек-лист аудита стерилизационной', items: ['Режимы стерилизации соблюдаются?', 'Индикаторы вклеены?'] },
+    ], { updatedBy: null });
+    const reg = await container.auth.register({
+      inn: '7712345671', login: 'auditor1', password: 'auditor2026', password2: 'auditor2026',
+      fio: 'Сидорова В. В.', side: 'clinic', role: 'auditor',
+    });
+    if (!reg.ok) throw new Error('setup failed');
+    await repos.channels.set('tenant', '7712345671', 'audit_plan', [
+      { id: 'p1', check: 'Чек-лист аудита стерилизационной', who: 'Сидорова В. В.', object: 'Стерилизационная', kind: 'плановая', date: '01.03.2026' },
+    ], { updatedBy: null });
+
+    const login = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { inn: '7712345671', login: 'auditor1', password: 'auditor2026' } });
+    const cookie = extractCookie(login.headers['set-cookie'], 'k785_session')!;
+
+    const list = await app.inject({ method: 'GET', url: '/api/walk/plan', cookies: { k785_session: cookie } });
+    expect(list.statusCode).toBe(200);
+    expect(list.json().walks).toHaveLength(1);
+    expect(list.json().walks[0].total).toBe(2);
+
+    const answer1 = await app.inject({
+      method: 'POST', url: '/api/walk/plan/p1/answer', cookies: { k785_session: cookie },
+      payload: { index: 0, answer: 'ok', opId: 'op-1' },
+    });
+    expect(answer1.statusCode).toBe(200);
+
+    const answer2 = await app.inject({
+      method: 'POST', url: '/api/walk/plan/p1/answer', cookies: { k785_session: cookie },
+      payload: { index: 1, answer: 'bad', comment: 'Индикаторы не вклеены', opId: 'op-2' },
+    });
+    expect(answer2.statusCode).toBe(200);
+    expect(answer2.json().detail.bad).toBe(1);
+
+    const finish = await app.inject({ method: 'POST', url: '/api/walk/plan/p1/finish', cookies: { k785_session: cookie }, payload: { opId: 'op-finish' } });
+    expect(finish.statusCode).toBe(200);
+    expect(finish.json()).toMatchObject({ ok: true, bad: 1, total: 2 });
+  });
+
+  it('обход: чужая проверка (по who) не выполняется — 400, а не молчаливый успех', async () => {
+    await repos.channels.set('platform', null, 'checklists', [{ name: 'ЧЛ', items: ['п1'] }], { updatedBy: null });
+    const reg = await container.auth.register({
+      inn: '7712345671', login: 'auditor2', password: 'auditor2026', password2: 'auditor2026',
+      fio: 'Сидорова В. В.', side: 'clinic', role: 'auditor',
+    });
+    if (!reg.ok) throw new Error('setup failed');
+    await repos.channels.set('tenant', '7712345671', 'audit_plan', [
+      { id: 'p1', check: 'ЧЛ', who: 'Другой Человек' },
+    ], { updatedBy: null });
+    const login = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { inn: '7712345671', login: 'auditor2', password: 'auditor2026' } });
+    const cookie = extractCookie(login.headers['set-cookie'], 'k785_session')!;
+    const res = await app.inject({
+      method: 'POST', url: '/api/walk/plan/p1/answer', cookies: { k785_session: cookie },
+      payload: { index: 0, answer: 'ok', opId: 'op-1' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('фото обхода: сохраняется и отдаётся только тому же арендатору', async () => {
+    await repos.channels.set('platform', null, 'checklists', [{ name: 'ЧЛ', items: ['п1'] }], { updatedBy: null });
+    const reg = await container.auth.register({
+      inn: '7712345671', login: 'auditor3', password: 'auditor2026', password2: 'auditor2026',
+      fio: 'Сидорова В. В.', side: 'clinic', role: 'auditor',
+    });
+    if (!reg.ok) throw new Error('setup failed');
+    await repos.channels.set('tenant', '7712345671', 'audit_plan', [{ id: 'p1', check: 'ЧЛ', who: 'Сидорова В. В.' }], { updatedBy: null });
+    const login = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { inn: '7712345671', login: 'auditor3', password: 'auditor2026' } });
+    const cookie = extractCookie(login.headers['set-cookie'], 'k785_session')!;
+    const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+    const answer = await app.inject({
+      method: 'POST', url: '/api/walk/plan/p1/answer', cookies: { k785_session: cookie },
+      payload: { index: 0, answer: 'bad', photoBase64: png, opId: 'op-1' },
+    });
+    const fileId = answer.json().detail.items[0].photoFileId;
+    expect(fileId).toBeTruthy();
+
+    const file = await app.inject({ method: 'GET', url: `/api/files/${fileId}`, cookies: { k785_session: cookie } });
+    expect(file.statusCode).toBe(200);
+    expect(file.headers['content-type']).toBe('image/png');
+
+    // другая клиника не видит чужой файл, даже зная его id
+    const otherReg = await container.auth.register({ inn: '5001007322', login: 'other', password: 'other2026', password2: 'other2026', fio: 'X', side: 'clinic' });
+    if (!otherReg.ok) throw new Error('setup failed');
+    const otherLogin = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { inn: '5001007322', login: 'other', password: 'other2026' } });
+    const otherCookie = extractCookie(otherLogin.headers['set-cookie'], 'k785_session')!;
+    const forbidden = await app.inject({ method: 'GET', url: `/api/files/${fileId}`, cookies: { k785_session: otherCookie } });
+    expect(forbidden.statusCode).toBe(404);
+  });
+
   it('logout отзывает cookie сессии — повторный запрос получает 401', async () => {
     await container.auth.register({ inn: '7712345671', login: 'medplus', password: 'medplus2026', password2: 'medplus2026', fio: 'x', side: 'clinic' });
     const login = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { inn: '7712345671', login: 'medplus', password: 'medplus2026' } });

@@ -1,44 +1,22 @@
-/**
- * Формы каналов, которые читает кабинет исполнителя. Источник — рабочее состояние
- * клиники (`client_state`) и матрица назначений (`docasg`), которые публикует
- * кабинет клиники/панель — полная форма описана в `reference/prototype/Личный
- * кабинет ВКК.dc.html` и переносится по мере порта этого экрана. Здесь — только
- * срез полей, которые фактически читает `Кабинет исполнителя.dc.html`.
- */
+export type { ClientStateShape, StaffMember } from '../shared/channelShapes.js';
+import type { AuditPlanItem as SharedAuditPlanItem, WalkResultEntry } from '../shared/channelShapes.js';
 
-export interface ClientStateShape {
-  asgMap?: Record<string, string>; // ключ "этап|блок|номер|документ" -> "ФИО (+ ФИО …)"
-  staffByBranch?: Record<string, { fio: string; pos: string }[]>;
-}
+/** Кабинет исполнителя читает план проверок по простым полям — остальные нужны только обходу. */
+export type AuditPlanItem = Pick<SharedAuditPlanItem, 'id' | 'name' | 'object' | 'kind' | 'date' | 'who'>;
 
-export interface AuditPlanItem {
-  name?: string;
-  object?: string;
-  kind?: string;
-  date?: string;
-  who?: string;
-}
-
-export interface WalkResult {
-  finished?: boolean;
-  name?: string;
-}
+/** Кабинету исполнителя из результата обхода важно только, завершена ли проверка. */
+export type WalkResult = Pick<WalkResultEntry, 'finished' | 'name'>;
 
 export interface EquipmentPosition {
   uid: string;
   name: string;
   room?: string;
-  logWho?: Record<string, string>; // форма журнала -> "ФИО (+ ФИО …)"
+  logWho?: Record<string, string>;
 }
 
 export interface EquipmentFill {
   date?: string;
   who?: string;
-}
-
-export interface StaffMember {
-  fio: string;
-  pos: string;
 }
 
 export interface ExecutorDoc {

@@ -3,7 +3,7 @@ export default function Home() {
     { href: '/executor', title: 'Кабинет исполнителя', status: 'готово', desc: 'Медсестра / исполнитель — документы, проверки, журналы по назначению.' },
     { href: '/clinic', title: 'Личный кабинет ВКК', status: 'в переносе', desc: 'Админ клиники, ответственный за ВКК, аудитор, наблюдатель.' },
     { href: '/panel', title: 'Панель платформы', status: 'в переносе', desc: 'Администратор, методист, менеджер и руководитель продаж.' },
-    { href: '/walk', title: 'Мобильный обход', status: 'в переносе', desc: 'Чек-листы, журналы оборудования, работа без сети.' },
+    { href: '/walk', title: 'Мобильный обход', status: 'готово (аудиты)', desc: 'Чек-листы с ответами, комментариями и фото, офлайн-очередь. Оборудование и сводный отчёт — в переносе.' },
   ];
 
   return (
@@ -31,8 +31,8 @@ export default function Home() {
               <span
                 style={{
                   fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 5, whiteSpace: 'nowrap',
-                  color: c.status === 'готово' ? 'var(--accent-hover)' : 'var(--warn)',
-                  background: c.status === 'готово' ? 'var(--accent-bg-light)' : 'var(--warn-bg)',
+                  color: c.status.startsWith('готово') ? 'var(--accent-hover)' : 'var(--warn)',
+                  background: c.status.startsWith('готово') ? 'var(--accent-bg-light)' : 'var(--warn-bg)',
                 }}
               >
                 {c.status}

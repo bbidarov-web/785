@@ -1,5 +1,6 @@
 import type { Repos } from '../domain/ports.js';
 import type { Account } from '../domain/types.js';
+import { assignees, isMine } from '../shared/assignment.js';
 import type {
   AuditPlanItem,
   ClientStateShape,
@@ -9,18 +10,6 @@ import type {
   StaffMember,
   WalkResult,
 } from './types.js';
-
-/** Назначение может быть записано на нескольких людей через « + » (см. Кабинет исполнителя.dc.html). */
-function assignees(who: string | undefined): string[] {
-  return String(who ?? '')
-    .split(/\s*\+\s*/)
-    .map((s) => s.split('·')[0]?.trim() ?? '')
-    .filter(Boolean);
-}
-
-function isMine(who: string | undefined, fio: string): boolean {
-  return assignees(who).includes(fio);
-}
 
 /**
  * Кабинет исполнителя: сотрудник видит ТОЛЬКО то, где клиника назначила его
@@ -39,8 +28,8 @@ export class ExecutorService {
     const inn = account.inn;
     const fio = account.fio;
 
-    const clinicsChannel = await this.repos.channels.get<Record<string, { name: string }>>('platform', null, 'clinics_registry', {});
-    const clinicName = clinicsChannel.data[inn]?.name ?? account.org ?? `ИНН ${inn}`;
+    const tenant = await this.repos.tenants.findByInn(inn);
+    const clinicName = tenant?.name ?? account.org ?? `ИНН ${inn}`;
 
     const clientState = (await this.repos.channels.get<ClientStateShape>('tenant', inn, 'client_state', {})).data;
     const staff = (await this.repos.channels.get<StaffMember[]>('tenant', inn, 'staff', [])).data;
@@ -91,12 +80,15 @@ export class ExecutorService {
 
     const checks = plan
       .filter((p) => isMine(p.who, fio))
-      .map((p) => ({
-        name: p.name ?? 'Проверка',
-        where: [p.object ?? 'объект не указан', p.kind].filter(Boolean).join(' · '),
-        done: finishedByName.has(p.name),
-        date: p.date ?? null,
-      }));
+      .map((p) => {
+        const name = p.name ?? 'Проверка';
+        return {
+          name,
+          where: [p.object ?? 'объект не указан', p.kind].filter(Boolean).join(' · '),
+          done: finishedByName.has(name),
+          date: p.date ?? null,
+        };
+      });
 
     const equip = (await this.repos.channels.get<EquipmentPosition[]>('tenant', inn, 'equip_pos', [])).data;
     const fills = (await this.repos.channels.get<Record<string, EquipmentFill>>('tenant', inn, 'equip_fill', {})).data;

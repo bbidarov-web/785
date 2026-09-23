@@ -16,3 +16,5 @@ apps/api/prisma/dev.db-journal
 infra/deploy/*.local.sh
 infra/deploy/deploy.config.sh
 infra/deploy/.env.prod
+apps/api/var/
+*.tsbuildinfo

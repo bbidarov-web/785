@@ -63,6 +63,11 @@ export class AuthService {
       blocked: false,
       mustChange: false,
     });
+    // арендатор — клиника (SERVER.md §2); сотрудник платформы тенантом не является,
+    // для него запись в tenants не заводится
+    if (side === 'clinic') {
+      await this.repos.tenants.upsert(inn, account.org || `ИНН ${inn}`);
+    }
     return {
       ok: true,
       account,

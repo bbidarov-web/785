@@ -31,15 +31,9 @@ function toDomain(row: NonNullable<Awaited<ReturnType<PrismaClient['account']['f
 export class PrismaAccountRepo implements AccountRepo {
   constructor(private prisma: PrismaClient) {}
 
+  // Арендатор заводится явно в AuthService.register через repos.tenants.upsert —
+  // не здесь, чтобы то же самое происходило и на in-memory адаптерах в тестах.
   async create(acc: Omit<Account, 'id' | 'createdAt' | 'lastLoginAt' | 'approvedById' | 'approvedAt' | 'passwordChangedAt'>): Promise<Account> {
-    // арендатор создаётся неявно при первой регистрации клиники — upsert, а не отдельная миграция
-    if (acc.side === 'clinic') {
-      await this.prisma.tenant.upsert({
-        where: { inn: acc.inn },
-        create: { inn: acc.inn, name: acc.org || `ИНН ${acc.inn}` },
-        update: {},
-      });
-    }
     const row = await this.prisma.account.create({ data: acc });
     return toDomain(row);
   }

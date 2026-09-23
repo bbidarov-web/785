@@ -6,6 +6,7 @@ import type { Container } from './container.js';
 import { sessionPlugin } from './http/plugins/session.js';
 import { authRoutes } from './http/routes/auth.js';
 import { executorRoutes } from './http/routes/executor.js';
+import { walkRoutes } from './http/routes/walk.js';
 import { documentRoutes } from './http/routes/documents.js';
 import { adminRoutes } from './http/routes/admin.js';
 
@@ -33,6 +34,7 @@ export async function buildApp(container: Container, opts: AppOptions) {
 
   await app.register(authRoutes);
   await app.register(executorRoutes);
+  await app.register(walkRoutes);
   await app.register(documentRoutes);
   await app.register(adminRoutes);
 
