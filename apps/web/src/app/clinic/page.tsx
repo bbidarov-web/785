@@ -52,6 +52,7 @@ interface StagePayment {
   status: 'none' | 'pending' | 'paid';
   amount: number;
   confirmedAt: string | null;
+  accepted: boolean;
 }
 
 interface StageDocView {
@@ -71,6 +72,7 @@ interface StageView {
   name: string;
   price: number;
   payment: StagePayment;
+  locked: boolean;
   blocks: StageBlockView[];
 }
 
@@ -455,10 +457,15 @@ function StagesTab({ stages, canOrder, onOrder, onOpen }: { stages: StageView[];
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', alignItems: 'baseline' }}>
             <div style={{ fontSize: 14, fontWeight: 800 }}>Этап {s.code} · {s.name}</div>
             <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 5, color: statusColor[s.payment.status], background: statusBg[s.payment.status] }}>
-              {statusLabel[s.payment.status]} · {s.price.toLocaleString('ru-RU')} ₽
+              {s.payment.status === 'paid' && !s.payment.accepted ? 'оплачен · ждёт приёмки платформой' : s.payment.status === 'paid' ? 'принят' : statusLabel[s.payment.status]} · {s.price.toLocaleString('ru-RU')} ₽
             </span>
           </div>
-          {s.payment.status === 'none' && canOrder && (
+          {s.locked && s.payment.status === 'none' && (
+            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-caption)', marginTop: 8 }}>
+              Заблокирован: нельзя заказать, пока платформа не приняла предыдущий этап.
+            </div>
+          )}
+          {s.payment.status === 'none' && canOrder && !s.locked && (
             <button onClick={() => onOrder(s.code)} style={{ ...primaryBtn, marginTop: 10 }}>Заказать (выставить счёт)</button>
           )}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>

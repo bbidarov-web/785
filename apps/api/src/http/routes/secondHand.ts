@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { can } from '@kontur785/shared';
 import { requireAuth } from '../plugins/session.js';
 import { assertPermission, PermissionDeniedError } from '../../rbac/service.js';
+import { resolveConfirmPermission } from '../../container.js';
 
 /**
  * Общее подтверждение/отклонение операции «второй руки» (SERVER.md §4) —
@@ -20,7 +21,7 @@ export async function secondHandRoutes(app: FastifyInstance): Promise<void> {
     const items = await app.container.secondHand.listPending();
     const annotated = items.map((r) => {
       const handler = app.container.secondHandHandlers[r.type as keyof typeof app.container.secondHandHandlers];
-      const canAct = !!handler && can(ctx.account.role, handler.confirmPermission) && r.requestedById !== ctx.account.id;
+      const canAct = !!handler && can(ctx.account.role, resolveConfirmPermission(handler, r.payload)) && r.requestedById !== ctx.account.id;
       return { ...r, canAct };
     });
     return reply.send({ ok: true, items: annotated });
@@ -37,7 +38,7 @@ export async function secondHandRoutes(app: FastifyInstance): Promise<void> {
     if (!handler) return reply.code(400).send({ ok: false, error: 'Неизвестный тип операции второй руки' });
 
     try {
-      await assertPermission(app.container.repos.auditLog, ctx.account, handler.confirmPermission, 'second-hand:confirm', id, request.tenantInn);
+      await assertPermission(app.container.repos.auditLog, ctx.account, resolveConfirmPermission(handler, request.payload), 'second-hand:confirm', id, request.tenantInn);
     } catch (err) {
       if (err instanceof PermissionDeniedError) return reply.code(403).send({ ok: false, error: err.message });
       throw err;
@@ -58,7 +59,7 @@ export async function secondHandRoutes(app: FastifyInstance): Promise<void> {
     if (!handler) return reply.code(400).send({ ok: false, error: 'Неизвестный тип операции второй руки' });
 
     try {
-      await assertPermission(app.container.repos.auditLog, ctx.account, handler.confirmPermission, 'second-hand:reject', id, request.tenantInn);
+      await assertPermission(app.container.repos.auditLog, ctx.account, resolveConfirmPermission(handler, request.payload), 'second-hand:reject', id, request.tenantInn);
     } catch (err) {
       if (err instanceof PermissionDeniedError) return reply.code(403).send({ ok: false, error: err.message });
       throw err;

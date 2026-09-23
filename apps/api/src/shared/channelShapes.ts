@@ -152,7 +152,15 @@ export interface Stage {
 
 export type StagePaymentStatus = 'none' | 'pending' | 'paid';
 
-/** Строка канала `stage_paid` — одна на этап (SERVER.md §3, §5). */
+/**
+ * Строка канала `stage_paid` — одна на этап (SERVER.md §3, §5). `accepted` —
+ * отдельная от оплаты «приёмка» этапа платформой (методист/администратор,
+ * право `doc:grant`): по офферам прототипа «Оплата по факту приёмки этапа»
+ * (reference/README.md, строки ~7346–7349) — этапы идут строго по порядку,
+ * заказать оплату следующего можно только когда предыдущий и оплачен, и
+ * принят платформой. Оплата и приёмка — разные факты и разные роли: продавец
+ * подтверждает деньги, методист/администратор — что работа по этапу сделана.
+ */
 export interface StagePaymentState {
   status: StagePaymentStatus;
   requestedAt: string | null;
@@ -160,6 +168,9 @@ export interface StagePaymentState {
   confirmedAt: string | null;
   confirmedBy: string | null;
   amount: number;
+  accepted: boolean;
+  acceptedAt: string | null;
+  acceptedBy: string | null;
 }
 
 /** Годовой цикл — эталон методиста (`cycle_master`, платформенный канал). */
@@ -231,6 +242,45 @@ export interface SummaryFileEntry {
   fileName: string;
   date: string;
   uploadedBy: string;
+}
+
+/**
+ * Тариф из каталога продаж (`tariffs`, платформенный канал; README «Дашборд»
+ * упоминает «востребованность тарифов»). Черновик (`active:false`) правит кто
+ * угодно с `tariff:write` напрямую; включение в продажу и удаление — операции
+ * второй руки (`tariff:publish`/`tariff:delete`, SERVER.md §4) — их подтверждает
+ * ВТОРОЙ сотрудник с `second:money` (руководитель продаж/администратор), не
+ * автор запроса.
+ */
+export interface TariffDef {
+  key: string;
+  name: string;
+  price: number;
+  period: 'monthly' | 'annual';
+  description: string;
+  active: boolean;
+}
+
+export type SubscriptionStatus = 'none' | 'trial' | 'active' | 'expired' | 'cancelled';
+
+export interface SubscriptionEvent {
+  at: string; // ДД.ММ.ГГГГ
+  byId: string;
+  action: 'assign' | 'renew' | 'cancel';
+  tariffKey: string | null;
+}
+
+/**
+ * Подписка клиники (`subscription`, тенантский канал). Назначает и продлевает
+ * менеджер/руководитель продаж/администратор (`sub:write`) — прямое действие,
+ * не входит в семь операций второй руки.
+ */
+export interface SubscriptionState {
+  tariffKey: string | null;
+  status: SubscriptionStatus;
+  startedAt: string | null;
+  expiresAt: string | null;
+  history: SubscriptionEvent[];
 }
 
 export type SelfAuditAnswer = '' | 'ok' | 'bad' | 'na'; // соответствует / не соответствует / не применимо

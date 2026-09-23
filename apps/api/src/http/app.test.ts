@@ -286,9 +286,11 @@ describe('HTTP: /api/auth и защита эндпоинтов правами', 
   it('панель: методист публикует этапы → клиника оплачивает и получает документ, менеджер не может публиковать эталон', async () => {
     const methodistReg = await container.auth.register({ inn: '7726345678', login: 'metodist', password: 'metodist2026', password2: 'metodist2026', fio: 'Николаева Е. В.', side: 'operator', role: 'methodist' });
     const managerReg = await container.auth.register({ inn: '7726345678', login: 'manager1', password: 'manager2026', password2: 'manager2026', fio: 'Гусев Р. А.', side: 'operator', role: 'sales_manager' });
-    if (!methodistReg.ok || !managerReg.ok) throw new Error('setup failed');
+    const adminReg = await container.auth.register({ inn: '7726345678', login: 'admin1', password: 'platform2026', password2: 'platform2026', fio: 'Admin One', side: 'operator', role: 'platform_admin' });
+    if (!methodistReg.ok || !managerReg.ok || !adminReg.ok) throw new Error('setup failed');
     await repos.accounts.update(methodistReg.account.id, { pending: false });
     await repos.accounts.update(managerReg.account.id, { pending: false });
+    await repos.accounts.update(adminReg.account.id, { pending: false });
     const clinicReg = await container.auth.register({ inn: '7712345671', login: 'clinicadmin', password: 'admin2026aa', password2: 'admin2026aa', fio: 'Смирнов А. П.', side: 'clinic', role: 'clinic_admin' });
     if (!clinicReg.ok) throw new Error('setup failed');
 
@@ -298,22 +300,37 @@ describe('HTTP: /api/auth и защита эндпоинтов правами', 
     }
     const methodistCookie = await loginAs('7726345678', 'metodist', 'metodist2026');
     const managerCookie = await loginAs('7726345678', 'manager1', 'manager2026');
+    const adminCookie = await loginAs('7726345678', 'admin1', 'platform2026');
     const clinicCookie = await loginAs('7712345671', 'clinicadmin', 'admin2026aa');
 
-    const stages = [{
-      code: 1, name: 'Базовая система', price: 68000,
-      blocks: [{ key: 'b01', num: '01', name: 'Управление ВКК', docs: [
-        { name: 'Приказ о создании комиссии по внутреннему контролю', template: 'Приказ · {{org}} · ИНН {{inn}} · ответственный: {{responsible}}' },
-      ] }],
-    }];
+    const stages = [
+      {
+        code: 1, name: 'Базовая система', price: 68000,
+        blocks: [{ key: 'b01', num: '01', name: 'Управление ВКК', docs: [
+          { name: 'Приказ о создании комиссии по внутреннему контролю', template: 'Приказ · {{org}} · ИНН {{inn}} · ответственный: {{responsible}}' },
+        ] }],
+      },
+      { code: 2, name: 'Организационный пакет', price: 68000, blocks: [] },
+    ];
 
     // менеджер не может публиковать эталон
     const deniedPublish = await app.inject({ method: 'PUT', url: '/api/panel/stage-docs', cookies: { k785_session: managerCookie }, payload: stages });
     expect(deniedPublish.statusCode).toBe(403);
 
-    // методист публикует каталог этапов
+    // методист заводит запрос на публикацию каталога этапов — это одна из семи операций второй руки (standard:publish)
     const publish = await app.inject({ method: 'PUT', url: '/api/panel/stage-docs', cookies: { k785_session: methodistCookie }, payload: stages });
     expect(publish.statusCode).toBe(200);
+    const publishRequestId = publish.json().secondHandRequest.id;
+
+    // менеджер по продажам не может подтвердить публикацию эталона (нет second:standard)
+    const managerConfirm = await app.inject({ method: 'POST', url: `/api/second-hand/${publishRequestId}/confirm`, cookies: { k785_session: managerCookie } });
+    expect(managerConfirm.statusCode).toBe(403);
+    // сам методист тоже не может — своей рукой нельзя
+    const selfConfirmPublish = await app.inject({ method: 'POST', url: `/api/second-hand/${publishRequestId}/confirm`, cookies: { k785_session: methodistCookie } });
+    expect(selfConfirmPublish.json().ok).toBe(false);
+    // администратор платформы подтверждает — каталог выходит в публикацию
+    const confirmPublish = await app.inject({ method: 'POST', url: `/api/second-hand/${publishRequestId}/confirm`, cookies: { k785_session: adminCookie } });
+    expect(confirmPublish.statusCode).toBe(200);
 
     // клиника видит этап и заказывает оплату
     const view = await app.inject({ method: 'GET', url: '/api/clinic/stages', cookies: { k785_session: clinicCookie } });
@@ -344,6 +361,26 @@ describe('HTTP: /api/auth и защита эндпоинтов правами', 
     const content = await app.inject({ method: 'GET', url: '/api/clinic/documents/' + encodeURIComponent('Приказ о создании комиссии по внутреннему контролю') + '/content', cookies: { k785_session: clinicCookie } });
     expect(content.statusCode).toBe(200);
     expect(content.json().content).toContain('ИНН 7712345671');
+
+    // этап 2 заблокирован, пока платформа не приняла этап 1 — оплата сама по себе не открывает следующий
+    const viewAfterPay = await app.inject({ method: 'GET', url: '/api/clinic/stages', cookies: { k785_session: clinicCookie } });
+    expect(viewAfterPay.json().stages[1].locked).toBe(true);
+    const blockedOrder = await app.inject({ method: 'POST', url: '/api/clinic/stages/2/request-payment', cookies: { k785_session: clinicCookie } });
+    expect(blockedOrder.statusCode).toBe(400);
+
+    // клиника сама не может принять свой этап — это делает платформа (doc:grant)
+    const clinicAccept = await app.inject({ method: 'POST', url: '/api/panel/stage-payments/7712345671/1/accept', cookies: { k785_session: clinicCookie } });
+    expect(clinicAccept.statusCode).toBe(403);
+
+    // методист принимает оплаченный этап 1 — второй этап открывается
+    const accept = await app.inject({ method: 'POST', url: '/api/panel/stage-payments/7712345671/1/accept', cookies: { k785_session: methodistCookie } });
+    expect(accept.statusCode).toBe(200);
+    expect(accept.json().payment.accepted).toBe(true);
+
+    const viewAfterAccept = await app.inject({ method: 'GET', url: '/api/clinic/stages', cookies: { k785_session: clinicCookie } });
+    expect(viewAfterAccept.json().stages[1].locked).toBe(false);
+    const secondOrder = await app.inject({ method: 'POST', url: '/api/clinic/stages/2/request-payment', cookies: { k785_session: clinicCookie } });
+    expect(secondOrder.statusCode).toBe(200);
   });
 
   it('крупная оплата этапа (от 100 000 ₽) идёт через общий эндпоинт второй руки', async () => {
@@ -381,8 +418,10 @@ describe('HTTP: /api/auth и защита эндпоинтов правами', 
 
   it('годовой цикл → оборудование → сводный отчёт → самообследование → дашборд, полный HTTP-цикл', async () => {
     const methodistReg = await container.auth.register({ inn: '7726345678', login: 'metodist2', password: 'metodist2026', password2: 'metodist2026', fio: 'Николаева Е. В.', side: 'operator', role: 'methodist' });
-    if (!methodistReg.ok) throw new Error('setup failed');
+    const adminReg = await container.auth.register({ inn: '7726345678', login: 'admin2', password: 'platform2026', password2: 'platform2026', fio: 'Admin Two', side: 'operator', role: 'platform_admin' });
+    if (!methodistReg.ok || !adminReg.ok) throw new Error('setup failed');
     await repos.accounts.update(methodistReg.account.id, { pending: false });
+    await repos.accounts.update(adminReg.account.id, { pending: false });
     const clinicReg = await container.auth.register({ inn: '7712345671', login: 'vkk1', password: 'vkk2026lead', password2: 'vkk2026lead', fio: 'Иванова М. А.', side: 'clinic', role: 'vkk_lead' });
     if (!clinicReg.ok) throw new Error('setup failed');
 
@@ -391,25 +430,21 @@ describe('HTTP: /api/auth и защита эндпоинтов правами', 
       return extractCookie(res.headers['set-cookie'], 'k785_session')!;
     }
     const methodistCookie = await loginAs('7726345678', 'metodist2', 'metodist2026');
+    const adminCookie = await loginAs('7726345678', 'admin2', 'platform2026');
     const clinicCookie = await loginAs('7712345671', 'vkk1', 'vkk2026lead');
 
-    // методист публикует годовой цикл, каталог чек-листов, типы оборудования и сводный отчёт
-    await app.inject({
-      method: 'PUT', url: '/api/panel/cycle', cookies: { k785_session: methodistCookie },
-      payload: { year: 2026, dirs: [{ name: 'Эпидемиологическая безопасность', months: [2] }], capaTerms: [] },
-    });
-    await app.inject({
-      method: 'PUT', url: '/api/panel/checklists', cookies: { k785_session: methodistCookie },
-      payload: [{ name: 'Чек-лист аудита стерилизационной', items: ['Режимы соблюдаются?', 'Индикаторы вклеены?'] }],
-    });
-    await app.inject({
-      method: 'PUT', url: '/api/panel/equip-types', cookies: { k785_session: methodistCookie },
-      payload: [{ key: 'fridge', name: 'Холодильник', logs: [{ name: 'Журнал термометрии', freq: 'ежедневно', kind: 'журнал' }] }],
-    });
-    await app.inject({
-      method: 'PUT', url: '/api/panel/summary-master', cookies: { k785_session: methodistCookie },
-      payload: [{ name: 'Сводный отчёт по системе качества за год', note: '', req: true }],
-    });
+    // методист заводит запросы на публикацию годового цикла, каталога чек-листов, типов
+    // оборудования и сводного отчёта — каждый ждёт подтверждения ВТОРЫМ сотрудником (standard:publish)
+    async function publishAndConfirm(url: string, payload: Record<string, unknown> | unknown[]) {
+      const put = await app.inject({ method: 'PUT', url, cookies: { k785_session: methodistCookie }, payload });
+      expect(put.statusCode).toBe(200);
+      const confirm = await app.inject({ method: 'POST', url: `/api/second-hand/${put.json().secondHandRequest.id}/confirm`, cookies: { k785_session: adminCookie } });
+      expect(confirm.statusCode).toBe(200);
+    }
+    await publishAndConfirm('/api/panel/cycle', { year: 2026, dirs: [{ name: 'Эпидемиологическая безопасность', months: [2] }], capaTerms: [] });
+    await publishAndConfirm('/api/panel/checklists', [{ name: 'Чек-лист аудита стерилизационной', items: ['Режимы соблюдаются?', 'Индикаторы вклеены?'] }]);
+    await publishAndConfirm('/api/panel/equip-types', [{ key: 'fridge', name: 'Холодильник', logs: [{ name: 'Журнал термометрии', freq: 'ежедневно', kind: 'журнал' }] }]);
+    await publishAndConfirm('/api/panel/summary-master', [{ name: 'Сводный отчёт по системе качества за год', note: '', req: true }]);
 
     // клиника донастраивает направление и генерирует план из цикла
     await app.inject({
@@ -474,6 +509,188 @@ describe('HTTP: /api/auth и защита эндпоинтов правами', 
     // клиника (side=clinic) не может открыть каталог клиентов — нет clinic:read
     const denied = await app.inject({ method: 'GET', url: '/api/panel/clients', cookies: { k785_session: clinicCookie } });
     expect(denied.statusCode).toBe(403);
+  });
+
+  it('выдача документа без оплаты — операция второй руки (doc:grant-without-payment)', async () => {
+    const methodistReg = await container.auth.register({ inn: '7726345678', login: 'metodist3', password: 'metodist2026', password2: 'metodist2026', fio: 'Николаева Е. В.', side: 'operator', role: 'methodist' });
+    const admin2Reg = await container.auth.register({ inn: '7726345678', login: 'admin3', password: 'platform2026', password2: 'platform2026', fio: 'Admin Three', side: 'operator', role: 'platform_admin' });
+    if (!methodistReg.ok || !admin2Reg.ok) throw new Error('setup failed');
+    await repos.accounts.update(methodistReg.account.id, { pending: false });
+    await repos.accounts.update(admin2Reg.account.id, { pending: false });
+    await container.auth.register({ inn: '7712345671', login: 'clinicX', password: 'admin2026aa', password2: 'admin2026aa', fio: 'X', side: 'clinic', role: 'clinic_admin' });
+
+    async function loginAs(login: string, password: string) {
+      const res = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { inn: '7726345678', login, password } });
+      return extractCookie(res.headers['set-cookie'], 'k785_session')!;
+    }
+    const methodistCookie = await loginAs('metodist3', 'metodist2026');
+    const adminCookie = await loginAs('admin3', 'platform2026');
+
+    const req = await app.inject({
+      method: 'POST', url: '/api/documents/grant', cookies: { k785_session: methodistCookie },
+      payload: { tenantInn: '7712345671', stage: '1', code: 'DOC-X', name: 'Документ без оплаты', paid: false },
+    });
+    expect(req.statusCode).toBe(200);
+    expect(req.json().secondHandRequest).toBeDefined();
+    const requestId = req.json().secondHandRequest.id;
+
+    // документ ещё не выдан — заявка ждёт подтверждения
+    const grantsBefore = await app.inject({ method: 'GET', url: '/api/tenants/7712345671/documents/grants', cookies: { k785_session: methodistCookie } });
+    expect(grantsBefore.json().grants['DOC-X']).toBeUndefined();
+
+    // автор заявки не может подтвердить сам
+    const selfConfirm = await app.inject({ method: 'POST', url: `/api/second-hand/${requestId}/confirm`, cookies: { k785_session: methodistCookie } });
+    expect(selfConfirm.json().ok).toBe(false);
+
+    const confirm = await app.inject({ method: 'POST', url: `/api/second-hand/${requestId}/confirm`, cookies: { k785_session: adminCookie } });
+    expect(confirm.statusCode).toBe(200);
+
+    // выдающим в записи стал ПОДТВЕРЖДАЮЩИЙ (администратор), а не автор запроса (методист)
+    const grantsAfter = await app.inject({ method: 'GET', url: '/api/tenants/7712345671/documents/grants', cookies: { k785_session: methodistCookie } });
+    expect(grantsAfter.json().grants['DOC-X']).toMatchObject({ paid: false, byRole: 'platform_admin' });
+  });
+
+  it('тарифы: черновик → публикация второй рукой → подписка клиники → продление → удаление тарифа', async () => {
+    const managerReg = await container.auth.register({ inn: '7726345678', login: 'manager3', password: 'manager2026', password2: 'manager2026', fio: 'Гусев Р. А.', side: 'operator', role: 'sales_manager' });
+    const headReg = await container.auth.register({ inn: '7726345678', login: 'head3', password: 'saleshead2026', password2: 'saleshead2026', fio: 'Лазарева Т. М.', side: 'operator', role: 'sales_head' });
+    if (!managerReg.ok || !headReg.ok) throw new Error('setup failed');
+    await repos.accounts.update(managerReg.account.id, { pending: false });
+    await repos.accounts.update(headReg.account.id, { pending: false });
+    await container.auth.register({ inn: '7712345671', login: 'clinicY', password: 'admin2026aa', password2: 'admin2026aa', fio: 'Y', side: 'clinic', role: 'clinic_admin' });
+
+    async function loginAs(login: string, password: string) {
+      const res = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { inn: '7726345678', login, password } });
+      return extractCookie(res.headers['set-cookie'], 'k785_session')!;
+    }
+    const managerCookie = await loginAs('manager3', 'manager2026');
+    const headCookie = await loginAs('head3', 'saleshead2026');
+
+    const tariff = { key: 'start', name: 'Старт', price: 15000, period: 'monthly' as const, description: '', active: false };
+    const draft = await app.inject({ method: 'PUT', url: '/api/panel/tariffs', cookies: { k785_session: managerCookie }, payload: [tariff] });
+    expect(draft.statusCode).toBe(200);
+
+    const publishReq = await app.inject({ method: 'POST', url: '/api/panel/tariffs/start/publish', cookies: { k785_session: managerCookie } });
+    expect(publishReq.statusCode).toBe(200);
+    const publishConfirm = await app.inject({ method: 'POST', url: `/api/second-hand/${publishReq.json().secondHandRequest.id}/confirm`, cookies: { k785_session: headCookie } });
+    expect(publishConfirm.statusCode).toBe(200);
+
+    const tariffsList = await app.inject({ method: 'GET', url: '/api/panel/tariffs', cookies: { k785_session: managerCookie } });
+    expect(tariffsList.json().tariffs[0]).toMatchObject({ key: 'start', active: true });
+
+    const assign = await app.inject({
+      method: 'POST', url: '/api/panel/subscriptions/7712345671/assign', cookies: { k785_session: managerCookie },
+      payload: { tariffKey: 'start', days: 30 },
+    });
+    expect(assign.statusCode).toBe(200);
+    expect(assign.json().subscription.status).toBe('active');
+
+    const subs = await app.inject({ method: 'GET', url: '/api/panel/subscriptions', cookies: { k785_session: headCookie } });
+    expect(subs.json().subscriptions.find((s: { inn: string }) => s.inn === '7712345671')).toMatchObject({ tariffName: 'Старт', status: 'active' });
+
+    const renew = await app.inject({ method: 'POST', url: '/api/panel/subscriptions/7712345671/renew', cookies: { k785_session: headCookie }, payload: { days: 15 } });
+    expect(renew.statusCode).toBe(200);
+
+    const deleteReq = await app.inject({ method: 'POST', url: '/api/panel/tariffs/start/delete', cookies: { k785_session: managerCookie } });
+    expect(deleteReq.statusCode).toBe(200);
+    const deleteConfirm = await app.inject({ method: 'POST', url: `/api/second-hand/${deleteReq.json().secondHandRequest.id}/confirm`, cookies: { k785_session: headCookie } });
+    expect(deleteConfirm.statusCode).toBe(200);
+    const tariffsAfterDelete = await app.inject({ method: 'GET', url: '/api/panel/tariffs', cookies: { k785_session: managerCookie } });
+    expect(tariffsAfterDelete.json().tariffs).toHaveLength(0);
+  });
+
+  it('массовая операция ≤20 клиник применяется сразу и допускает откат', async () => {
+    const managerReg = await container.auth.register({ inn: '7726345678', login: 'manager4', password: 'manager2026', password2: 'manager2026', fio: 'Гусев Р. А.', side: 'operator', role: 'sales_manager' });
+    const headReg = await container.auth.register({ inn: '7726345678', login: 'head4', password: 'saleshead2026', password2: 'saleshead2026', fio: 'Лазарева Т. М.', side: 'operator', role: 'sales_head' });
+    if (!managerReg.ok || !headReg.ok) throw new Error('setup failed');
+    await repos.accounts.update(managerReg.account.id, { pending: false });
+    await repos.accounts.update(headReg.account.id, { pending: false });
+    await container.auth.register({ inn: '7712345671', login: 'clinicZ1', password: 'admin2026aa', password2: 'admin2026aa', fio: 'Z1', side: 'clinic', role: 'clinic_admin' });
+    await container.auth.register({ inn: '5001007322', login: 'clinicZ2', password: 'admin2026aa', password2: 'admin2026aa', fio: 'Z2', side: 'clinic', role: 'clinic_admin' });
+
+    async function loginAs(login: string, password: string) {
+      const res = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { inn: '7726345678', login, password } });
+      return extractCookie(res.headers['set-cookie'], 'k785_session')!;
+    }
+    const managerCookie = await loginAs('manager4', 'manager2026');
+    const headCookie = await loginAs('head4', 'saleshead2026');
+
+    await app.inject({ method: 'PUT', url: '/api/panel/tariffs', cookies: { k785_session: managerCookie }, payload: [{ key: 'pro', name: 'Про', price: 30000, period: 'monthly', description: '', active: false }] });
+    const pub = await app.inject({ method: 'POST', url: '/api/panel/tariffs/pro/publish', cookies: { k785_session: managerCookie } });
+    await app.inject({ method: 'POST', url: `/api/second-hand/${pub.json().secondHandRequest.id}/confirm`, cookies: { k785_session: headCookie } });
+    await app.inject({ method: 'POST', url: '/api/panel/subscriptions/7712345671/assign', cookies: { k785_session: managerCookie }, payload: { tariffKey: 'pro', days: 30 } });
+    await app.inject({ method: 'POST', url: '/api/panel/subscriptions/5001007322/assign', cookies: { k785_session: managerCookie }, payload: { tariffKey: 'pro', days: 30 } });
+
+    const prepare = await app.inject({
+      method: 'POST', url: '/api/panel/bulk/subscription-extend/prepare', cookies: { k785_session: managerCookie },
+      payload: { tenantInns: ['7712345671', '5001007322'] },
+    });
+    expect(prepare.statusCode).toBe(200);
+    expect(prepare.json().rows.every((r: { ok: boolean }) => r.ok)).toBe(true);
+
+    const commit = await app.inject({
+      method: 'POST', url: '/api/panel/bulk/subscription-extend/commit', cookies: { k785_session: managerCookie },
+      payload: { tenantInns: ['7712345671', '5001007322'] },
+    });
+    expect(commit.statusCode).toBe(200);
+    const report = commit.json().report;
+    expect(report.done).toHaveLength(2);
+    expect(report.undoable).toBe(true);
+
+    const subsAfter = await app.inject({ method: 'GET', url: '/api/panel/subscriptions', cookies: { k785_session: headCookie } });
+    const row1 = subsAfter.json().subscriptions.find((s: { inn: string }) => s.inn === '7712345671');
+    expect(row1.expiresAt).not.toBe(null);
+
+    const reportsList = await app.inject({ method: 'GET', url: '/api/panel/bulk/reports', cookies: { k785_session: headCookie } });
+    expect(reportsList.json().reports[0].id).toBe(report.id);
+
+    const undo = await app.inject({ method: 'POST', url: `/api/panel/bulk/reports/${report.id}/undo`, cookies: { k785_session: headCookie } });
+    expect(undo.statusCode).toBe(200);
+    // повторный откат отклоняется
+    const undoAgain = await app.inject({ method: 'POST', url: `/api/panel/bulk/reports/${report.id}/undo`, cookies: { k785_session: headCookie } });
+    expect(undoAgain.json().ok).toBe(false);
+  });
+
+  it('массовая операция больше 20 клиник (методологическая) уходит через вторую руку с правом second:standard', async () => {
+    const methodistReg = await container.auth.register({ inn: '7726345678', login: 'metodist4', password: 'metodist2026', password2: 'metodist2026', fio: 'Николаева Е. В.', side: 'operator', role: 'methodist' });
+    const adminReg = await container.auth.register({ inn: '7726345678', login: 'admin4', password: 'platform2026', password2: 'platform2026', fio: 'Admin Four', side: 'operator', role: 'platform_admin' });
+    const managerReg = await container.auth.register({ inn: '7726345678', login: 'manager5', password: 'manager2026', password2: 'manager2026', fio: 'Гусев Р. А.', side: 'operator', role: 'sales_manager' });
+    if (!methodistReg.ok || !adminReg.ok || !managerReg.ok) throw new Error('setup failed');
+    await repos.accounts.update(methodistReg.account.id, { pending: false });
+    await repos.accounts.update(adminReg.account.id, { pending: false });
+    await repos.accounts.update(managerReg.account.id, { pending: false });
+
+    async function loginAs(login: string, password: string) {
+      const res = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { inn: '7726345678', login, password } });
+      return extractCookie(res.headers['set-cookie'], 'k785_session')!;
+    }
+    const methodistCookie = await loginAs('metodist4', 'metodist2026');
+    const adminCookie = await loginAs('admin4', 'platform2026');
+    const managerCookie = await loginAs('manager5', 'manager2026');
+
+    const cyclePut = await app.inject({
+      method: 'PUT', url: '/api/panel/cycle', cookies: { k785_session: methodistCookie },
+      payload: { year: 2026, dirs: [{ name: 'Направление А', months: [0] }], capaTerms: [] },
+    });
+    await app.inject({ method: 'POST', url: `/api/second-hand/${cyclePut.json().secondHandRequest.id}/confirm`, cookies: { k785_session: adminCookie } });
+
+    const many = Array.from({ length: 21 }, (_, i) => `bulk-inn-${i}`);
+    const commit = await app.inject({
+      method: 'POST', url: '/api/panel/bulk/cycle-bulk-apply/commit', cookies: { k785_session: methodistCookie },
+      payload: { tenantInns: many },
+    });
+    expect(commit.statusCode).toBe(200);
+    expect(commit.json().secondHandRequest).toBeDefined();
+    const requestId = commit.json().secondHandRequest.id;
+
+    // менеджер по продажам не подтверждает методологическую пачку (нет second:standard)
+    const managerConfirm = await app.inject({ method: 'POST', url: `/api/second-hand/${requestId}/confirm`, cookies: { k785_session: managerCookie } });
+    expect(managerConfirm.statusCode).toBe(403);
+
+    const confirm = await app.inject({ method: 'POST', url: `/api/second-hand/${requestId}/confirm`, cookies: { k785_session: adminCookie } });
+    expect(confirm.statusCode).toBe(200);
+
+    const cycleLive = await repos.channels.get('tenant', 'bulk-inn-0', 'cycle_live', null);
+    expect(cycleLive.data).toMatchObject({ dirs: [{ name: 'Направление А', months: [0] }] });
   });
 
   it('logout отзывает cookie сессии — повторный запрос получает 401', async () => {

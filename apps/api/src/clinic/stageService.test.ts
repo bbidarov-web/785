@@ -24,6 +24,7 @@ const CATALOG: Stage[] = [
       { name: 'Положение о порядке проведения ВККиБМД', template: 'Положение о {{org}}' },
     ] }],
   },
+  { code: 2, name: 'Организационный пакет', price: 68000, blocks: [] },
 ];
 
 describe('StageService — этапы внедрения и документы', () => {
@@ -41,6 +42,12 @@ describe('StageService — этапы внедрения и документы',
     await repos.tenants.upsert(inn, 'ООО «Медицина Плюс»');
     await repos.channels.set('platform', null, 'stage_docs', CATALOG, { updatedBy: null });
   });
+
+  async function markPaid(code: number) {
+    const rec = await repos.channels.get('tenant', inn, 'stage_paid', {});
+    const data = rec.data as Record<number, { status: string }>;
+    await repos.channels.set('tenant', inn, 'stage_paid', { ...data, [code]: { ...data[code], status: 'paid' } }, { expectedVersion: rec.version, updatedBy: null });
+  }
 
   it('клиника видит каталог с непройденной оплатой и невыданными документами', async () => {
     const view = await svc.getClinicView(admin);
@@ -62,19 +69,14 @@ describe('StageService — этапы внедрения и документы',
 
   it('повторный запрос оплаты уже оплаченного этапа отклоняется', async () => {
     await svc.requestPayment(admin, 1);
-    // подтверждаем оплату напрямую через канал — платёж проверяется отдельным сервисом
-    const rec = await repos.channels.get('tenant', inn, 'stage_paid', {});
-    const data = rec.data as Record<number, { status: string }>;
-    await repos.channels.set('tenant', inn, 'stage_paid', { ...data, 1: { ...data[1], status: 'paid' } }, { expectedVersion: rec.version, updatedBy: null });
+    await markPaid(1);
     const r = await svc.requestPayment(admin, 1);
     expect(r.ok).toBe(false);
   });
 
   it('документ не отдаётся без выдачи, даже если этап оплачен', async () => {
     await svc.requestPayment(admin, 1);
-    const rec = await repos.channels.get('tenant', inn, 'stage_paid', {});
-    const data = rec.data as Record<number, { status: string }>;
-    await repos.channels.set('tenant', inn, 'stage_paid', { ...data, 1: { ...data[1], status: 'paid' } }, { expectedVersion: rec.version, updatedBy: null });
+    await markPaid(1);
     const r = await svc.getDocumentContent(admin, 'Приказ о создании комиссии по внутреннему контролю');
     expect(r.ok).toBe(false);
   });
@@ -87,9 +89,7 @@ describe('StageService — этапы внедрения и документы',
 
   it('оплаченный и выданный документ отдаётся с подставленными переменными', async () => {
     await svc.requestPayment(admin, 1);
-    const rec = await repos.channels.get('tenant', inn, 'stage_paid', {});
-    const data = rec.data as Record<number, { status: string }>;
-    await repos.channels.set('tenant', inn, 'stage_paid', { ...data, 1: { ...data[1], status: 'paid' } }, { expectedVersion: rec.version, updatedBy: null });
+    await markPaid(1);
     await docs.grant(inn, '1', 'Приказ о создании комиссии по внутреннему контролю', 'Приказ о создании комиссии по внутреннему контролю', methodist, true);
     await repos.channels.set('tenant', inn, 'docasg', { 'Приказ о создании комиссии по внутреннему контролю': 'Иванова М. А.' }, { updatedBy: null });
 
@@ -107,5 +107,58 @@ describe('StageService — этапы внедрения и документы',
     const otherAdmin = { ...admin, inn: '5001007322' };
     const view = await svc.getClinicView(otherAdmin);
     expect(view[0]?.payment.status).toBe('none');
+  });
+
+  describe('последовательная блокировка этапов и приёмка платформой', () => {
+    it('первый этап никогда не заблокирован', async () => {
+      const view = await svc.getClinicView(admin);
+      expect(view[0]?.locked).toBe(false);
+    });
+
+    it('второй этап заблокирован, пока первый не оплачен и не принят', async () => {
+      const view = await svc.getClinicView(admin);
+      expect(view[1]?.locked).toBe(true);
+    });
+
+    it('заказать оплату второго этапа нельзя, пока первый не принят платформой', async () => {
+      await svc.requestPayment(admin, 1);
+      await markPaid(1); // оплачен, но ещё не принят
+      const r = await svc.requestPayment(admin, 2);
+      expect(r.ok).toBe(false);
+    });
+
+    it('vkk_lead и клиника не могут принять этап (нет doc:grant) — принимает только платформа', async () => {
+      await svc.requestPayment(admin, 1);
+      await markPaid(1);
+      await expect(svc.acceptStage(admin, inn, 1)).rejects.toThrow();
+      await expect(svc.acceptStage(vkk, inn, 1)).rejects.toThrow();
+    });
+
+    it('методист не может принять неоплаченный этап', async () => {
+      const r = await svc.acceptStage(methodist, inn, 1);
+      expect(r.ok).toBe(false);
+    });
+
+    it('методист принимает оплаченный этап — второй этап разблокируется', async () => {
+      await svc.requestPayment(admin, 1);
+      await markPaid(1);
+      const accept = await svc.acceptStage(methodist, inn, 1);
+      expect(accept.ok).toBe(true);
+      if (accept.ok) expect(accept.payment.accepted).toBe(true);
+
+      const view = await svc.getClinicView(admin);
+      expect(view[1]?.locked).toBe(false);
+
+      const r = await svc.requestPayment(admin, 2);
+      expect(r.ok).toBe(true);
+    });
+
+    it('повторная приёмка уже принятого этапа отклоняется', async () => {
+      await svc.requestPayment(admin, 1);
+      await markPaid(1);
+      await svc.acceptStage(methodist, inn, 1);
+      const r = await svc.acceptStage(methodist, inn, 1);
+      expect(r.ok).toBe(false);
+    });
   });
 });

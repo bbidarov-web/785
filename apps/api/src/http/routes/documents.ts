@@ -11,8 +11,9 @@ const revokeSchema = z.object({ tenantInn: z.string(), stage: z.string(), code: 
  * Выдача документов (README "Выдача документов", SERVER.md §5): оплата этапа
  * открывает состав, но выдаёт документ ЧЕЛОВЕК — методист, менеджер по своей
  * клинике или администратор. Выдача без оплаты (`paid=false`) — одна из семи
- * операций второй руки (SERVER.md §4) и в этом эндпоинте пока прямая: перевод
- * на SecondHandService — следующий шаг при переносе экрана "Карточка клиники".
+ * операций второй руки (SERVER.md §4): вместо прямой записи заводится запрос
+ * `doc:grant-without-payment`, второй сотрудник с `doc:grant` подтверждает его
+ * через общий `/api/second-hand/:id/confirm` (см. container.ts).
  */
 export async function documentRoutes(app: FastifyInstance): Promise<void> {
   app.post('/api/documents/grant', async (req, reply) => {
@@ -29,10 +30,13 @@ export async function documentRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(403).send({ ok: false, error: 'Выдаёт документ сотрудник платформы, а не клиника' });
     }
     if (!body.paid) {
-      return reply.code(409).send({
-        ok: false,
-        error: 'Выдача без оплаты требует подтверждения вторым сотрудником — оформите через /api/second-hand/request (type=doc:grant-without-payment)',
-      });
+      const secondHandRequest = await app.container.secondHand.request(
+        'doc:grant-without-payment',
+        { tenantInn: body.tenantInn, stage: body.stage, code: body.code, name: body.name },
+        body.tenantInn,
+        ctx.account.id,
+      );
+      return reply.send({ ok: true, secondHandRequest });
     }
     const row = await app.container.documents.grant(body.tenantInn, body.stage, body.code, body.name, ctx.account, true);
     return reply.send({ ok: true, grant: row });

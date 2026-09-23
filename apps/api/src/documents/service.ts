@@ -47,6 +47,18 @@ export class DocumentService {
     return row;
   }
 
+  /**
+   * Применяется при подтверждении `doc:grant-without-payment` (SERVER.md §4) —
+   * второй сотрудник подтверждает выдачу мимо оплаты этапа; выдающим в записи
+   * становится ПОДТВЕРЖДАЮЩИЙ (`confirmedById`), не автор запроса — так же,
+   * как `money:confirm` фиксирует подтверждающего, а не заявителя (см. container.ts).
+   */
+  grantFromSecondHand = async (payload: Record<string, unknown>, confirmedById: string): Promise<DocumentGrantRow> => {
+    const account = await this.repos.accounts.findById(confirmedById);
+    if (!account) throw new Error('Учётная запись подтверждающего не найдена');
+    return this.grant(String(payload.tenantInn), String(payload.stage), String(payload.code), String(payload.name), account, false);
+  };
+
   async revoke(tenantInn: string, stage: string, code: string, name: string, by: Account): Promise<DocumentGrantRow> {
     const row = await this.repos.documentGrants.appendEvent({
       tenantInn,

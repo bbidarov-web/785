@@ -30,11 +30,24 @@ import { EquipmentService } from './clinic/equipmentService.js';
 import { SummaryService } from './clinic/summaryService.js';
 import { SelfAuditService } from './clinic/selfAuditService.js';
 import { DashboardService } from './panel/dashboardService.js';
+import { TariffService } from './panel/tariffService.js';
+import { SubscriptionService } from './panel/subscriptionService.js';
+import { BulkOperationService, type BulkActionDef } from './panel/bulkService.js';
+import { addDays, todayString } from './shared/date.js';
 
 export interface SecondHandHandler {
-  /** Право, которым должен обладать ПОДТВЕРЖДАЮЩИЙ — своё для каждого типа операции (SERVER.md §4). */
-  confirmPermission: Permission;
+  /**
+   * Право, которым должен обладать ПОДТВЕРЖДАЮЩИЙ — своё для каждого типа
+   * операции (SERVER.md §4). Функция вместо константы — только для
+   * `bulk:clinics`, где право зависит от вида пачки (методология/деньги, см.
+   * `BULK_ACTIONS` ниже); для остальных шести операций право фиксировано.
+   */
+  confirmPermission: Permission | ((payload: Record<string, unknown>) => Permission);
   apply: (payload: Record<string, unknown>, confirmedById: string) => Promise<unknown>;
+}
+
+export function resolveConfirmPermission(handler: SecondHandHandler, payload: Record<string, unknown>): Permission {
+  return typeof handler.confirmPermission === 'function' ? handler.confirmPermission(payload) : handler.confirmPermission;
 }
 
 /**
@@ -74,6 +87,59 @@ export function buildContainerFromRepos(repos: Repos) {
   const secondHand = new SecondHandService(repos);
   const payment = new PaymentService(repos, secondHand);
   const capa = new CapaService(repos);
+  const documents = new DocumentService(repos);
+  const catalog = new CatalogService(repos, secondHand);
+  const cycle = new CycleService(repos);
+  const tariff = new TariffService(repos, secondHand);
+  const subscription = new SubscriptionService(repos);
+
+  // Реестр массовых операций (README «Дашборд», прототип — bulkPrepare/bulkCommit):
+  // одна запись — один пункт меню «Массовые операции» в панели. `kind` решает,
+  // каким правом подтверждается пачка больше SECOND_BULK клиник (bulkService.ts).
+  const BULK_ACTIONS: Record<string, BulkActionDef> = {
+    'subscription-extend': {
+      label: 'Продление подписки', requestPermission: 'sub:write', kind: 'money', undoable: true,
+      channelKey: () => 'subscription',
+      check: async (_repos, tenantInn) => {
+        const state = await subscription.getState(tenantInn);
+        if (!state.tariffKey || state.status === 'none' || state.status === 'cancelled') {
+          return { ok: false, why: 'нет активной подписки — продлевать нечего' };
+        }
+        const base = state.expiresAt ?? todayString();
+        return { ok: true, preview: `${base} → ${addDays(base, 30)} (+30 дн.)` };
+      },
+      apply: async (_repos, tenantInn, byId) => {
+        await subscription.applyRenew(tenantInn, 30, byId);
+      },
+    },
+    'subscription-remind': {
+      label: 'Напоминание об оплате', requestPermission: 'bulk:money', kind: 'money', undoable: false,
+      channelKey: () => null,
+      check: async (_repos, tenantInn) => {
+        const state = await subscription.getState(tenantInn);
+        if (!state.tariffKey) return { ok: false, why: 'нет подписки — по какой сумме напоминать, неизвестно' };
+        const t = (await tariff.getTariffs()).find((x) => x.key === state.tariffKey);
+        return { ok: true, preview: t ? `${t.price.toLocaleString('ru-RU')} ₽` : '' };
+      },
+      // Реальная отправка требует SMS/email-провайдера — не подключен (README «Что дальше»);
+      // как и в прототипе (apply: () => {}), данные клиники не меняются, только отчёт о пачке.
+      apply: async () => {},
+    },
+    'cycle-bulk-apply': {
+      label: 'Применение годового цикла', requestPermission: 'bulk:methodology', kind: 'standard', undoable: true,
+      channelKey: () => 'cycle_live',
+      check: async (r, tenantInn) => {
+        const master = await cycle.getMaster();
+        if (!master) return { ok: false, why: 'цикл ещё не опубликован методистом' };
+        const own = (await r.channels.get<{ dirs: unknown[] }>('tenant', tenantInn, 'cycle_live', { dirs: [] })).data;
+        return { ok: true, preview: own.dirs.length ? 'свой цикл будет заменён' : 'цикла не было — будет создан' };
+      },
+      apply: async (_repos, tenantInn, byId) => {
+        await cycle.applyMasterToTenant(tenantInn, byId);
+      },
+    },
+  };
+  const bulk = new BulkOperationService(repos, secondHand, BULK_ACTIONS);
 
   // Реестр операций «второй руки»: по типу запроса — кто вправе подтвердить
   // и что применить при подтверждении. Единая точка, а не разбросанные по
@@ -93,6 +159,26 @@ export function buildContainerFromRepos(repos: Repos) {
       confirmPermission: 'money:write',
       apply: payment.applyFromSecondHand,
     },
+    'standard:publish': {
+      confirmPermission: 'second:standard',
+      apply: catalog.applyPublish,
+    },
+    'tariff:publish': {
+      confirmPermission: 'second:money',
+      apply: tariff.applyPublish,
+    },
+    'tariff:delete': {
+      confirmPermission: 'second:money',
+      apply: tariff.applyDelete,
+    },
+    'doc:grant-without-payment': {
+      confirmPermission: 'doc:grant',
+      apply: documents.grantFromSecondHand,
+    },
+    'bulk:clinics': {
+      confirmPermission: (payload) => (BULK_ACTIONS[String(payload.actionKey)]?.kind === 'standard' ? 'second:standard' : 'second:money'),
+      apply: bulk.applyFromSecondHand,
+    },
   };
 
   return {
@@ -100,21 +186,24 @@ export function buildContainerFromRepos(repos: Repos) {
     auth: new AuthService(repos),
     secondHand,
     secondHandHandlers,
-    documents: new DocumentService(repos),
+    documents,
     executor: new ExecutorService(repos),
     walk: new WalkService(repos),
     staff: new StaffService(repos),
     plan: new PlanService(repos),
     capa,
     stage: new StageService(repos),
-    catalog: new CatalogService(repos),
+    catalog,
     payment,
     branch: new BranchService(repos),
-    cycle: new CycleService(repos),
+    cycle,
     equipment: new EquipmentService(repos),
     summary: new SummaryService(repos),
     selfAudit: new SelfAuditService(repos, capa),
     dashboard: new DashboardService(repos),
+    tariff,
+    subscription,
+    bulk,
   };
 }
 

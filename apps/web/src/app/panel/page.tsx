@@ -2,18 +2,22 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
+import {
+  StageCatalogForm, CycleMasterForm, EquipTypesForm, SummaryMasterForm,
+  type StageDraft, type CycleMasterDraft, type EquipTypeDraft, type SummaryRowDraft,
+} from './catalogForms';
+import {
+  TariffsForm, SubscriptionsPanel, BulkOperationsPanel, FinancialSummaryCards,
+  type TariffDraft, type SubscriptionRow, type BulkPreviewRow, type BulkReport, type FinancialSummary,
+} from './salesForms';
 
 /**
- * Панель платформы — первая часть (README «Эталоны», SERVER.md §4 «вторая
- * рука»): публикация каталога чек-листов, каталога этапов и годового цикла
- * методистом, подтверждение оплаты этапа, заявки на доступ, вторая рука.
- * Полная панель (дашборд, каталог клиентов, подписки, очередь работы, тарифы)
- * не перенесена — см. README «Известные ограничения».
- *
- * Каталог этапов и годовой цикл редактируются как JSON — осознанное
- * упрощение: построить вложенную форму под структуру Stage[]/CycleMaster в
- * этом заходе избыточно, а редактирование текстом остаётся полностью рабочим
- * и проверяется тем же API, что и форма.
+ * Панель платформы (README «Эталоны», «Дашборд»; SERVER.md §4 «вторая
+ * рука»): публикация каталога чек-листов/этапов/годового цикла/типов
+ * оборудования/сводного отчёта методистом — через вторую руку
+ * (`standard:publish`), подтверждение и приёмка оплаты этапа, тарифы и
+ * подписки клиник, массовые операции по каталогу клиентов с откатом,
+ * финансовая сводка, заявки на доступ, вторая рука на все семь операций.
  */
 
 interface SessionInfo {
@@ -60,7 +64,7 @@ interface ClientRow {
   openCapa: number;
 }
 
-type Tab = 'accounts' | 'checklists' | 'stages' | 'cycle' | 'equip' | 'summary' | 'payments' | 'secondhand' | 'clients';
+type Tab = 'accounts' | 'checklists' | 'stages' | 'cycle' | 'equip' | 'summary' | 'tariffs' | 'subscriptions' | 'payments' | 'bulk' | 'secondhand' | 'clients';
 
 export default function PlatformPanelPage() {
   const [ready, setReady] = useState(false);
@@ -75,12 +79,16 @@ export default function PlatformPanelPage() {
 
   const [pending, setPending] = useState<PendingAccount[]>([]);
   const [checklists, setChecklists] = useState<ChecklistDef[]>([]);
-  const [stageDocsJson, setStageDocsJson] = useState('[]');
-  const [cycleJson, setCycleJson] = useState('null');
-  const [equipJson, setEquipJson] = useState('[]');
-  const [summaryJson, setSummaryJson] = useState('[]');
+  const [stages, setStages] = useState<StageDraft[]>([]);
+  const [cycle, setCycle] = useState<CycleMasterDraft | null>(null);
+  const [equipTypes, setEquipTypes] = useState<EquipTypeDraft[]>([]);
+  const [summaryRows, setSummaryRows] = useState<SummaryRowDraft[]>([]);
   const [secondHand, setSecondHand] = useState<SecondHandItem[]>([]);
   const [clients, setClients] = useState<ClientRow[]>([]);
+  const [tariffs, setTariffs] = useState<TariffDraft[]>([]);
+  const [subscriptions, setSubscriptions] = useState<SubscriptionRow[]>([]);
+  const [bulkReports, setBulkReports] = useState<BulkReport[]>([]);
+  const [financials, setFinancials] = useState<FinancialSummary | null>(null);
 
   const say = useCallback((text: string) => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -89,24 +97,32 @@ export default function PlatformPanelPage() {
   }, []);
 
   const loadAll = useCallback(async () => {
-    const [p, c, sd, cy, eq, sm, sh, cl] = await Promise.all([
+    const [p, c, sd, cy, eq, sm, sh, cl, tf, sb, br, fin] = await Promise.all([
       api.get<{ ok: true; pending: PendingAccount[] } | { ok: false; error: string }>('/api/admin/accounts/pending'),
       api.get<{ ok: true; checklists: ChecklistDef[] }>('/api/panel/checklists'),
-      api.get<{ ok: true; stages: unknown[] }>('/api/panel/stage-docs'),
-      api.get<{ ok: true; cycle: unknown }>('/api/panel/cycle'),
-      api.get<{ ok: true; types: unknown[] }>('/api/panel/equip-types'),
-      api.get<{ ok: true; rows: unknown[] }>('/api/panel/summary-master'),
+      api.get<{ ok: true; stages: StageDraft[] }>('/api/panel/stage-docs'),
+      api.get<{ ok: true; cycle: CycleMasterDraft | null }>('/api/panel/cycle'),
+      api.get<{ ok: true; types: EquipTypeDraft[] }>('/api/panel/equip-types'),
+      api.get<{ ok: true; rows: SummaryRowDraft[] }>('/api/panel/summary-master'),
       api.get<{ ok: true; items: SecondHandItem[] } | { ok: false; error: string }>('/api/second-hand/pending'),
       api.get<{ ok: true; clients: ClientRow[] } | { ok: false; error: string }>('/api/panel/clients'),
+      api.get<{ ok: true; tariffs: TariffDraft[] }>('/api/panel/tariffs'),
+      api.get<{ ok: true; subscriptions: SubscriptionRow[] } | { ok: false; error: string }>('/api/panel/subscriptions'),
+      api.get<{ ok: true; reports: BulkReport[] } | { ok: false; error: string }>('/api/panel/bulk/reports'),
+      api.get<{ ok: true; financials: FinancialSummary } | { ok: false; error: string }>('/api/panel/financials'),
     ]);
     if (p.ok) setPending(p.pending);
     if (c.ok) setChecklists(c.checklists);
-    if (sd.ok) setStageDocsJson(JSON.stringify(sd.stages, null, 2));
-    if (cy.ok) setCycleJson(JSON.stringify(cy.cycle, null, 2));
-    if (eq.ok) setEquipJson(JSON.stringify(eq.types, null, 2));
-    if (sm.ok) setSummaryJson(JSON.stringify(sm.rows, null, 2));
+    if (sd.ok) setStages(sd.stages);
+    if (cy.ok) setCycle(cy.cycle);
+    if (eq.ok) setEquipTypes(eq.types);
+    if (sm.ok) setSummaryRows(sm.rows);
     if (sh.ok) setSecondHand(sh.items);
     if (cl.ok) setClients(cl.clients);
+    if (tf.ok) setTariffs(tf.tariffs);
+    if (sb.ok) setSubscriptions(sb.subscriptions);
+    if (br.ok) setBulkReports(br.reports);
+    if (fin.ok) setFinancials(fin.financials);
   }, []);
 
   useEffect(() => {
@@ -170,6 +186,9 @@ export default function PlatformPanelPage() {
   const canManageRoles = session.role === 'platform_admin';
   const canPublish = session.role === 'methodist' || session.role === 'platform_admin';
   const canConfirmMoney = session.role === 'sales_manager' || session.role === 'sales_head' || session.role === 'platform_admin';
+  const canAcceptStage = ALLOWED_ROLES.includes(session.role);
+  const canManageMoney = session.role === 'sales_manager' || session.role === 'sales_head' || session.role === 'platform_admin';
+  const canManageMethodology = session.role === 'methodist' || session.role === 'platform_admin';
 
   const tabs: { key: Tab; label: string }[] = [
     { key: 'accounts', label: `Заявки на доступ · ${pending.length}` },
@@ -178,9 +197,12 @@ export default function PlatformPanelPage() {
     { key: 'cycle', label: 'Годовой цикл' },
     { key: 'equip', label: 'Типы оборудования' },
     { key: 'summary', label: 'Сводный отчёт' },
+    { key: 'tariffs', label: `Тарифы · ${tariffs.length}` },
+    { key: 'subscriptions', label: `Подписки · ${subscriptions.length}` },
     { key: 'payments', label: 'Оплата этапов' },
+    { key: 'bulk', label: 'Массовые операции' },
     { key: 'secondhand', label: `Вторая рука · ${secondHand.length}` },
-    { key: 'clients', label: `Каталог клиентов · ${clients.length}` },
+    { key: 'clients', label: `Дашборд и клиенты · ${clients.length}` },
   ];
 
   return (
@@ -220,80 +242,128 @@ export default function PlatformPanelPage() {
             onPublish={async (next) => {
               const r = await api.put<{ ok: true } | { ok: false; error: string }>('/api/panel/checklists', next);
               if (!r.ok) { say(r.error); return; }
-              await loadAll(); say('Каталог чек-листов опубликован');
+              await loadAll(); say('Заявка на публикацию отправлена — нужно подтверждение другого сотрудника (вкладка «Вторая рука»)');
             }}
           />
         )}
 
         {tab === 'stages' && (
-          <JsonCatalogEditor
-            title="Каталог этапов (stage_docs)"
-            hint="Массив этапов: code, name, price, blocks: [{key, num, name, docs: [{name, template}]}]. Шаблон документа поддерживает {{org}}, {{inn}}, {{date}}, {{responsible}}."
-            value={stageDocsJson} onChange={setStageDocsJson} canPublish={canPublish}
-            onPublish={async () => {
-              let parsed: unknown;
-              try { parsed = JSON.parse(stageDocsJson); } catch { say('Некорректный JSON'); return; }
-              const r = await api.put<{ ok: true } | { ok: false; error: string }>('/api/panel/stage-docs', parsed);
+          <StageCatalogForm stages={stages} canPublish={canPublish}
+            onPublish={async (next) => {
+              const r = await api.put<{ ok: true } | { ok: false; error: string }>('/api/panel/stage-docs', next);
               if (!r.ok) { say(r.error); return; }
-              await loadAll(); say('Каталог этапов опубликован');
+              await loadAll(); say('Заявка на публикацию отправлена — нужно подтверждение другого сотрудника (вкладка «Вторая рука»)');
             }}
           />
         )}
 
         {tab === 'cycle' && (
-          <JsonCatalogEditor
-            title="Годовой цикл (cycle_master)"
-            hint="{ year, dirs: [{name, months: [0-11]}], capaTerms: [{level, days}] }. Разбор в помесячный план проверок клиники не перенесён — публикуется только эталон."
-            value={cycleJson} onChange={setCycleJson} canPublish={canPublish}
-            onPublish={async () => {
-              let parsed: unknown;
-              try { parsed = JSON.parse(cycleJson); } catch { say('Некорректный JSON'); return; }
-              const r = await api.put<{ ok: true } | { ok: false; error: string }>('/api/panel/cycle', parsed);
+          <CycleMasterForm cycle={cycle} canPublish={canPublish}
+            onPublish={async (next) => {
+              const r = await api.put<{ ok: true } | { ok: false; error: string }>('/api/panel/cycle', next);
               if (!r.ok) { say(r.error); return; }
-              await loadAll(); say('Годовой цикл опубликован');
+              await loadAll(); say('Заявка на публикацию отправлена — нужно подтверждение другого сотрудника (вкладка «Вторая рука»)');
             }}
           />
         )}
 
         {tab === 'equip' && (
-          <JsonCatalogEditor
-            title="Типы оборудования (equip_types)"
-            hint="Массив: key, name, logs: [{name, freq, kind: 'журнал'|'чек-лист'}]. Периодичность (freq) сверяется дословно с обходом и кабинетом клиники."
-            value={equipJson} onChange={setEquipJson} canPublish={canPublish}
-            onPublish={async () => {
-              let parsed: unknown;
-              try { parsed = JSON.parse(equipJson); } catch { say('Некорректный JSON'); return; }
-              const r = await api.put<{ ok: true } | { ok: false; error: string }>('/api/panel/equip-types', parsed);
+          <EquipTypesForm types={equipTypes} canPublish={canPublish}
+            onPublish={async (next) => {
+              const r = await api.put<{ ok: true } | { ok: false; error: string }>('/api/panel/equip-types', next);
               if (!r.ok) { say(r.error); return; }
-              await loadAll(); say('Каталог типов оборудования опубликован');
+              await loadAll(); say('Заявка на публикацию отправлена — нужно подтверждение другого сотрудника (вкладка «Вторая рука»)');
             }}
           />
         )}
 
         {tab === 'summary' && (
-          <JsonCatalogEditor
-            title="Состав сводного отчёта (summary_master)"
-            hint="Массив: name, note, req (обязательный или по желанию). Файлы по каждой строке загружает клиника в своём кабинете."
-            value={summaryJson} onChange={setSummaryJson} canPublish={canPublish}
-            onPublish={async () => {
-              let parsed: unknown;
-              try { parsed = JSON.parse(summaryJson); } catch { say('Некорректный JSON'); return; }
-              const r = await api.put<{ ok: true } | { ok: false; error: string }>('/api/panel/summary-master', parsed);
+          <SummaryMasterForm rows={summaryRows} canPublish={canPublish}
+            onPublish={async (next) => {
+              const r = await api.put<{ ok: true } | { ok: false; error: string }>('/api/panel/summary-master', next);
               if (!r.ok) { say(r.error); return; }
-              await loadAll(); say('Состав сводного отчёта опубликован');
+              await loadAll(); say('Заявка на публикацию отправлена — нужно подтверждение другого сотрудника (вкладка «Вторая рука»)');
             }}
           />
         )}
 
-        {tab === 'clients' && <ClientsTab clients={clients} />}
+        {tab === 'tariffs' && (
+          <TariffsForm tariffs={tariffs} canManage={canManageMoney}
+            onSaveDraft={async (next) => {
+              const r = await api.put<{ ok: true } | { ok: false; error: string }>('/api/panel/tariffs', next);
+              if (!r.ok) { say(r.error); return; }
+              await loadAll(); say('Черновик тарифов сохранён');
+            }}
+            onPublish={async (key) => {
+              const r = await api.post<{ ok: true; secondHandRequest?: unknown } | { ok: false; error: string }>(`/api/panel/tariffs/${encodeURIComponent(key)}/publish`, {});
+              if (!r.ok) { say(r.error); return; }
+              await loadAll(); say('Заявка на публикацию тарифа отправлена — подтверждает другой сотрудник (вкладка «Вторая рука»)');
+            }}
+            onDelete={async (key) => {
+              const r = await api.post<{ ok: true; secondHandRequest?: unknown } | { ok: false; error: string }>(`/api/panel/tariffs/${encodeURIComponent(key)}/delete`, {});
+              if (!r.ok) { say(r.error); return; }
+              await loadAll(); say('Заявка на удаление тарифа отправлена — подтверждает другой сотрудник (вкладка «Вторая рука»)');
+            }}
+          />
+        )}
+
+        {tab === 'subscriptions' && (
+          <SubscriptionsPanel rows={subscriptions} tariffs={tariffs} canManage={canManageMoney}
+            onAssign={async (inn, tariffKey, days, trial) => {
+              const r = await api.post<{ ok: true } | { ok: false; error: string }>(`/api/panel/subscriptions/${inn}/assign`, { tariffKey, days, trial });
+              if (!r.ok) { say(r.error); return; }
+              await loadAll(); say('Тариф назначен клинике');
+            }}
+            onRenew={async (inn, days) => {
+              const r = await api.post<{ ok: true } | { ok: false; error: string }>(`/api/panel/subscriptions/${inn}/renew`, { days });
+              if (!r.ok) { say(r.error); return; }
+              await loadAll(); say('Подписка продлена');
+            }}
+            onCancel={async (inn) => {
+              const r = await api.post<{ ok: true } | { ok: false; error: string }>(`/api/panel/subscriptions/${inn}/cancel`, {});
+              if (!r.ok) { say(r.error); return; }
+              await loadAll(); say('Подписка отменена');
+            }}
+          />
+        )}
+
+        {tab === 'bulk' && (
+          <BulkOperationsPanel clients={clients} canMoney={canManageMoney} canMethodology={canManageMethodology} reports={bulkReports}
+            onPrepare={async (action, inns) => {
+              const r = await api.post<{ ok: true; label: string; undoable: boolean; rows: BulkPreviewRow[] } | { ok: false; error: string }>(`/api/panel/bulk/${action}/prepare`, { tenantInns: inns });
+              if (!r.ok) { say(r.error); return null; }
+              return { label: r.label, undoable: r.undoable, rows: r.rows };
+            }}
+            onCommit={async (action, inns) => {
+              const r = await api.post<{ ok: true; report?: BulkReport; secondHandRequest?: unknown } | { ok: false; error: string }>(`/api/panel/bulk/${action}/commit`, { tenantInns: inns });
+              if (!r.ok) { say(r.error); return; }
+              if (r.secondHandRequest) say('Пачка больше 20 клиник — запрос ушёл на подтверждение второй рукой (вкладка «Вторая рука»)');
+              else say(`Применено к ${r.report?.done.length ?? 0} клиникам`);
+              await loadAll();
+            }}
+            onUndo={async (reportId) => {
+              const r = await api.post<{ ok: true } | { ok: false; error: string }>(`/api/panel/bulk/reports/${reportId}/undo`, {});
+              if (!r.ok) { say(r.error); return; }
+              await loadAll(); say('Операция откачена');
+            }}
+          />
+        )}
+
+        {tab === 'clients' && <ClientsTab clients={clients} financials={financials} />}
 
         {tab === 'payments' && (
-          <PaymentsTab canConfirm={canConfirmMoney}
+          <PaymentsTab canConfirm={canConfirmMoney} canAccept={canAcceptStage}
             onConfirm={async (inn, code) => {
               const r = await api.post<{ ok: true; payment?: unknown; secondHandRequest?: unknown } | { ok: false; error: string }>(`/api/panel/stage-payments/${inn}/${code}/confirm`, {});
               if (!r.ok) { say(r.error); return; }
               if (r.secondHandRequest) say('Сумма от 100 000 ₽ — запрос ушёл на подтверждение второй рукой (вкладка «Вторая рука»)');
               else say('Оплата подтверждена');
+              await loadAll();
+            }}
+            onAccept={async (inn, code) => {
+              const r = await api.post<{ ok: true } | { ok: false; error: string }>(`/api/panel/stage-payments/${inn}/${code}/accept`, {});
+              if (!r.ok) { say(r.error); return; }
+              say('Этап принят — следующий этап разблокирован в кабинете клиники');
               await loadAll();
             }}
           />
@@ -399,39 +469,42 @@ function ChecklistsTab({ checklists, canPublish, onPublish }: { checklists: Chec
   );
 }
 
-function JsonCatalogEditor({ title, hint, value, onChange, canPublish, onPublish }: {
-  title: string; hint: string; value: string; onChange: (v: string) => void; canPublish: boolean; onPublish: () => void;
+function PaymentsTab({ canConfirm, canAccept, onConfirm, onAccept }: {
+  canConfirm: boolean; canAccept: boolean; onConfirm: (inn: string, code: number) => void; onAccept: (inn: string, code: number) => void;
 }) {
-  return (
-    <div style={cardStyle}>
-      <div style={{ fontSize: 13.5, fontWeight: 800, marginBottom: 4 }}>{title}</div>
-      <div style={{ fontSize: 11.5, color: 'var(--text-muted)', fontWeight: 600, marginBottom: 10 }}>{hint}</div>
-      <textarea
-        value={value}
-        disabled={!canPublish}
-        onChange={(e) => onChange(e.target.value)}
-        style={{ ...inputStyle, minHeight: 320, fontFamily: 'var(--font-mono)', fontSize: 11.5 }}
-      />
-      {canPublish && <button onClick={onPublish} style={{ ...primaryBtn, marginTop: 10 }}>Опубликовать</button>}
-    </div>
-  );
-}
-
-function PaymentsTab({ canConfirm, onConfirm }: { canConfirm: boolean; onConfirm: (inn: string, code: number) => void }) {
   const [inn, setInn] = useState('');
   const [code, setCode] = useState('1');
-  if (!canConfirm) return <EmptyState text="Подтверждение оплаты доступно менеджеру, руководителю продаж и администратору платформы." />;
+  const [ainn, setAinn] = useState('');
+  const [acode, setAcode] = useState('1');
+  if (!canConfirm && !canAccept) return <EmptyState text="Подтверждение оплаты и приёмка этапа доступны сотрудникам платформы." />;
   return (
-    <div style={cardStyle}>
-      <div style={{ fontSize: 13.5, fontWeight: 800, marginBottom: 4 }}>Подтвердить оплату этапа по счёту</div>
-      <div style={{ fontSize: 11.5, color: 'var(--text-muted)', fontWeight: 600, marginBottom: 10 }}>
-        Клиника уже заказала этап в своём кабинете. Оплата от 100 000 ₽ уйдёт на подтверждение второй рукой.
-      </div>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <input value={inn} onChange={(e) => setInn(e.target.value)} placeholder="ИНН клиники" style={{ ...inputStyle, flex: '1 1 200px', fontFamily: 'var(--font-mono)' }} />
-        <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="№ этапа" style={{ ...inputStyle, flex: '0 1 100px' }} />
-        <button onClick={() => { if (inn.trim()) onConfirm(inn.trim(), Number(code)); }} style={primaryBtn}>Подтвердить оплату</button>
-      </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {canConfirm && (
+        <div style={cardStyle}>
+          <div style={{ fontSize: 13.5, fontWeight: 800, marginBottom: 4 }}>Подтвердить оплату этапа по счёту</div>
+          <div style={{ fontSize: 11.5, color: 'var(--text-muted)', fontWeight: 600, marginBottom: 10 }}>
+            Клиника уже заказала этап в своём кабинете. Оплата от 100 000 ₽ уйдёт на подтверждение второй рукой.
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <input value={inn} onChange={(e) => setInn(e.target.value)} placeholder="ИНН клиники" style={{ ...inputStyle, flex: '1 1 200px', fontFamily: 'var(--font-mono)' }} />
+            <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="№ этапа" style={{ ...inputStyle, flex: '0 1 100px' }} />
+            <button onClick={() => { if (inn.trim()) onConfirm(inn.trim(), Number(code)); }} style={primaryBtn}>Подтвердить оплату</button>
+          </div>
+        </div>
+      )}
+      {canAccept && (
+        <div style={cardStyle}>
+          <div style={{ fontSize: 13.5, fontWeight: 800, marginBottom: 4 }}>Принять этап (методист/платформа)</div>
+          <div style={{ fontSize: 11.5, color: 'var(--text-muted)', fontWeight: 600, marginBottom: 10 }}>
+            Приёмка — отдельный от оплаты факт: подтверждает, что работа по этапу выполнена. Следующий этап разблокируется в кабинете клиники только после приёмки текущего.
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <input value={ainn} onChange={(e) => setAinn(e.target.value)} placeholder="ИНН клиники" style={{ ...inputStyle, flex: '1 1 200px', fontFamily: 'var(--font-mono)' }} />
+            <input value={acode} onChange={(e) => setAcode(e.target.value)} placeholder="№ этапа" style={{ ...inputStyle, flex: '0 1 100px' }} />
+            <button onClick={() => { if (ainn.trim()) onAccept(ainn.trim(), Number(acode)); }} style={primaryBtn}>Принять этап</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -474,11 +547,12 @@ function SecondHandTab({ items, onConfirm, onReject }: { items: SecondHandItem[]
   );
 }
 
-function ClientsTab({ clients }: { clients: ClientRow[] }) {
+function ClientsTab({ clients, financials }: { clients: ClientRow[]; financials: FinancialSummary | null }) {
   const [q, setQ] = useState('');
   const filtered = clients.filter((c) => !q.trim() || c.inn.includes(q.trim()) || c.name.toLowerCase().includes(q.trim().toLowerCase()));
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <FinancialSummaryCards financials={financials} />
       <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Поиск по ИНН или названию" style={inputStyle} />
       {filtered.length === 0 && <EmptyState text="Клиник пока нет." />}
       {filtered.map((c) => (

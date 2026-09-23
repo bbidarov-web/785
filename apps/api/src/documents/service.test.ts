@@ -64,4 +64,19 @@ describe('DocumentService — выдача документов (README, SERVER.
     const active = await svc.listActiveGrants(tenant);
     expect(Object.keys(active)).toEqual(['DOC-2']);
   });
+
+  describe('grantFromSecondHand — выдача без оплаты (doc:grant-without-payment)', () => {
+    it('выдающим в записи становится ПОДТВЕРЖДАЮЩИЙ, а не автор запроса', async () => {
+      const confirmer = await repos.accounts.create(makeAccount({ login: 'metodist2' }));
+      const row = await svc.grantFromSecondHand({ tenantInn: tenant, stage: 'stage-1', code: 'DOC-1', name: 'Положение о ВКК' }, confirmer.id);
+      expect(row.paid).toBe(false);
+      expect(row.byAccountId).toBe(confirmer.id);
+      const granted = await svc.getTemplateIfGranted(tenant, 'DOC-1', async () => 'шаблон');
+      expect(granted.ok).toBe(true);
+    });
+
+    it('без найденной учётной записи подтверждающего — ошибка, а не тихая выдача', async () => {
+      await expect(svc.grantFromSecondHand({ tenantInn: tenant, stage: 'stage-1', code: 'DOC-1', name: 'X' }, 'нет-такого')).rejects.toThrow();
+    });
+  });
 });

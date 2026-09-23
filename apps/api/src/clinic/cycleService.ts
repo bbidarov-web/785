@@ -39,7 +39,8 @@ function pad2(n: number): string {
 export class CycleService {
   constructor(private repos: Repos) {}
 
-  private async getMaster(): Promise<CycleMaster | null> {
+  /** Публичный: массовая операция «Применить годовой цикл» (`BulkOperationService`) читает эталон для предпросмотра до подтверждения. */
+  async getMaster(): Promise<CycleMaster | null> {
     return (await this.repos.channels.get<CycleMaster | null>('platform', null, 'cycle_master', null)).data;
   }
 
@@ -86,6 +87,28 @@ export class CycleService {
       if (res.ok) return { ok: true, direction: updated };
     }
     return { ok: false, error: 'Не удалось сохранить — слишком много параллельных правок, повторите' };
+  }
+
+  /**
+   * Полная замена цикла клиники эталоном — без проверки прав вызывающего,
+   * используется массовой операцией «Применить годовой цикл»
+   * (`BulkOperationService`), которая уже проверила право на саму пачку
+   * (`bulk:methodology`) при подготовке. Прототип: «текущий цикл клиники
+   * заменяется эталонным целиком» (Админ-панель.dc.html, ~строка 10799) —
+   * собственная донастройка направлений (чек-лист, объект, филиал,
+   * ответственный) при этом теряется, план проверок нужно собрать заново.
+   */
+  async applyMasterToTenant(tenantInn: string, byId: string): Promise<CycleLive> {
+    const master = await this.getMaster();
+    if (!master) throw new Error('Годовой цикл ещё не опубликован методистом');
+    const dirs: CycleLiveDirection[] = master.dirs.map((d) => ({ name: d.name, months: d.months }));
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const rec = await this.repos.channels.get<CycleLive>('tenant', tenantInn, 'cycle_live', { year: master.year, dirs: [] });
+      const next: CycleLive = { year: master.year, dirs };
+      const res = await this.repos.channels.set('tenant', tenantInn, 'cycle_live', next, { expectedVersion: rec.version, updatedBy: byId });
+      if (res.ok) return next;
+    }
+    throw new Error('Не удалось сохранить — слишком много параллельных правок, повторите');
   }
 
   /** Пересобирает строки плана, выведенные из цикла — ручные записи `PlanService` не затрагивает. */
