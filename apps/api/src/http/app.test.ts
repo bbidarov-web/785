@@ -215,6 +215,74 @@ describe('HTTP: /api/auth и защита эндпоинтов правами', 
     expect(forbidden.statusCode).toBe(404);
   });
 
+  it('клиника: штат → назначение → план проверок → обход → CAPA, полный HTTP-цикл', async () => {
+    await repos.channels.set('platform', null, 'checklists', [
+      { name: 'Чек-лист аудита стерилизационной', items: ['Режимы соблюдаются?', 'Индикаторы вклеены?'] },
+    ], { updatedBy: null });
+
+    const adminReg = await container.auth.register({ inn: '7712345671', login: 'clinicadmin', password: 'admin2026aa', password2: 'admin2026aa', fio: 'Смирнов А. П.', side: 'clinic', role: 'clinic_admin' });
+    const vkkReg = await container.auth.register({ inn: '7712345671', login: 'vkk', password: 'vkk2026lead', password2: 'vkk2026lead', fio: 'Иванова М. А.', side: 'clinic', role: 'vkk_lead' });
+    const auditorReg = await container.auth.register({ inn: '7712345671', login: 'auditor', password: 'auditor2026', password2: 'auditor2026', fio: 'Сидорова В. В.', side: 'clinic', role: 'auditor' });
+    if (!adminReg.ok || !vkkReg.ok || !auditorReg.ok) throw new Error('setup failed');
+
+    async function loginAs(login: string, password: string) {
+      const res = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { inn: '7712345671', login, password } });
+      return extractCookie(res.headers['set-cookie'], 'k785_session')!;
+    }
+    const adminCookie = await loginAs('clinicadmin', 'admin2026aa');
+    const vkkCookie = await loginAs('vkk', 'vkk2026lead');
+    const auditorCookie = await loginAs('auditor', 'auditor2026');
+
+    // 1) администратор клиники заводит сотрудника
+    const staffRes = await app.inject({ method: 'POST', url: '/api/clinic/staff', cookies: { k785_session: adminCookie }, payload: { fio: 'Сидорова В. В.', pos: 'Врач-эпидемиолог' } });
+    expect(staffRes.statusCode).toBe(200);
+
+    // vkk_lead не управляет штатом напрямую (нет staff:manage)
+    const staffDenied = await app.inject({ method: 'POST', url: '/api/clinic/staff', cookies: { k785_session: vkkCookie }, payload: { fio: 'X', pos: 'Y' } });
+    expect(staffDenied.statusCode).toBe(403);
+
+    // 2) vkk_lead назначает ответственного за документ
+    const asgRes = await app.inject({ method: 'PUT', url: '/api/clinic/assignments/' + encodeURIComponent('Положение о ВКК'), cookies: { k785_session: vkkCookie }, payload: { who: 'Сидорова В. В.' } });
+    expect(asgRes.statusCode).toBe(200);
+
+    // 3) vkk_lead ставит проверку в план
+    const planRes = await app.inject({
+      method: 'POST', url: '/api/clinic/plan', cookies: { k785_session: vkkCookie },
+      payload: { date: '01.03.2026', dir: 'Чек-лист аудита стерилизационной', object: 'Стерилизационная', who: 'Сидорова В. В.', kind: 'плановая', check: 'Чек-лист аудита стерилизационной' },
+    });
+    expect(planRes.statusCode).toBe(200);
+    const planId = planRes.json().item.id;
+
+    // 4) аудитор видит проверку в обходе и проводит её с нарушением
+    const walkList = await app.inject({ method: 'GET', url: '/api/walk/plan', cookies: { k785_session: auditorCookie } });
+    expect(walkList.json().walks.map((w: { planId: string }) => w.planId)).toEqual([planId]);
+
+    await app.inject({ method: 'POST', url: `/api/walk/plan/${planId}/answer`, cookies: { k785_session: auditorCookie }, payload: { index: 0, answer: 'ok', opId: 'op-1' } });
+    await app.inject({ method: 'POST', url: `/api/walk/plan/${planId}/answer`, cookies: { k785_session: auditorCookie }, payload: { index: 1, answer: 'bad', comment: 'Индикаторы просрочены', opId: 'op-2' } });
+    const finish = await app.inject({ method: 'POST', url: `/api/walk/plan/${planId}/finish`, cookies: { k785_session: auditorCookie }, payload: { opId: 'op-finish' } });
+    expect(finish.json()).toMatchObject({ ok: true, bad: 1 });
+
+    // 5) аудитор фиксирует нарушение, но не может сам завести мероприятие
+    const findings = await app.inject({ method: 'GET', url: '/api/clinic/capa/findings', cookies: { k785_session: auditorCookie } });
+    expect(findings.json().findings).toHaveLength(1);
+    const capaByAuditor = await app.inject({ method: 'POST', url: '/api/clinic/capa', cookies: { k785_session: auditorCookie }, payload: { planId, itemIndex: 1 } });
+    expect(capaByAuditor.statusCode).toBe(403);
+
+    // 6) vkk_lead планирует корректирующее мероприятие по этому нарушению
+    const capaRes = await app.inject({ method: 'POST', url: '/api/clinic/capa', cookies: { k785_session: vkkCookie }, payload: { planId, itemIndex: 1, who: 'Сидорова В. В.', due: '15.03.2026' } });
+    expect(capaRes.statusCode).toBe(200);
+    const capaId = capaRes.json().item.id;
+
+    // находка больше не висит открытой
+    const findingsAfter = await app.inject({ method: 'GET', url: '/api/clinic/capa/findings', cookies: { k785_session: vkkCookie } });
+    expect(findingsAfter.json().findings).toHaveLength(0);
+
+    // 7) исполнитель, на которого заведено мероприятие, закрывает его сам
+    const closeRes = await app.inject({ method: 'PUT', url: `/api/clinic/capa/${capaId}/status`, cookies: { k785_session: auditorCookie }, payload: { status: 'done' } });
+    expect(closeRes.statusCode).toBe(200);
+    expect(closeRes.json().item.status).toBe('done');
+  });
+
   it('logout отзывает cookie сессии — повторный запрос получает 401', async () => {
     await container.auth.register({ inn: '7712345671', login: 'medplus', password: 'medplus2026', password2: 'medplus2026', fio: 'x', side: 'clinic' });
     const login = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { inn: '7712345671', login: 'medplus', password: 'medplus2026' } });

@@ -15,6 +15,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export const api = {
   get: <T>(path: string) => request<T>(path, { method: 'GET' }),
   post: <T>(path: string, payload?: unknown) => request<T>(path, { method: 'POST', body: payload ? JSON.stringify(payload) : undefined }),
+  put: <T>(path: string, payload?: unknown) => request<T>(path, { method: 'PUT', body: payload ? JSON.stringify(payload) : undefined }),
+  del: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
 };
 
 export type ApiResult<T extends object = object> = ({ ok: true } & T) | { ok: false; error: string };

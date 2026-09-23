@@ -80,3 +80,27 @@ export interface StaffMember {
   fio: string;
   pos: string;
 }
+
+/**
+ * Корректирующее мероприятие — заводится по конкретному нарушению аудита
+ * (`planCapaFor` в reference/prototype/Личный кабинет ВКК.dc.html, строки
+ * ~3771–3793). Хранится в тенантском канале `capa`, ключ записи — id.
+ * Упрощение относительно прототипа: без цепочки повторных проверок
+ * (`root`/`round`/`rechecks`) — это отдельная фича годового цикла, который
+ * ещё не перенесён (см. README «Известные ограничения»).
+ */
+export interface CapaItem {
+  id: string;
+  sourcePlanId: string | null;
+  sourceItemIndex: number | null;
+  auditName: string;
+  object: string;
+  findingText: string;
+  comment: string;
+  who: string; // ответственный за устранение
+  due: string; // ДД.ММ.ГГГГ, может быть пустым — задаётся позже
+  status: 'planned' | 'done';
+  createdAt: string;
+  createdBy: string;
+  closedAt: string | null;
+}

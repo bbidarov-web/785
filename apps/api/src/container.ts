@@ -17,6 +17,9 @@ import { SecondHandService } from './secondHand/service.js';
 import { DocumentService } from './documents/service.js';
 import { ExecutorService } from './executor/service.js';
 import { WalkService } from './walk/service.js';
+import { StaffService } from './clinic/staffService.js';
+import { PlanService } from './clinic/planService.js';
+import { CapaService } from './clinic/capaService.js';
 
 /**
  * Сборка приложения на реальных (Prisma) адаптерах. Тесты используют
@@ -59,6 +62,9 @@ export function buildContainerFromRepos(repos: Repos) {
     documents: new DocumentService(repos),
     executor: new ExecutorService(repos),
     walk: new WalkService(repos),
+    staff: new StaffService(repos),
+    plan: new PlanService(repos),
+    capa: new CapaService(repos),
   };
 }
 
