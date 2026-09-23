@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requireAuth } from '../plugins/session.js';
-import { PermissionDeniedError } from '../../rbac/service.js';
+import { assertPermission, PermissionDeniedError } from '../../rbac/service.js';
 
 const checklistSchema = z.object({ name: z.string().min(1), items: z.array(z.string()) });
 const stageDocSchema = z.object({ name: z.string().min(1), template: z.string() });
@@ -22,6 +22,11 @@ const tariffSchema = z.object({
   period: z.enum(['monthly', 'annual']), description: z.string().default(''), active: z.boolean(),
 });
 const bulkTenantInnsSchema = z.object({ tenantInns: z.array(z.string()).min(1) });
+const addClinicSchema = z.object({
+  inn: z.string(), org: z.string().min(1), login: z.string().min(3),
+  password: z.string(), password2: z.string(), fio: z.string().min(1),
+});
+const digestSettingsSchema = z.object({ recipientEmail: z.string(), schedule: z.string().min(1) });
 
 /**
  * Панель платформы — публикация эталонов методистом (README «Эталоны»),
@@ -146,6 +151,48 @@ export async function panelRoutes(app: FastifyInstance): Promise<void> {
     return reply.send({ ok: true, financials });
   });
 
+  app.get('/api/panel/portfolio', async (req, reply) => {
+    const ctx = requireAuth(req, reply);
+    if (!ctx) return;
+    const { days } = z.object({ days: z.coerce.number().int().positive().default(30) }).parse(req.query);
+    const portfolio = await guarded(() => app.container.dashboard.getPortfolio(ctx.account, days), reply);
+    if (portfolio === undefined) return;
+    return reply.send({ ok: true, portfolio });
+  });
+
+  app.get('/api/panel/clients/export', async (req, reply) => {
+    const ctx = requireAuth(req, reply);
+    if (!ctx) return;
+    const csv = await guarded(() => app.container.dashboard.exportClientsCsv(ctx.account), reply);
+    if (csv === undefined) return;
+    reply.header('content-type', 'text/csv; charset=utf-8');
+    reply.header('content-disposition', 'attachment; filename="clients.csv"');
+    return reply.send('﻿' + csv);
+  });
+
+  /** «+ Добавить клинику» (README «Панель платформы») — платформа заводит клинику и её администратора напрямую, минуя саморегистрацию. */
+  app.post('/api/panel/clients', async (req, reply) => {
+    const ctx = requireAuth(req, reply);
+    if (!ctx) return;
+    try {
+      await assertPermission(app.container.repos.auditLog, ctx.account, 'sub:write', 'panel:add-clinic', null, null);
+    } catch (err) {
+      if (err instanceof PermissionDeniedError) return reply.code(403).send({ ok: false, error: err.message });
+      throw err;
+    }
+    const body = addClinicSchema.parse(req.body);
+    const r = await app.container.auth.register({
+      inn: body.inn, login: body.login, password: body.password, password2: body.password2,
+      org: body.org, fio: body.fio, side: 'clinic',
+    });
+    if (!r.ok) return reply.code(400).send(r);
+    await app.container.repos.auditLog.append({
+      actorId: ctx.account.id, actorRole: ctx.account.role, tenantInn: r.account.inn,
+      action: 'panel:add-clinic', target: r.account.id, meta: { org: body.org }, allowed: true,
+    });
+    return reply.send({ ok: true, account: r.account });
+  });
+
   // ───────── Тарифы и продукты (README «Дашборд»; SERVER.md §4 — публикация/удаление второй рукой) ─────────
 
   app.get('/api/panel/tariffs', async (req, reply) => {
@@ -188,6 +235,14 @@ export async function panelRoutes(app: FastifyInstance): Promise<void> {
     const rows = await guarded(() => app.container.subscription.listAll(ctx.account), reply);
     if (rows === undefined) return;
     return reply.send({ ok: true, subscriptions: rows });
+  });
+
+  app.get('/api/panel/subscriptions/summary', async (req, reply) => {
+    const ctx = requireAuth(req, reply);
+    if (!ctx) return;
+    const summary = await guarded(() => app.container.subscription.getSummary(ctx.account), reply);
+    if (summary === undefined) return;
+    return reply.send({ ok: true, summary });
   });
 
   app.post('/api/panel/subscriptions/:tenantInn/assign', async (req, reply) => {
@@ -254,6 +309,68 @@ export async function panelRoutes(app: FastifyInstance): Promise<void> {
     if (!ctx) return;
     const { id } = z.object({ id: z.string() }).parse(req.params);
     const r = await guarded(() => app.container.bulk.undo(ctx.account, id), reply);
+    if (r === undefined) return;
+    return reply.code(r.ok ? 200 : 400).send(r);
+  });
+
+  // ───────── Очередь работы (README «Очередь работы»; прототип — Админ-панель.dc.html) ─────────
+
+  app.get('/api/panel/queue', async (req, reply) => {
+    const ctx = requireAuth(req, reply);
+    if (!ctx) return;
+    const tasks = await guarded(() => app.container.queue.list(ctx.account), reply);
+    if (tasks === undefined) return;
+    return reply.send({ ok: true, tasks });
+  });
+
+  app.post('/api/panel/queue/:id/take', async (req, reply) => {
+    const ctx = requireAuth(req, reply);
+    if (!ctx) return;
+    const { id } = z.object({ id: z.string() }).parse(req.params);
+    const r = await guarded(() => app.container.queue.take(ctx.account, id), reply);
+    if (r === undefined) return;
+    return reply.code(r.ok ? 200 : 400).send(r);
+  });
+
+  app.post('/api/panel/queue/:id/postpone', async (req, reply) => {
+    const ctx = requireAuth(req, reply);
+    if (!ctx) return;
+    const { id } = z.object({ id: z.string() }).parse(req.params);
+    const r = await guarded(() => app.container.queue.postpone(ctx.account, id), reply);
+    if (r === undefined) return;
+    return reply.code(r.ok ? 200 : 400).send(r);
+  });
+
+  app.post('/api/panel/queue/:id/close', async (req, reply) => {
+    const ctx = requireAuth(req, reply);
+    if (!ctx) return;
+    const { id } = z.object({ id: z.string() }).parse(req.params);
+    const r = await guarded(() => app.container.queue.close(ctx.account, id), reply);
+    if (r === undefined) return;
+    return reply.code(r.ok ? 200 : 400).send(r);
+  });
+
+  app.get('/api/panel/queue/digest-settings', async (req, reply) => {
+    const ctx = requireAuth(req, reply);
+    if (!ctx) return;
+    const settings = await guarded(() => app.container.queue.getDigestSettings(ctx.account), reply);
+    if (settings === undefined) return;
+    return reply.send({ ok: true, settings });
+  });
+
+  app.put('/api/panel/queue/digest-settings', async (req, reply) => {
+    const ctx = requireAuth(req, reply);
+    if (!ctx) return;
+    const body = digestSettingsSchema.parse(req.body);
+    const r = await guarded(() => app.container.queue.saveDigestSettings(ctx.account, body), reply);
+    if (r === undefined) return;
+    return reply.code(r.ok ? 200 : 400).send(r);
+  });
+
+  app.post('/api/panel/queue/digest/send', async (req, reply) => {
+    const ctx = requireAuth(req, reply);
+    if (!ctx) return;
+    const r = await guarded(() => app.container.queue.sendDigestNow(ctx.account), reply);
     if (r === undefined) return;
     return reply.code(r.ok ? 200 : 400).send(r);
   });

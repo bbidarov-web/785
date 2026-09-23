@@ -693,6 +693,71 @@ describe('HTTP: /api/auth и защита эндпоинтов правами', 
     expect(cycleLive.data).toMatchObject({ dirs: [{ name: 'Направление А', months: [0] }] });
   });
 
+  it('панель: добавление клиники, очередь работы, портфель, сводка подписок и CSV-экспорт', async () => {
+    const managerReg = await container.auth.register({ inn: '7726345678', login: 'manager6', password: 'manager2026', password2: 'manager2026', fio: 'Гусев Р. А.', side: 'operator', role: 'sales_manager' });
+    const methodistReg = await container.auth.register({ inn: '7726345678', login: 'metodist5', password: 'metodist2026', password2: 'metodist2026', fio: 'Николаева Е. В.', side: 'operator', role: 'methodist' });
+    if (!managerReg.ok || !methodistReg.ok) throw new Error('setup failed');
+    await repos.accounts.update(managerReg.account.id, { pending: false });
+    await repos.accounts.update(methodistReg.account.id, { pending: false });
+
+    async function loginAs(login: string, password: string) {
+      const res = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { inn: '7726345678', login, password } });
+      return extractCookie(res.headers['set-cookie'], 'k785_session')!;
+    }
+    const managerCookie = await loginAs('manager6', 'manager2026');
+    const methodistCookie = await loginAs('metodist5', 'metodist2026');
+
+    // методист не может добавить клинику (нет sub:write)
+    const deniedAdd = await app.inject({
+      method: 'POST', url: '/api/panel/clients', cookies: { k785_session: methodistCookie },
+      payload: { inn: '7719000010', org: 'ООО «Новая клиника»', login: 'newclinic', password: 'newclinic2026', password2: 'newclinic2026', fio: 'Директор Д. Д.' },
+    });
+    expect(deniedAdd.statusCode).toBe(403);
+
+    // менеджер добавляет клинику напрямую из панели
+    const add = await app.inject({
+      method: 'POST', url: '/api/panel/clients', cookies: { k785_session: managerCookie },
+      payload: { inn: '7719000010', org: 'ООО «Новая клиника»', login: 'newclinic', password: 'newclinic2026', password2: 'newclinic2026', fio: 'Директор Д. Д.' },
+    });
+    expect(add.statusCode).toBe(200);
+
+    // новая клиника без единого обхода — сразу видна в очереди работы
+    const queue = await app.inject({ method: 'GET', url: '/api/panel/queue', cookies: { k785_session: methodistCookie } });
+    expect(queue.statusCode).toBe(200);
+    const task = queue.json().tasks.find((t: { tenantInn: string }) => t.tenantInn === '7719000010');
+    expect(task).toMatchObject({ title: 'Клиника без единого обхода', state: 'new' });
+
+    // методист берёт задачу в работу
+    const take = await app.inject({ method: 'POST', url: `/api/panel/queue/${task.id}/take`, cookies: { k785_session: methodistCookie } });
+    expect(take.statusCode).toBe(200);
+    const afterTake = await app.inject({ method: 'GET', url: '/api/panel/queue', cookies: { k785_session: managerCookie } });
+    expect(afterTake.json().tasks.find((t: { id: string }) => t.id === task.id)).toMatchObject({ state: 'in_progress' });
+
+    // настройка и отправка дайджеста
+    const saveDigest = await app.inject({
+      method: 'PUT', url: '/api/panel/queue/digest-settings', cookies: { k785_session: methodistCookie },
+      payload: { recipientEmail: 'ops@standart-kachestva.ru', schedule: 'каждое утро, 09:00' },
+    });
+    expect(saveDigest.statusCode).toBe(200);
+    const sendDigest = await app.inject({ method: 'POST', url: '/api/panel/queue/digest/send', cookies: { k785_session: methodistCookie } });
+    expect(sendDigest.statusCode).toBe(200);
+    expect(sendDigest.json().taskCount).toBeGreaterThan(0);
+
+    // портфель дашборда считает добавленную клинику
+    const portfolio = await app.inject({ method: 'GET', url: '/api/panel/portfolio?days=30', cookies: { k785_session: methodistCookie } });
+    expect(portfolio.statusCode).toBe(200);
+    expect(portfolio.json().portfolio.clinicsCount).toBeGreaterThanOrEqual(1);
+
+    // сводка подписок и CSV-экспорт каталога клиентов
+    const subsSummary = await app.inject({ method: 'GET', url: '/api/panel/subscriptions/summary', cookies: { k785_session: managerCookie } });
+    expect(subsSummary.statusCode).toBe(200);
+
+    const csv = await app.inject({ method: 'GET', url: '/api/panel/clients/export', cookies: { k785_session: managerCookie } });
+    expect(csv.statusCode).toBe(200);
+    expect(csv.headers['content-type']).toContain('text/csv');
+    expect(csv.body).toContain('Новая клиника');
+  });
+
   it('logout отзывает cookie сессии — повторный запрос получает 401', async () => {
     await container.auth.register({ inn: '7712345671', login: 'medplus', password: 'medplus2026', password2: 'medplus2026', fio: 'x', side: 'clinic' });
     const login = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { inn: '7712345671', login: 'medplus', password: 'medplus2026' } });

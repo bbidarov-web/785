@@ -100,4 +100,38 @@ describe('SubscriptionService — подписки клиник', () => {
     const updated = await svc.applyRenew(inn, 30, 'system-bulk');
     expect(updated.history.at(-1)).toMatchObject({ byId: 'system-bulk', action: 'renew' });
   });
+
+  describe('getSummary — сводка «Подписки, заказы и продления»', () => {
+    it('без клиник — нулевая сводка', async () => {
+      const s = await svc.getSummary(head);
+      expect(s).toEqual({ activeCount: 0, totalContracts: 0, expiringSoonCount: 0, overdueCount: 0, revenueThisCycle: 0, ordersToPaySum: 0, ordersToPayCount: 0 });
+    });
+
+    it('активная подписка считается в totalContracts, activeCount и выручке', async () => {
+      await svc.assign(manager, inn, 'start', 30, false);
+      const s = await svc.getSummary(head);
+      expect(s).toMatchObject({ activeCount: 1, totalContracts: 1, revenueThisCycle: 15000 });
+    });
+
+    it('истекающая в ближайшие 14 дней подписка попадает в expiringSoonCount', async () => {
+      await svc.assign(manager, inn, 'start', 10, false);
+      const s = await svc.getSummary(head);
+      expect(s.expiringSoonCount).toBe(1);
+    });
+
+    it('просроченная (expired) подписка считается в overdueCount, но не в activeCount', async () => {
+      await svc.assign(manager, inn, 'start', 30, false);
+      await repos.channels.set('tenant', inn, 'subscription', { tariffKey: 'start', status: 'expired', startedAt: null, expiresAt: null, history: [] }, { updatedBy: null });
+      const s = await svc.getSummary(head);
+      expect(s).toMatchObject({ activeCount: 0, overdueCount: 1 });
+    });
+
+    it('неоплаченные счета по этапам суммируются в ordersToPay', async () => {
+      await repos.channels.set('tenant', inn, 'stage_paid', {
+        1: { status: 'pending', requestedAt: null, requestedBy: null, confirmedAt: null, confirmedBy: null, amount: 8100, accepted: false, acceptedAt: null, acceptedBy: null },
+      }, { updatedBy: null });
+      const s = await svc.getSummary(head);
+      expect(s).toMatchObject({ ordersToPaySum: 8100, ordersToPayCount: 1 });
+    });
+  });
 });

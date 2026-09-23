@@ -33,6 +33,7 @@ import { DashboardService } from './panel/dashboardService.js';
 import { TariffService } from './panel/tariffService.js';
 import { SubscriptionService } from './panel/subscriptionService.js';
 import { BulkOperationService, type BulkActionDef } from './panel/bulkService.js';
+import { WorkQueueService } from './panel/workQueueService.js';
 import { addDays, todayString } from './shared/date.js';
 
 export interface SecondHandHandler {
@@ -200,10 +201,11 @@ export function buildContainerFromRepos(repos: Repos) {
     equipment: new EquipmentService(repos),
     summary: new SummaryService(repos),
     selfAudit: new SelfAuditService(repos, capa),
-    dashboard: new DashboardService(repos),
+    dashboard: new DashboardService(repos, documents),
     tariff,
     subscription,
     bulk,
+    queue: new WorkQueueService(repos),
   };
 }
 

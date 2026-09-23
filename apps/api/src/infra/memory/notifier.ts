@@ -8,6 +8,7 @@ import type { Notifier } from '../../domain/ports.js';
 export class InMemoryNotifier implements Notifier {
   public sentOtp: { via: 'sms' | 'email'; to: string; code: string }[] = [];
   public sentReset: { via: 'sms' | 'email'; to: string; code: string }[] = [];
+  public sentDigests: { to: string; subject: string; body: string }[] = [];
 
   async sendOtp(via: 'sms' | 'email', to: string, code: string): Promise<void> {
     this.sentOtp.push({ via, to, code });
@@ -15,6 +16,10 @@ export class InMemoryNotifier implements Notifier {
 
   async sendPasswordReset(via: 'sms' | 'email', to: string, code: string): Promise<void> {
     this.sentReset.push({ via, to, code });
+  }
+
+  async sendDigest(to: string, subject: string, body: string): Promise<void> {
+    this.sentDigests.push({ to, subject, body });
   }
 }
 
@@ -27,5 +32,9 @@ export class ConsoleNotifier implements Notifier {
   async sendPasswordReset(via: 'sms' | 'email', to: string, code: string): Promise<void> {
     // eslint-disable-next-line no-console
     console.log(`[DEV RESET] ${via} -> ${to}: ${code}`);
+  }
+  async sendDigest(to: string, subject: string, body: string): Promise<void> {
+    // eslint-disable-next-line no-console
+    console.log(`[DEV DIGEST] -> ${to}: ${subject}\n${body}`);
   }
 }

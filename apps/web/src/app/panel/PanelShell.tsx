@@ -7,9 +7,11 @@ import {
   type StageDraft, type CycleMasterDraft, type EquipTypeDraft, type SummaryRowDraft,
 } from './catalogForms';
 import {
-  TariffsForm, SubscriptionsPanel, BulkOperationsPanel, FinancialSummaryCards,
-  type TariffDraft, type SubscriptionRow, type BulkPreviewRow, type BulkReport, type FinancialSummary,
+  TariffsForm, SubscriptionsPanel, BulkOperationsPanel, ClientCatalogTab,
+  type TariffDraft, type SubscriptionRow, type SubscriptionSummary, type BulkPreviewRow, type BulkReport,
+  type FinancialSummary, type PortfolioSummary, type RichClientRow,
 } from './salesForms';
+import { WorkQueueTab, type QueueTask, type DigestSettings } from './queueForms';
 
 /**
  * Общая реализация панели платформы (README «Эталоны», «Дашборд»; SERVER.md
@@ -61,16 +63,7 @@ const inputStyle: React.CSSProperties = { padding: '9px 11px', border: '1px soli
 const primaryBtn: React.CSSProperties = { padding: '9px 14px', borderRadius: 8, border: 'none', background: 'var(--accent)', color: '#fff', fontSize: 12.5, fontWeight: 700, whiteSpace: 'nowrap' };
 const outlineBtn: React.CSSProperties = { padding: '7px 11px', borderRadius: 7, border: '1px solid var(--border-1)', background: 'transparent', fontSize: 11.5, fontWeight: 700, whiteSpace: 'nowrap' };
 
-interface ClientRow {
-  inn: string;
-  name: string;
-  createdAt: string;
-  staffCount: number;
-  stagesPaid: number;
-  openCapa: number;
-}
-
-type Tab = 'accounts' | 'checklists' | 'stages' | 'cycle' | 'equip' | 'summary' | 'tariffs' | 'subscriptions' | 'payments' | 'bulk' | 'secondhand' | 'clients';
+type Tab = 'accounts' | 'checklists' | 'stages' | 'cycle' | 'equip' | 'summary' | 'tariffs' | 'subscriptions' | 'payments' | 'bulk' | 'queue' | 'secondhand' | 'clients';
 
 export function PlatformPanelShell({ allowedRoles, heading }: { allowedRoles: string[]; heading: string }) {
   const [ready, setReady] = useState(false);
@@ -90,11 +83,16 @@ export function PlatformPanelShell({ allowedRoles, heading }: { allowedRoles: st
   const [equipTypes, setEquipTypes] = useState<EquipTypeDraft[]>([]);
   const [summaryRows, setSummaryRows] = useState<SummaryRowDraft[]>([]);
   const [secondHand, setSecondHand] = useState<SecondHandItem[]>([]);
-  const [clients, setClients] = useState<ClientRow[]>([]);
+  const [clients, setClients] = useState<RichClientRow[]>([]);
   const [tariffs, setTariffs] = useState<TariffDraft[]>([]);
   const [subscriptions, setSubscriptions] = useState<SubscriptionRow[]>([]);
+  const [subscriptionSummary, setSubscriptionSummary] = useState<SubscriptionSummary | null>(null);
   const [bulkReports, setBulkReports] = useState<BulkReport[]>([]);
   const [financials, setFinancials] = useState<FinancialSummary | null>(null);
+  const [portfolio, setPortfolio] = useState<PortfolioSummary | null>(null);
+  const [periodDays, setPeriodDays] = useState(30);
+  const [queueTasks, setQueueTasks] = useState<QueueTask[]>([]);
+  const [digestSettings, setDigestSettings] = useState<DigestSettings | null>(null);
 
   const say = useCallback((text: string) => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -102,8 +100,13 @@ export function PlatformPanelShell({ allowedRoles, heading }: { allowedRoles: st
     toastTimer.current = setTimeout(() => setToast(''), 4000);
   }, []);
 
+  const loadPortfolio = useCallback(async (days: number) => {
+    const r = await api.get<{ ok: true; portfolio: PortfolioSummary } | { ok: false; error: string }>(`/api/panel/portfolio?days=${days}`);
+    if (r.ok) setPortfolio(r.portfolio);
+  }, []);
+
   const loadAll = useCallback(async () => {
-    const [p, c, sd, cy, eq, sm, sh, cl, tf, sb, br, fin] = await Promise.all([
+    const [p, c, sd, cy, eq, sm, sh, cl, tf, sb, ss, br, fin, qt, ds] = await Promise.all([
       api.get<{ ok: true; pending: PendingAccount[] } | { ok: false; error: string }>('/api/admin/accounts/pending'),
       api.get<{ ok: true; checklists: ChecklistDef[] }>('/api/panel/checklists'),
       api.get<{ ok: true; stages: StageDraft[] }>('/api/panel/stage-docs'),
@@ -111,11 +114,14 @@ export function PlatformPanelShell({ allowedRoles, heading }: { allowedRoles: st
       api.get<{ ok: true; types: EquipTypeDraft[] }>('/api/panel/equip-types'),
       api.get<{ ok: true; rows: SummaryRowDraft[] }>('/api/panel/summary-master'),
       api.get<{ ok: true; items: SecondHandItem[] } | { ok: false; error: string }>('/api/second-hand/pending'),
-      api.get<{ ok: true; clients: ClientRow[] } | { ok: false; error: string }>('/api/panel/clients'),
+      api.get<{ ok: true; clients: RichClientRow[] } | { ok: false; error: string }>('/api/panel/clients'),
       api.get<{ ok: true; tariffs: TariffDraft[] }>('/api/panel/tariffs'),
       api.get<{ ok: true; subscriptions: SubscriptionRow[] } | { ok: false; error: string }>('/api/panel/subscriptions'),
+      api.get<{ ok: true; summary: SubscriptionSummary } | { ok: false; error: string }>('/api/panel/subscriptions/summary'),
       api.get<{ ok: true; reports: BulkReport[] } | { ok: false; error: string }>('/api/panel/bulk/reports'),
       api.get<{ ok: true; financials: FinancialSummary } | { ok: false; error: string }>('/api/panel/financials'),
+      api.get<{ ok: true; tasks: QueueTask[] } | { ok: false; error: string }>('/api/panel/queue'),
+      api.get<{ ok: true; settings: DigestSettings } | { ok: false; error: string }>('/api/panel/queue/digest-settings'),
     ]);
     if (p.ok) setPending(p.pending);
     if (c.ok) setChecklists(c.checklists);
@@ -127,9 +133,14 @@ export function PlatformPanelShell({ allowedRoles, heading }: { allowedRoles: st
     if (cl.ok) setClients(cl.clients);
     if (tf.ok) setTariffs(tf.tariffs);
     if (sb.ok) setSubscriptions(sb.subscriptions);
+    if (ss.ok) setSubscriptionSummary(ss.summary);
     if (br.ok) setBulkReports(br.reports);
     if (fin.ok) setFinancials(fin.financials);
-  }, []);
+    if (qt.ok) setQueueTasks(qt.tasks);
+    if (ds.ok) setDigestSettings(ds.settings);
+    await loadPortfolio(periodDays);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadPortfolio]);
 
   useEffect(() => {
     (async () => {
@@ -141,6 +152,11 @@ export function PlatformPanelShell({ allowedRoles, heading }: { allowedRoles: st
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadAll]);
+
+  function changePeriod(days: number) {
+    setPeriodDays(days);
+    void loadPortfolio(days);
+  }
 
   async function doLogin() {
     if (!aInn.trim() || !aLogin.trim() || !aPass) {
@@ -196,6 +212,8 @@ export function PlatformPanelShell({ allowedRoles, heading }: { allowedRoles: st
   const canAcceptStage = ['platform_admin', 'methodist', 'sales_manager', 'sales_head'].includes(session.role);
   const canManageMoney = session.role === 'sales_manager' || session.role === 'sales_head' || session.role === 'platform_admin';
   const canManageMethodology = session.role === 'methodist' || session.role === 'platform_admin';
+  const canAddClinic = canManageMoney;
+  const activeQueueCount = queueTasks.filter((t) => t.state === 'new' || t.state === 'in_progress').length;
 
   const tabs: { key: Tab; label: string }[] = [
     { key: 'accounts', label: `Заявки на доступ · ${pending.length}` },
@@ -208,6 +226,7 @@ export function PlatformPanelShell({ allowedRoles, heading }: { allowedRoles: st
     { key: 'subscriptions', label: `Подписки · ${subscriptions.length}` },
     { key: 'payments', label: 'Оплата этапов' },
     { key: 'bulk', label: 'Массовые операции' },
+    { key: 'queue', label: `Очередь работы · ${activeQueueCount}` },
     { key: 'secondhand', label: `Вторая рука · ${secondHand.length}` },
     { key: 'clients', label: `Дашборд и клиенты · ${clients.length}` },
   ];
@@ -318,7 +337,7 @@ export function PlatformPanelShell({ allowedRoles, heading }: { allowedRoles: st
         )}
 
         {tab === 'subscriptions' && (
-          <SubscriptionsPanel rows={subscriptions} tariffs={tariffs} canManage={canManageMoney}
+          <SubscriptionsPanel rows={subscriptions} tariffs={tariffs} summary={subscriptionSummary} canManage={canManageMoney}
             onAssign={async (inn, tariffKey, days, trial) => {
               const r = await api.post<{ ok: true } | { ok: false; error: string }>(`/api/panel/subscriptions/${inn}/assign`, { tariffKey, days, trial });
               if (!r.ok) { say(r.error); return; }
@@ -359,7 +378,49 @@ export function PlatformPanelShell({ allowedRoles, heading }: { allowedRoles: st
           />
         )}
 
-        {tab === 'clients' && <ClientsTab clients={clients} financials={financials} />}
+        {tab === 'clients' && (
+          <ClientCatalogTab
+            clients={clients} financials={financials} portfolio={portfolio}
+            periodDays={periodDays} onPeriodChange={changePeriod}
+            canAddClinic={canAddClinic}
+            onAddClinic={async (input) => {
+              const r = await api.post<{ ok: true } | { ok: false; error: string }>('/api/panel/clients', input);
+              if (!r.ok) { say(r.error); return false; }
+              await loadAll(); say('Клиника добавлена');
+              return true;
+            }}
+          />
+        )}
+
+        {tab === 'queue' && (
+          <WorkQueueTab tasks={queueTasks} digestSettings={digestSettings}
+            onTake={async (id) => {
+              const r = await api.post<{ ok: true } | { ok: false; error: string }>(`/api/panel/queue/${id}/take`, {});
+              if (!r.ok) { say(r.error); return; }
+              await loadAll();
+            }}
+            onPostpone={async (id) => {
+              const r = await api.post<{ ok: true } | { ok: false; error: string }>(`/api/panel/queue/${id}/postpone`, {});
+              if (!r.ok) { say(r.error); return; }
+              await loadAll(); say('Задача отложена на 3 дня');
+            }}
+            onClose={async (id) => {
+              const r = await api.post<{ ok: true } | { ok: false; error: string }>(`/api/panel/queue/${id}/close`, {});
+              if (!r.ok) { say(r.error); return; }
+              await loadAll(); say('Задача закрыта');
+            }}
+            onSaveDigestSettings={async (recipientEmail, schedule) => {
+              const r = await api.put<{ ok: true } | { ok: false; error: string }>('/api/panel/queue/digest-settings', { recipientEmail, schedule });
+              if (!r.ok) { say(r.error); return; }
+              await loadAll(); say('Настройки сводки сохранены');
+            }}
+            onSendDigestNow={async () => {
+              const r = await api.post<{ ok: true; taskCount: number } | { ok: false; error: string }>('/api/panel/queue/digest/send', {});
+              if (!r.ok) { say(r.error); return; }
+              await loadAll(); say(`Дайджест отправлен · открытых задач: ${r.taskCount}`);
+            }}
+          />
+        )}
 
         {tab === 'payments' && (
           <PaymentsTab canConfirm={canConfirmMoney} canAccept={canAcceptStage}
@@ -551,31 +612,6 @@ function SecondHandTab({ items, onConfirm, onReject }: { items: SecondHandItem[]
               Подтвердить может только другой сотрудник с нужным правом.
             </div>
           )}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function ClientsTab({ clients, financials }: { clients: ClientRow[]; financials: FinancialSummary | null }) {
-  const [q, setQ] = useState('');
-  const filtered = clients.filter((c) => !q.trim() || c.inn.includes(q.trim()) || c.name.toLowerCase().includes(q.trim().toLowerCase()));
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      <FinancialSummaryCards financials={financials} />
-      <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Поиск по ИНН или названию" style={inputStyle} />
-      {filtered.length === 0 && <EmptyState text="Клиник пока нет." />}
-      {filtered.map((c) => (
-        <div key={c.inn} style={{ ...cardStyle, display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 800 }}>{c.name}</div>
-            <div style={{ fontSize: 11.5, color: 'var(--text-muted)', fontWeight: 600, fontFamily: 'var(--font-mono)' }}>ИНН {c.inn} · с {c.createdAt}</div>
-          </div>
-          <div style={{ display: 'flex', gap: 14, fontSize: 11.5, fontWeight: 700 }}>
-            <span>Сотрудников: {c.staffCount}</span>
-            <span>Оплачено этапов: {c.stagesPaid}</span>
-            <span style={{ color: c.openCapa > 0 ? 'var(--error)' : 'var(--text-muted)' }}>Открытых CAPA: {c.openCapa}</span>
-          </div>
         </div>
       ))}
     </div>

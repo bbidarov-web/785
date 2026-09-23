@@ -283,6 +283,31 @@ export interface SubscriptionState {
   history: SubscriptionEvent[];
 }
 
+/**
+ * Состояние одной задачи очереди работы (`work_queue_state`, платформенный
+ * канал; reference/prototype/Админ-панель.dc.html «Очередь работы»). Сама
+ * задача НЕ хранится — она пересчитывается из реальных данных при каждом
+ * чтении (`WorkQueueService.list`), здесь только состояние работы над ней:
+ * «взял в работу / отложил / закрыл» — общее для всех сотрудников платформы,
+ * чтобы одну клинику не обзвонили дважды. Отложенная возвращается в очередь
+ * через 3 дня; закрытая — на следующий день, если причина не исчезла.
+ */
+export type QueueTaskWorkState = 'in_progress' | 'postponed' | 'closed';
+
+export interface QueueTaskState {
+  state: QueueTaskWorkState;
+  byId: string;
+  at: string; // ДД.ММ.ГГГГ
+  postponedUntil: string | null; // только для state='postponed'
+}
+
+/** Настройки ежедневной сводки очереди работы (`queue_digest_settings`, платформенный канал). */
+export interface QueueDigestSettings {
+  recipientEmail: string;
+  schedule: string; // например "каждое утро, 09:00" — расписание хранится как факт, автоматическая отправка по расписанию не подключена (см. README «Что дальше»)
+  lastSentAt: string | null;
+}
+
 export type SelfAuditAnswer = '' | 'ok' | 'bad' | 'na'; // соответствует / не соответствует / не применимо
 
 export interface SelfAuditItem {

@@ -53,6 +53,11 @@ export class PrismaAccountRepo implements AccountRepo {
     return row ? toDomain(row) : null;
   }
 
+  async listByInn(inn: string): Promise<Account[]> {
+    const rows = await this.prisma.account.findMany({ where: { inn } });
+    return rows.map(toDomain);
+  }
+
   async listPending(): Promise<Account[]> {
     const rows = await this.prisma.account.findMany({ where: { pending: true } });
     return rows.map(toDomain);

@@ -23,3 +23,14 @@ export function addDays(s: string, days: number): string {
 export function isBeforeToday(s: string): boolean {
   return parseDate(s).getTime() < new Date().setHours(0, 0, 0, 0);
 }
+
+/** Сколько полных дней прошло от даты (ДД.ММ.ГГГГ) до сегодня — для просрочек в очереди работы. */
+export function daysSince(s: string): number {
+  const ms = new Date().setHours(0, 0, 0, 0) - parseDate(s).setHours(0, 0, 0, 0);
+  return Math.floor(ms / 86_400_000);
+}
+
+/** Сколько полных дней осталось от сегодня до даты (ДД.ММ.ГГГГ) — отрицательное значит дата уже прошла. */
+export function daysUntil(s: string): number {
+  return -daysSince(s);
+}

@@ -1,12 +1,13 @@
 import type { Repos } from '../domain/ports.js';
 import type { Account } from '../domain/types.js';
 import { assertPermission } from '../rbac/service.js';
-import { addDays, todayString } from '../shared/date.js';
-import type { SubscriptionState, TariffDef } from '../shared/channelShapes.js';
+import { addDays, daysUntil, todayString } from '../shared/date.js';
+import type { StagePaymentState, SubscriptionState, TariffDef } from '../shared/channelShapes.js';
 
 export type SubscriptionResult<T> = { ok: true } & T | { ok: false; error: string };
 
 const EMPTY_STATE: SubscriptionState = { tariffKey: null, status: 'none', startedAt: null, expiresAt: null, history: [] };
+const EXPIRING_SOON_DAYS = 14;
 
 export interface SubscriptionRow {
   inn: string;
@@ -16,6 +17,17 @@ export interface SubscriptionRow {
   status: SubscriptionState['status'];
   startedAt: string | null;
   expiresAt: string | null;
+}
+
+/** Сводка «Подписки, заказы и продления» (reference/prototype/Админ-панель.dc.html). */
+export interface SubscriptionSummary {
+  activeCount: number;
+  totalContracts: number; // тенанты, у которых подписка когда-либо заводилась (status !== 'none')
+  expiringSoonCount: number; // активна/пробный период, истекает в ближайшие 14 дней
+  overdueCount: number; // status === 'expired'
+  revenueThisCycle: number; // сумма цены тарифа по активным/пробным подпискам за текущий цикл (без пересчёта в месячный эквивалент)
+  ordersToPaySum: number; // сумма невыставленных/неоплаченных счетов за этапы (stage_paid со статусом pending)
+  ordersToPayCount: number;
 }
 
 /**
@@ -54,6 +66,44 @@ export class SubscriptionService {
 
   private async getTariffs(): Promise<TariffDef[]> {
     return (await this.repos.channels.get<TariffDef[]>('platform', null, 'tariffs', [])).data;
+  }
+
+  async getSummary(account: Account): Promise<SubscriptionSummary> {
+    await assertPermission(this.repos.auditLog, account, 'clinic:read', 'subscription:summary', null, null);
+    const [tenants, tariffs] = await Promise.all([this.repos.tenants.listAll(), this.getTariffs()]);
+    const tariffByKey = new Map(tariffs.map((t) => [t.key, t]));
+
+    let activeCount = 0;
+    let totalContracts = 0;
+    let expiringSoonCount = 0;
+    let overdueCount = 0;
+    let revenueThisCycle = 0;
+    let ordersToPaySum = 0;
+    let ordersToPayCount = 0;
+
+    for (const t of tenants) {
+      const [state, stagePaid] = await Promise.all([
+        this.getState(t.inn),
+        this.repos.channels.get<Record<number, StagePaymentState>>('tenant', t.inn, 'stage_paid', {}),
+      ]);
+      if (state.status !== 'none') totalContracts++;
+      if (state.status === 'active' || state.status === 'trial') {
+        activeCount++;
+        const tariff = state.tariffKey ? tariffByKey.get(state.tariffKey) : undefined;
+        if (tariff) revenueThisCycle += tariff.price;
+        if (state.expiresAt && daysUntil(state.expiresAt) <= EXPIRING_SOON_DAYS) expiringSoonCount++;
+      }
+      if (state.status === 'expired') overdueCount++;
+
+      for (const p of Object.values(stagePaid.data)) {
+        if (p.status === 'pending') {
+          ordersToPaySum += p.amount;
+          ordersToPayCount++;
+        }
+      }
+    }
+
+    return { activeCount, totalContracts, expiringSoonCount, overdueCount, revenueThisCycle, ordersToPaySum, ordersToPayCount };
   }
 
   /** Назначает тариф клинике — новая подписка или замена текущей (продление — отдельный метод `renew`). */

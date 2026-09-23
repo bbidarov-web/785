@@ -1,8 +1,9 @@
 import type { Repos } from '../domain/ports.js';
 import type { Account } from '../domain/types.js';
 import { assertPermission } from '../rbac/service.js';
-import { parseDate } from '../shared/date.js';
-import type { CapaItem, StaffMember, StagePaymentState, SubscriptionState, TariffDef } from '../shared/channelShapes.js';
+import { daysUntil, formatDate, parseDate, todayString } from '../shared/date.js';
+import { DocumentService } from '../documents/service.js';
+import type { Branch, CapaItem, StaffMember, Stage, StagePaymentState, SubscriptionState, TariffDef, WalkResultEntry } from '../shared/channelShapes.js';
 
 export interface ClientRow {
   inn: string;
@@ -11,9 +12,20 @@ export interface ClientRow {
   staffCount: number;
   stagesPaid: number;
   openCapa: number;
+  branchesCount: number;
+  tariffKey: string | null;
+  tariffName: string | null;
+  subscriptionStatus: SubscriptionState['status'];
+  /** Документов выдано / документов в опубликованном каталоге, % — 0, если каталог ещё пуст. */
+  readinessPct: number;
+  /** Последний вход любого сотрудника клиники (ДД.ММ.ГГГГ) — null, если ни разу не заходили. */
+  lastActivityAt: string | null;
+  /** Подписка истекла/отменена, либо истекает в ближайшие 14 дней (reference/prototype: «Риск оттока»). */
+  churnRisk: boolean;
 }
 
 const EMPTY_SUBSCRIPTION: SubscriptionState = { tariffKey: null, status: 'none', startedAt: null, expiresAt: null, history: [] };
+const CHURN_RISK_WINDOW_DAYS = 14;
 
 export interface TariffDemandRow {
   tariffKey: string;
@@ -31,30 +43,67 @@ export interface FinancialSummary {
   avgRolloutDays: number | null; // среднее число дней от заказа первого этапа до приёмки последнего принятого этапа
 }
 
+/** Карточки «Портфель» на дашборде (reference/prototype/Админ-панель.dc.html «Дашборд»). */
+export interface PortfolioSummary {
+  clinicsCount: number;
+  mrr: number;
+  avgReadinessPct: number;
+  auditsInPeriod: number;
+  periodDays: number;
+}
+
 /**
  * Каталог клиентов (README «Панель платформы»: «Каталог клиентов: поиск по
- * ИНН... Карточка клиники»). Здесь — только обзорный список с ключевыми
- * счётчиками, без группового выбора и массовых операций (это отдельная,
- * более крупная фича прототипа). Читает `clinic:read` — есть у методиста,
- * менеджера, руководителя продаж и администратора платформы, но не у клиники.
+ * ИНН... Карточка клиники») и портфельный срез дашборда. Читает `clinic:read`
+ * — есть у методиста, менеджера, руководителя продаж и администратора
+ * платформы, но не у клиники.
  *
  * Реализация — по одному чтению каналов на клинику (N+1); для десятков
  * клиник это ещё приемлемо, для сотен — нужен отдельный агрегирующий
- * материал вместо чтения `staff`/`stage_paid`/`capa` на лету.
+ * материал вместо чтения каналов на лету.
  */
 export class DashboardService {
-  constructor(private repos: Repos) {}
+  constructor(
+    private repos: Repos,
+    private documents: DocumentService,
+  ) {}
+
+  private async getCatalogDocCount(): Promise<number> {
+    const stages = (await this.repos.channels.get<Stage[]>('platform', null, 'stage_docs', [])).data;
+    return stages.reduce((sum, s) => sum + s.blocks.reduce((bs, b) => bs + b.docs.length, 0), 0);
+  }
+
+  private async getTariffByKey(): Promise<Map<string, TariffDef>> {
+    const tariffs = (await this.repos.channels.get<TariffDef[]>('platform', null, 'tariffs', [])).data;
+    return new Map(tariffs.map((t) => [t.key, t]));
+  }
+
+  private isChurnRisk(sub: SubscriptionState): boolean {
+    if (sub.status === 'expired' || sub.status === 'cancelled') return true;
+    if ((sub.status === 'active' || sub.status === 'trial') && sub.expiresAt) return daysUntil(sub.expiresAt) <= CHURN_RISK_WINDOW_DAYS;
+    return false;
+  }
 
   async listClients(account: Account): Promise<ClientRow[]> {
     await assertPermission(this.repos.auditLog, account, 'clinic:read', 'dashboard:clients', null, null);
-    const tenants = await this.repos.tenants.listAll();
+    const [tenants, tariffByKey, catalogDocCount] = await Promise.all([
+      this.repos.tenants.listAll(),
+      this.getTariffByKey(),
+      this.getCatalogDocCount(),
+    ]);
     const rows: ClientRow[] = [];
     for (const t of tenants) {
-      const [staff, stagePaid, capa] = await Promise.all([
+      const [staff, stagePaid, capa, branches, subscription, grants, accounts] = await Promise.all([
         this.repos.channels.get<StaffMember[]>('tenant', t.inn, 'staff', []),
         this.repos.channels.get<Record<number, StagePaymentState>>('tenant', t.inn, 'stage_paid', {}),
         this.repos.channels.get<CapaItem[]>('tenant', t.inn, 'capa', []),
+        this.repos.channels.get<Branch[]>('tenant', t.inn, 'branches', []),
+        this.repos.channels.get<SubscriptionState>('tenant', t.inn, 'subscription', EMPTY_SUBSCRIPTION),
+        this.documents.listActiveGrants(t.inn),
+        this.repos.accounts.listByInn(t.inn),
       ]);
+      const lastLogin = accounts.reduce<Date | null>((max, a) => (a.lastLoginAt && (!max || a.lastLoginAt > max) ? a.lastLoginAt : max), null);
+      const tariff = subscription.data.tariffKey ? tariffByKey.get(subscription.data.tariffKey) : undefined;
       rows.push({
         inn: t.inn,
         name: t.name,
@@ -62,9 +111,65 @@ export class DashboardService {
         staffCount: staff.data.length,
         stagesPaid: Object.values(stagePaid.data).filter((p) => p.status === 'paid').length,
         openCapa: capa.data.filter((c) => c.status === 'planned').length,
+        branchesCount: branches.data.length,
+        tariffKey: subscription.data.tariffKey,
+        tariffName: tariff?.name ?? null,
+        subscriptionStatus: subscription.data.status,
+        readinessPct: catalogDocCount > 0 ? Math.round((Object.keys(grants).length / catalogDocCount) * 100) : 0,
+        lastActivityAt: lastLogin ? formatDate(lastLogin) : null,
+        churnRisk: this.isChurnRisk(subscription.data),
       });
     }
     return rows;
+  }
+
+  /** CSV для «Выгрузить отчёт» (reference/prototype/Админ-панель.dc.html) — разделитель `;` под RU Excel. */
+  async exportClientsCsv(account: Account): Promise<string> {
+    const rows = await this.listClients(account);
+    const esc = (v: string | number) => `"${String(v).replaceAll('"', '""')}"`;
+    const header = ['ИНН', 'Название', 'Тариф', 'Статус подписки', 'Филиалы', 'Готовность %', 'Последняя активность', 'Сотрудников', 'Оплачено этапов', 'Открытых CAPA'];
+    const lines = [header.map(esc).join(';')];
+    for (const r of rows) {
+      lines.push([r.inn, r.name, r.tariffName ?? '—', r.subscriptionStatus, r.branchesCount, r.readinessPct, r.lastActivityAt ?? '—', r.staffCount, r.stagesPaid, r.openCapa].map(esc).join(';'));
+    }
+    return lines.join('\r\n');
+  }
+
+  /** Карточки «Портфель» — reference/prototype/Админ-панель.dc.html «Дашборд». */
+  async getPortfolio(account: Account, periodDays: number): Promise<PortfolioSummary> {
+    await assertPermission(this.repos.auditLog, account, 'money:read', 'dashboard:portfolio', null, null);
+    const [tenants, tariffByKey, catalogDocCount] = await Promise.all([
+      this.repos.tenants.listAll(),
+      this.getTariffByKey(),
+      this.getCatalogDocCount(),
+    ]);
+    const cutoff = parseDate(todayString()).getTime() - periodDays * 86_400_000;
+
+    let mrr = 0;
+    let readinessSum = 0;
+    let auditsInPeriod = 0;
+    for (const t of tenants) {
+      const [subscription, grants, walkResults] = await Promise.all([
+        this.repos.channels.get<SubscriptionState>('tenant', t.inn, 'subscription', EMPTY_SUBSCRIPTION),
+        this.documents.listActiveGrants(t.inn),
+        this.repos.channels.get<WalkResultEntry[]>('tenant', t.inn, 'walk_results', []),
+      ]);
+      const sub = subscription.data;
+      if (sub.status === 'active' || sub.status === 'trial') {
+        const tariff = sub.tariffKey ? tariffByKey.get(sub.tariffKey) : undefined;
+        if (tariff) mrr += tariff.period === 'annual' ? tariff.price / 12 : tariff.price;
+      }
+      readinessSum += catalogDocCount > 0 ? (Object.keys(grants).length / catalogDocCount) * 100 : 0;
+      auditsInPeriod += walkResults.data.filter((w) => parseDate(w.date).getTime() >= cutoff).length;
+    }
+
+    return {
+      clinicsCount: tenants.length,
+      mrr: Math.round(mrr),
+      avgReadinessPct: tenants.length ? Math.round(readinessSum / tenants.length) : 0,
+      auditsInPeriod,
+      periodDays,
+    };
   }
 
   /**
@@ -75,8 +180,7 @@ export class DashboardService {
   async getFinancials(account: Account): Promise<FinancialSummary> {
     await assertPermission(this.repos.auditLog, account, 'money:read', 'dashboard:financials', null, null);
     const tenants = await this.repos.tenants.listAll();
-    const tariffs = (await this.repos.channels.get<TariffDef[]>('platform', null, 'tariffs', [])).data;
-    const tariffByKey = new Map(tariffs.map((t) => [t.key, t]));
+    const tariffByKey = await this.getTariffByKey();
 
     let mrr = 0;
     let activeCount = 0;

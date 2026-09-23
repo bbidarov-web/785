@@ -34,6 +34,10 @@ export class InMemoryAccountRepo implements AccountRepo {
     return this.rows.find((a) => a.inn === inn && a.phone === phone) ?? null;
   }
 
+  async listByInn(inn: string): Promise<Account[]> {
+    return this.rows.filter((a) => a.inn === inn);
+  }
+
   async listPending(): Promise<Account[]> {
     return this.rows.filter((a) => a.pending);
   }

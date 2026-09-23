@@ -25,6 +25,8 @@ export interface AccountRepo {
   findById(id: string): Promise<Account | null>;
   findByInnLogin(inn: string, login: string): Promise<Account | null>;
   findByInnPhone(inn: string, phone: string): Promise<Account | null>;
+  /** Все учётные записи арендатора (клиники) — для «активности» в дашборде панели (последний вход среди сотрудников клиники). */
+  listByInn(inn: string): Promise<Account[]>;
   listPending(): Promise<Account[]>;
   update(id: string, patch: Partial<Account>): Promise<Account>;
   delete(id: string): Promise<void>;
@@ -100,6 +102,8 @@ export interface ExecutorMarkRepo {
 export interface Notifier {
   sendOtp(via: 'sms' | 'email', to: string, code: string): Promise<void>;
   sendPasswordReset(via: 'sms' | 'email', to: string, code: string): Promise<void>;
+  /** Ежедневная сводка очереди работы панели (README «Очередь работы») — почта, реальный шлюз не подключён (см. README «Что дальше»). */
+  sendDigest(to: string, subject: string, body: string): Promise<void>;
 }
 
 export interface Clock {
