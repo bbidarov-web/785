@@ -12,6 +12,11 @@ const cycleSchema = z.object({
   dirs: z.array(z.object({ name: z.string(), months: z.array(z.number().int().min(0).max(11)) })),
   capaTerms: z.array(z.object({ level: z.string(), days: z.number().int().positive() })),
 });
+const equipTypeSchema = z.object({
+  key: z.string().min(1), name: z.string().min(1),
+  logs: z.array(z.object({ name: z.string().min(1), freq: z.string().min(1), kind: z.enum(['журнал', 'чек-лист']) })),
+});
+const summaryRowSchema = z.object({ name: z.string().min(1), note: z.string().default(''), req: z.boolean().default(true) });
 
 /**
  * Панель платформы — публикация эталонов методистом (README «Эталоны») и
@@ -81,5 +86,41 @@ export async function panelRoutes(app: FastifyInstance): Promise<void> {
     const r = await guarded(() => app.container.payment.confirm(ctx.account, tenantInn, code), reply);
     if (r === undefined) return;
     return reply.code(r.ok ? 200 : 400).send(r);
+  });
+
+  app.get('/api/panel/equip-types', async (req, reply) => {
+    if (!requireAuth(req, reply)) return;
+    return reply.send({ ok: true, types: await app.container.catalog.getEquipTypes() });
+  });
+
+  app.put('/api/panel/equip-types', async (req, reply) => {
+    const ctx = requireAuth(req, reply);
+    if (!ctx) return;
+    const types = z.array(equipTypeSchema).parse(req.body);
+    const r = await guarded(() => app.container.catalog.publishEquipTypes(ctx.account, types), reply);
+    if (r === undefined) return;
+    return reply.code(r.ok ? 200 : 409).send(r);
+  });
+
+  app.get('/api/panel/summary-master', async (req, reply) => {
+    if (!requireAuth(req, reply)) return;
+    return reply.send({ ok: true, rows: await app.container.catalog.getSummaryMaster() });
+  });
+
+  app.put('/api/panel/summary-master', async (req, reply) => {
+    const ctx = requireAuth(req, reply);
+    if (!ctx) return;
+    const rows = z.array(summaryRowSchema).parse(req.body);
+    const r = await guarded(() => app.container.catalog.publishSummaryMaster(ctx.account, rows), reply);
+    if (r === undefined) return;
+    return reply.code(r.ok ? 200 : 409).send(r);
+  });
+
+  app.get('/api/panel/clients', async (req, reply) => {
+    const ctx = requireAuth(req, reply);
+    if (!ctx) return;
+    const clients = await guarded(() => app.container.dashboard.listClients(ctx.account), reply);
+    if (clients === undefined) return;
+    return reply.send({ ok: true, clients });
   });
 }

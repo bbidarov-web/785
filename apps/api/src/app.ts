@@ -8,6 +8,7 @@ import { authRoutes } from './http/routes/auth.js';
 import { executorRoutes } from './http/routes/executor.js';
 import { walkRoutes } from './http/routes/walk.js';
 import { clinicRoutes } from './http/routes/clinic.js';
+import { clinicExtraRoutes } from './http/routes/clinicExtras.js';
 import { documentRoutes } from './http/routes/documents.js';
 import { adminRoutes } from './http/routes/admin.js';
 import { panelRoutes } from './http/routes/panel.js';
@@ -39,6 +40,7 @@ export async function buildApp(container: Container, opts: AppOptions) {
   await app.register(executorRoutes);
   await app.register(walkRoutes);
   await app.register(clinicRoutes);
+  await app.register(clinicExtraRoutes);
   await app.register(documentRoutes);
   await app.register(adminRoutes);
   await app.register(panelRoutes);

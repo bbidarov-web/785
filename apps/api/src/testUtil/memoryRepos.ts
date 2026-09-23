@@ -19,7 +19,7 @@ export function createMemoryRepos(): MemoryRepos {
   const clock = new TestClock();
   return {
     clock,
-    tenants: new InMemoryTenantRepo(),
+    tenants: new InMemoryTenantRepo(clock),
     accounts: new InMemoryAccountRepo(clock),
     sessions: new InMemorySessionRepo(clock),
     otps: new InMemoryOtpRepo(clock),

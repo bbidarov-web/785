@@ -2,6 +2,7 @@ import type { Repos } from '../domain/ports.js';
 import type { Account } from '../domain/types.js';
 import { assertPermission } from '../rbac/service.js';
 import { buildStaffPositionMap, formatOwner, isMine, normalizeChecklistName } from '../shared/assignment.js';
+import { decodeDataUrl } from '../shared/fileUpload.js';
 import type { AuditPlanItem, ChecklistDef, ClientStateShape, StaffMember, WalkResultEntry } from '../shared/channelShapes.js';
 import type { WalkDetailDto, WalkItemAnswerDto, WalkListItemDto } from './types.js';
 
@@ -236,13 +237,3 @@ export class WalkService {
   }
 }
 
-function decodeDataUrl(input: string): { contentType: string; data: Buffer } | null {
-  const m = /^data:([\w/+.-]+);base64,(.+)$/.exec(input.trim());
-  if (!m) return null;
-  const [, contentType, base64] = m;
-  try {
-    return { contentType: contentType!, data: Buffer.from(base64!, 'base64') };
-  } catch {
-    return null;
-  }
-}

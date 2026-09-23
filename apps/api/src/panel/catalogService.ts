@@ -1,7 +1,7 @@
 import type { Repos } from '../domain/ports.js';
 import type { Account } from '../domain/types.js';
 import { assertPermission } from '../rbac/service.js';
-import type { ChecklistDef, CycleMaster, Stage } from '../shared/channelShapes.js';
+import type { ChecklistDef, CycleMaster, EquipmentType, Stage, SummaryRowDef } from '../shared/channelShapes.js';
 
 export type CatalogResult<T> = { ok: true } & T | { ok: false; error: string };
 
@@ -17,40 +17,57 @@ export type CatalogResult<T> = { ok: true } & T | { ok: false; error: string };
 export class CatalogService {
   constructor(private repos: Repos) {}
 
-  async getChecklists(): Promise<ChecklistDef[]> {
-    return (await this.repos.channels.get<ChecklistDef[]>('platform', null, 'checklists', [])).data;
+  private async getPlatformChannel<T>(key: string, fallback: T): Promise<T> {
+    return (await this.repos.channels.get<T>('platform', null, key, fallback)).data;
   }
 
-  async publishChecklists(account: Account, checklists: ChecklistDef[]): Promise<CatalogResult<{ version: number }>> {
-    await assertPermission(this.repos.auditLog, account, 'standard:publish', 'catalog:checklists:publish', null, null);
-    const rec = await this.repos.channels.get<ChecklistDef[]>('platform', null, 'checklists', []);
-    const res = await this.repos.channels.set('platform', null, 'checklists', checklists, { expectedVersion: rec.version, updatedBy: account.id });
-    if (!res.ok) return { ok: false, error: 'Каталог изменён параллельно — обновите страницу и повторите' };
-    return { ok: true, version: res.version };
-  }
-
-  async getStageDocs(): Promise<Stage[]> {
-    return (await this.repos.channels.get<Stage[]>('platform', null, 'stage_docs', [])).data;
-  }
-
-  async publishStageDocs(account: Account, stages: Stage[]): Promise<CatalogResult<{ version: number }>> {
-    await assertPermission(this.repos.auditLog, account, 'standard:publish', 'catalog:stage-docs:publish', null, null);
-    const rec = await this.repos.channels.get<Stage[]>('platform', null, 'stage_docs', []);
-    const res = await this.repos.channels.set('platform', null, 'stage_docs', stages, { expectedVersion: rec.version, updatedBy: account.id });
-    if (!res.ok) return { ok: false, error: 'Каталог изменён параллельно — обновите страницу и повторите' };
-    return { ok: true, version: res.version };
-  }
-
-  async getCycle(): Promise<CycleMaster | null> {
-    const rec = await this.repos.channels.get<CycleMaster | null>('platform', null, 'cycle_master', null);
-    return rec.data;
-  }
-
-  async publishCycle(account: Account, cycle: CycleMaster): Promise<CatalogResult<{ version: number }>> {
-    await assertPermission(this.repos.auditLog, account, 'standard:publish', 'catalog:cycle:publish', null, null);
-    const rec = await this.repos.channels.get<CycleMaster | null>('platform', null, 'cycle_master', null);
-    const res = await this.repos.channels.set('platform', null, 'cycle_master', cycle, { expectedVersion: rec.version, updatedBy: account.id });
+  private async publishPlatformChannel<T>(account: Account, key: string, value: T): Promise<CatalogResult<{ version: number }>> {
+    await assertPermission(this.repos.auditLog, account, 'standard:publish', `catalog:${key}:publish`, null, null);
+    const rec = await this.repos.channels.get<T>('platform', null, key, value);
+    const res = await this.repos.channels.set('platform', null, key, value, { expectedVersion: rec.version, updatedBy: account.id });
     if (!res.ok) return { ok: false, error: 'Эталон изменён параллельно — обновите страницу и повторите' };
     return { ok: true, version: res.version };
+  }
+
+  getChecklists(): Promise<ChecklistDef[]> {
+    return this.getPlatformChannel<ChecklistDef[]>('checklists', []);
+  }
+
+  publishChecklists(account: Account, checklists: ChecklistDef[]): Promise<CatalogResult<{ version: number }>> {
+    return this.publishPlatformChannel(account, 'checklists', checklists);
+  }
+
+  getStageDocs(): Promise<Stage[]> {
+    return this.getPlatformChannel<Stage[]>('stage_docs', []);
+  }
+
+  publishStageDocs(account: Account, stages: Stage[]): Promise<CatalogResult<{ version: number }>> {
+    return this.publishPlatformChannel(account, 'stage_docs', stages);
+  }
+
+  getCycle(): Promise<CycleMaster | null> {
+    return this.getPlatformChannel<CycleMaster | null>('cycle_master', null);
+  }
+
+  publishCycle(account: Account, cycle: CycleMaster): Promise<CatalogResult<{ version: number }>> {
+    return this.publishPlatformChannel(account, 'cycle_master', cycle);
+  }
+
+  /** Типы оборудования и периодичность форм (README «Оборудование и журналы»). */
+  getEquipTypes(): Promise<EquipmentType[]> {
+    return this.getPlatformChannel<EquipmentType[]>('equip_types', []);
+  }
+
+  publishEquipTypes(account: Account, types: EquipmentType[]): Promise<CatalogResult<{ version: number }>> {
+    return this.publishPlatformChannel(account, 'equip_types', types);
+  }
+
+  /** Состав сводного отчёта (README «Самообследование», «Сводный отчёт»). */
+  getSummaryMaster(): Promise<SummaryRowDef[]> {
+    return this.getPlatformChannel<SummaryRowDef[]>('summary_master', []);
+  }
+
+  publishSummaryMaster(account: Account, rows: SummaryRowDef[]): Promise<CatalogResult<{ version: number }>> {
+    return this.publishPlatformChannel(account, 'summary_master', rows);
   }
 }

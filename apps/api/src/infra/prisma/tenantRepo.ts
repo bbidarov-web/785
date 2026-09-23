@@ -16,4 +16,9 @@ export class PrismaTenantRepo implements TenantRepo {
     const row = await this.prisma.tenant.findUnique({ where: { inn } });
     return row ? { inn: row.inn, name: row.name } : null;
   }
+
+  async listAll(): Promise<{ inn: string; name: string; createdAt: Date }[]> {
+    const rows = await this.prisma.tenant.findMany({ orderBy: { createdAt: 'desc' } });
+    return rows.map((r) => ({ inn: r.inn, name: r.name, createdAt: r.createdAt }));
+  }
 }

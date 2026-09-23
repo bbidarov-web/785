@@ -379,6 +379,103 @@ describe('HTTP: /api/auth и защита эндпоинтов правами', 
     expect(finalConfirm.json().ok).toBe(true);
   });
 
+  it('годовой цикл → оборудование → сводный отчёт → самообследование → дашборд, полный HTTP-цикл', async () => {
+    const methodistReg = await container.auth.register({ inn: '7726345678', login: 'metodist2', password: 'metodist2026', password2: 'metodist2026', fio: 'Николаева Е. В.', side: 'operator', role: 'methodist' });
+    if (!methodistReg.ok) throw new Error('setup failed');
+    await repos.accounts.update(methodistReg.account.id, { pending: false });
+    const clinicReg = await container.auth.register({ inn: '7712345671', login: 'vkk1', password: 'vkk2026lead', password2: 'vkk2026lead', fio: 'Иванова М. А.', side: 'clinic', role: 'vkk_lead' });
+    if (!clinicReg.ok) throw new Error('setup failed');
+
+    async function loginAs(inn: string, login: string, password: string) {
+      const res = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { inn, login, password } });
+      return extractCookie(res.headers['set-cookie'], 'k785_session')!;
+    }
+    const methodistCookie = await loginAs('7726345678', 'metodist2', 'metodist2026');
+    const clinicCookie = await loginAs('7712345671', 'vkk1', 'vkk2026lead');
+
+    // методист публикует годовой цикл, каталог чек-листов, типы оборудования и сводный отчёт
+    await app.inject({
+      method: 'PUT', url: '/api/panel/cycle', cookies: { k785_session: methodistCookie },
+      payload: { year: 2026, dirs: [{ name: 'Эпидемиологическая безопасность', months: [2] }], capaTerms: [] },
+    });
+    await app.inject({
+      method: 'PUT', url: '/api/panel/checklists', cookies: { k785_session: methodistCookie },
+      payload: [{ name: 'Чек-лист аудита стерилизационной', items: ['Режимы соблюдаются?', 'Индикаторы вклеены?'] }],
+    });
+    await app.inject({
+      method: 'PUT', url: '/api/panel/equip-types', cookies: { k785_session: methodistCookie },
+      payload: [{ key: 'fridge', name: 'Холодильник', logs: [{ name: 'Журнал термометрии', freq: 'ежедневно', kind: 'журнал' }] }],
+    });
+    await app.inject({
+      method: 'PUT', url: '/api/panel/summary-master', cookies: { k785_session: methodistCookie },
+      payload: [{ name: 'Сводный отчёт по системе качества за год', note: '', req: true }],
+    });
+
+    // клиника донастраивает направление и генерирует план из цикла
+    await app.inject({
+      method: 'PUT', url: '/api/clinic/cycle/' + encodeURIComponent('Эпидемиологическая безопасность'), cookies: { k785_session: clinicCookie },
+      payload: { check: 'Чек-лист аудита стерилизационной', who: 'Сидорова В. В.' },
+    });
+    const gen = await app.inject({ method: 'POST', url: '/api/clinic/cycle/generate', cookies: { k785_session: clinicCookie } });
+    expect(gen.statusCode).toBe(200);
+    expect(gen.json().generated).toBe(1);
+
+    const plan = await app.inject({ method: 'GET', url: '/api/clinic/plan', cookies: { k785_session: clinicCookie } });
+    expect(plan.json().plan).toHaveLength(1);
+    expect(plan.json().plan[0].date).toBe('01.03.2026');
+
+    // оборудование: клиника заводит позицию и заполняет форму
+    const pos = await app.inject({
+      method: 'POST', url: '/api/clinic/equipment/positions', cookies: { k785_session: clinicCookie },
+      payload: { name: 'Холодильник №1', type: 'fridge', logWho: { 'Журнал термометрии': 'Иванова М. А.' } },
+    });
+    expect(pos.statusCode).toBe(200);
+    const posUid = pos.json().position.uid;
+    const fill = await app.inject({
+      method: 'POST', url: `/api/clinic/equipment/positions/${posUid}/forms/${encodeURIComponent('Журнал термометрии')}/fill`,
+      cookies: { k785_session: clinicCookie }, payload: { value: '+4°C', source: 'кабинет клиники' },
+    });
+    expect(fill.statusCode).toBe(200);
+    const forms = await app.inject({ method: 'GET', url: '/api/clinic/equipment/forms', cookies: { k785_session: clinicCookie } });
+    expect(forms.json().forms[0].dueNow).toBe(false);
+
+    // сводный отчёт: клиника загружает файл
+    const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+    const upload = await app.inject({
+      method: 'POST', url: '/api/clinic/summary/' + encodeURIComponent('Сводный отчёт по системе качества за год') + '/upload',
+      cookies: { k785_session: clinicCookie }, payload: { fileName: 'отчёт.png', base64: png },
+    });
+    expect(upload.statusCode).toBe(200);
+
+    // самообследование: одно нарушение автоматически становится мероприятием
+    await app.inject({ method: 'POST', url: '/api/clinic/selfaudit/' + encodeURIComponent('Чек-лист аудита стерилизационной') + '/start', cookies: { k785_session: clinicCookie } });
+    await app.inject({
+      method: 'POST', url: '/api/clinic/selfaudit/' + encodeURIComponent('Чек-лист аудита стерилизационной') + '/answer',
+      cookies: { k785_session: clinicCookie }, payload: { index: 0, answer: 'ok' },
+    });
+    await app.inject({
+      method: 'POST', url: '/api/clinic/selfaudit/' + encodeURIComponent('Чек-лист аудита стерилизационной') + '/answer',
+      cookies: { k785_session: clinicCookie }, payload: { index: 1, answer: 'bad', comment: 'Индикаторы просрочены' },
+    });
+    const finish = await app.inject({ method: 'POST', url: '/api/clinic/selfaudit/' + encodeURIComponent('Чек-лист аудита стерилизационной') + '/finish', cookies: { k785_session: clinicCookie } });
+    expect(finish.statusCode).toBe(200);
+    expect(finish.json().capaCreated).toBe(1);
+
+    const exportRes = await app.inject({ method: 'GET', url: '/api/clinic/selfaudit/export', cookies: { k785_session: clinicCookie } });
+    expect(exportRes.statusCode).toBe(200);
+    expect(exportRes.body).toContain('НЕ СООТВЕТСТВУЕТ');
+
+    // дашборд платформы видит клинику с правильными счётчиками
+    const clients = await app.inject({ method: 'GET', url: '/api/panel/clients', cookies: { k785_session: methodistCookie } });
+    expect(clients.statusCode).toBe(200);
+    const row = clients.json().clients.find((c: { inn: string }) => c.inn === '7712345671');
+    expect(row.openCapa).toBe(1);
+
+    // клиника (side=clinic) не может открыть каталог клиентов — нет clinic:read
+    const denied = await app.inject({ method: 'GET', url: '/api/panel/clients', cookies: { k785_session: clinicCookie } });
+    expect(denied.statusCode).toBe(403);
+  });
+
   it('logout отзывает cookie сессии — повторный запрос получает 401', async () => {
     await container.auth.register({ inn: '7712345671', login: 'medplus', password: 'medplus2026', password2: 'medplus2026', fio: 'x', side: 'clinic' });
     const login = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { inn: '7712345671', login: 'medplus', password: 'medplus2026' } });

@@ -51,7 +51,16 @@ const inputStyle: React.CSSProperties = { padding: '9px 11px', border: '1px soli
 const primaryBtn: React.CSSProperties = { padding: '9px 14px', borderRadius: 8, border: 'none', background: 'var(--accent)', color: '#fff', fontSize: 12.5, fontWeight: 700, whiteSpace: 'nowrap' };
 const outlineBtn: React.CSSProperties = { padding: '7px 11px', borderRadius: 7, border: '1px solid var(--border-1)', background: 'transparent', fontSize: 11.5, fontWeight: 700, whiteSpace: 'nowrap' };
 
-type Tab = 'accounts' | 'checklists' | 'stages' | 'cycle' | 'payments' | 'secondhand';
+interface ClientRow {
+  inn: string;
+  name: string;
+  createdAt: string;
+  staffCount: number;
+  stagesPaid: number;
+  openCapa: number;
+}
+
+type Tab = 'accounts' | 'checklists' | 'stages' | 'cycle' | 'equip' | 'summary' | 'payments' | 'secondhand' | 'clients';
 
 export default function PlatformPanelPage() {
   const [ready, setReady] = useState(false);
@@ -68,7 +77,10 @@ export default function PlatformPanelPage() {
   const [checklists, setChecklists] = useState<ChecklistDef[]>([]);
   const [stageDocsJson, setStageDocsJson] = useState('[]');
   const [cycleJson, setCycleJson] = useState('null');
+  const [equipJson, setEquipJson] = useState('[]');
+  const [summaryJson, setSummaryJson] = useState('[]');
   const [secondHand, setSecondHand] = useState<SecondHandItem[]>([]);
+  const [clients, setClients] = useState<ClientRow[]>([]);
 
   const say = useCallback((text: string) => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -77,18 +89,24 @@ export default function PlatformPanelPage() {
   }, []);
 
   const loadAll = useCallback(async () => {
-    const [p, c, sd, cy, sh] = await Promise.all([
+    const [p, c, sd, cy, eq, sm, sh, cl] = await Promise.all([
       api.get<{ ok: true; pending: PendingAccount[] } | { ok: false; error: string }>('/api/admin/accounts/pending'),
       api.get<{ ok: true; checklists: ChecklistDef[] }>('/api/panel/checklists'),
       api.get<{ ok: true; stages: unknown[] }>('/api/panel/stage-docs'),
       api.get<{ ok: true; cycle: unknown }>('/api/panel/cycle'),
+      api.get<{ ok: true; types: unknown[] }>('/api/panel/equip-types'),
+      api.get<{ ok: true; rows: unknown[] }>('/api/panel/summary-master'),
       api.get<{ ok: true; items: SecondHandItem[] } | { ok: false; error: string }>('/api/second-hand/pending'),
+      api.get<{ ok: true; clients: ClientRow[] } | { ok: false; error: string }>('/api/panel/clients'),
     ]);
     if (p.ok) setPending(p.pending);
     if (c.ok) setChecklists(c.checklists);
     if (sd.ok) setStageDocsJson(JSON.stringify(sd.stages, null, 2));
     if (cy.ok) setCycleJson(JSON.stringify(cy.cycle, null, 2));
+    if (eq.ok) setEquipJson(JSON.stringify(eq.types, null, 2));
+    if (sm.ok) setSummaryJson(JSON.stringify(sm.rows, null, 2));
     if (sh.ok) setSecondHand(sh.items);
+    if (cl.ok) setClients(cl.clients);
   }, []);
 
   useEffect(() => {
@@ -158,8 +176,11 @@ export default function PlatformPanelPage() {
     { key: 'checklists', label: `Чек-листы · ${checklists.length}` },
     { key: 'stages', label: 'Каталог этапов' },
     { key: 'cycle', label: 'Годовой цикл' },
+    { key: 'equip', label: 'Типы оборудования' },
+    { key: 'summary', label: 'Сводный отчёт' },
     { key: 'payments', label: 'Оплата этапов' },
     { key: 'secondhand', label: `Вторая рука · ${secondHand.length}` },
+    { key: 'clients', label: `Каталог клиентов · ${clients.length}` },
   ];
 
   return (
@@ -233,6 +254,38 @@ export default function PlatformPanelPage() {
             }}
           />
         )}
+
+        {tab === 'equip' && (
+          <JsonCatalogEditor
+            title="Типы оборудования (equip_types)"
+            hint="Массив: key, name, logs: [{name, freq, kind: 'журнал'|'чек-лист'}]. Периодичность (freq) сверяется дословно с обходом и кабинетом клиники."
+            value={equipJson} onChange={setEquipJson} canPublish={canPublish}
+            onPublish={async () => {
+              let parsed: unknown;
+              try { parsed = JSON.parse(equipJson); } catch { say('Некорректный JSON'); return; }
+              const r = await api.put<{ ok: true } | { ok: false; error: string }>('/api/panel/equip-types', parsed);
+              if (!r.ok) { say(r.error); return; }
+              await loadAll(); say('Каталог типов оборудования опубликован');
+            }}
+          />
+        )}
+
+        {tab === 'summary' && (
+          <JsonCatalogEditor
+            title="Состав сводного отчёта (summary_master)"
+            hint="Массив: name, note, req (обязательный или по желанию). Файлы по каждой строке загружает клиника в своём кабинете."
+            value={summaryJson} onChange={setSummaryJson} canPublish={canPublish}
+            onPublish={async () => {
+              let parsed: unknown;
+              try { parsed = JSON.parse(summaryJson); } catch { say('Некорректный JSON'); return; }
+              const r = await api.put<{ ok: true } | { ok: false; error: string }>('/api/panel/summary-master', parsed);
+              if (!r.ok) { say(r.error); return; }
+              await loadAll(); say('Состав сводного отчёта опубликован');
+            }}
+          />
+        )}
+
+        {tab === 'clients' && <ClientsTab clients={clients} />}
 
         {tab === 'payments' && (
           <PaymentsTab canConfirm={canConfirmMoney}
@@ -415,6 +468,30 @@ function SecondHandTab({ items, onConfirm, onReject }: { items: SecondHandItem[]
               Подтвердить может только другой сотрудник с нужным правом.
             </div>
           )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ClientsTab({ clients }: { clients: ClientRow[] }) {
+  const [q, setQ] = useState('');
+  const filtered = clients.filter((c) => !q.trim() || c.inn.includes(q.trim()) || c.name.toLowerCase().includes(q.trim().toLowerCase()));
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Поиск по ИНН или названию" style={inputStyle} />
+      {filtered.length === 0 && <EmptyState text="Клиник пока нет." />}
+      {filtered.map((c) => (
+        <div key={c.inn} style={{ ...cardStyle, display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 800 }}>{c.name}</div>
+            <div style={{ fontSize: 11.5, color: 'var(--text-muted)', fontWeight: 600, fontFamily: 'var(--font-mono)' }}>ИНН {c.inn} · с {c.createdAt}</div>
+          </div>
+          <div style={{ display: 'flex', gap: 14, fontSize: 11.5, fontWeight: 700 }}>
+            <span>Сотрудников: {c.staffCount}</span>
+            <span>Оплачено этапов: {c.stagesPaid}</span>
+            <span style={{ color: c.openCapa > 0 ? 'var(--error)' : 'var(--text-muted)' }}>Открытых CAPA: {c.openCapa}</span>
+          </div>
         </div>
       ))}
     </div>

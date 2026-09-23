@@ -68,12 +68,19 @@ export interface EquipmentPosition {
   uid: string;
   name: string;
   room?: string;
+  branch?: string;
+  type?: string; // ключ типа из каталога методиста (`equip_types`)
   logWho?: Record<string, string>; // форма журнала -> "ФИО (+ ФИО …)"
 }
 
+/** Заполнение одной формы одной позиции оборудования (ключ канала — `<uid>|<форма>`). */
 export interface EquipmentFill {
   date?: string;
   who?: string;
+  value?: string;
+  note?: string;
+  answers?: Record<string, 'ok' | 'bad'>; // для форм вида "чек-лист" — ключ - индекс пункта строкой (JSON-границы: числовые ключи всё равно строки)
+  source?: 'обход' | 'кабинет клиники';
 }
 
 export interface StaffMember {
@@ -91,7 +98,8 @@ export interface StaffMember {
  */
 export interface CapaItem {
   id: string;
-  sourcePlanId: string | null;
+  sourceKind: 'walk' | 'selfaudit';
+  sourcePlanId: string | null; // walk: id проверки плана; selfaudit: имя чек-листа
   sourceItemIndex: number | null;
   auditName: string;
   object: string;
@@ -154,12 +162,7 @@ export interface StagePaymentState {
   amount: number;
 }
 
-/**
- * Годовой цикл — эталон методиста (`cycle_master`, платформенный канал).
- * Публикуется методистом, разбор в помесячный план проверок клиники
- * (`cycle_live`) не перенесён (README «Что дальше») — здесь только
- * публикация самого эталона: направление, месяцы проверок, срок CAPA.
- */
+/** Годовой цикл — эталон методиста (`cycle_master`, платформенный канал). */
 export interface CycleDirection {
   name: string;
   months: number[]; // 0–11, в какие месяцы проводится проверка направления
@@ -174,4 +177,74 @@ export interface CycleMaster {
   year: number;
   dirs: CycleDirection[];
   capaTerms: CapaTerm[];
+}
+
+/**
+ * Разбор эталона клиникой (`cycle_live`, тенантский канал) — направление
+ * может переопределить месяцы эталона и добавить то, чего в эталоне нет:
+ * привязанный чек-лист, объект, филиал, ответственного. Направление, не
+ * упомянутое здесь, берёт месяцы прямо из `cycle_master` как есть.
+ */
+export interface CycleLiveDirection {
+  name: string;
+  months?: number[]; // не задано — берутся месяцы эталона
+  check?: string;
+  object?: string;
+  branch?: string;
+  who?: string;
+}
+
+export interface CycleLive {
+  year: number;
+  dirs: CycleLiveDirection[];
+}
+
+/** Объект клиники — филиал или головное подразделение (README «Профиль клиники»). */
+export interface Branch {
+  id: string;
+  name: string;
+}
+
+/** Тип оборудования из эталона методиста (`equip_types`, платформенный канал). */
+export interface EquipmentLogDef {
+  name: string;
+  freq: string; // например "ежедневно", "1 раз в месяц" — формат normalizeChecklistName не участвует, сверяется дословно
+  kind: 'журнал' | 'чек-лист';
+}
+
+export interface EquipmentType {
+  key: string;
+  name: string;
+  logs: EquipmentLogDef[];
+}
+
+/** Строка сводного отчёта из эталона методиста (`summary_master`, платформенный канал). */
+export interface SummaryRowDef {
+  name: string;
+  note: string;
+  req: boolean; // обязательный документ или "по желанию"
+}
+
+/** Файл клиники, загруженный по строке сводного отчёта (`summary_files`, тенантский канал). */
+export interface SummaryFileEntry {
+  fileId: string;
+  fileName: string;
+  date: string;
+  uploadedBy: string;
+}
+
+export type SelfAuditAnswer = '' | 'ok' | 'bad' | 'na'; // соответствует / не соответствует / не применимо
+
+export interface SelfAuditItem {
+  text: string;
+  answer: SelfAuditAnswer;
+  comment: string;
+}
+
+/** Один прогон самообследования по одному чек-листу (`selfaudit`, тенантский канал). */
+export interface SelfAuditRun {
+  checklistName: string;
+  items: SelfAuditItem[];
+  finished: boolean;
+  date: string;
 }

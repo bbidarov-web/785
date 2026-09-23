@@ -2,6 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
+import {
+  BranchesTab, CycleTab, EquipmentTab, SummaryTab, SelfAuditTab,
+  type Branch, type CycleDirectionView, type EquipmentPosition, type EquipmentTypeDef, type EquipmentFormRow,
+  type SummaryRow, type SelfAuditRunView,
+} from './extraTabs';
 
 /**
  * Личный кабинет ВКК — первая часть (README «Сотрудники и матрица
@@ -82,7 +87,7 @@ interface CapaItem {
   closedAt: string | null;
 }
 
-type Tab = 'stages' | 'staff' | 'plan' | 'findings' | 'capa';
+type Tab = 'stages' | 'staff' | 'plan' | 'findings' | 'capa' | 'branches' | 'cycle' | 'equipment' | 'summary' | 'selfaudit';
 const ALLOWED_ROLES = ['clinic_admin', 'vkk_lead', 'auditor', 'observer'];
 
 const cardStyle: React.CSSProperties = { background: 'var(--bg-card)', border: '1px solid var(--border-2)', borderRadius: 11, padding: '14px 16px' };
@@ -108,6 +113,15 @@ export default function ClinicCabinetPage() {
   const [plan, setPlan] = useState<PlanItem[]>([]);
   const [findings, setFindings] = useState<Finding[]>([]);
   const [capa, setCapa] = useState<CapaItem[]>([]);
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [cycleYear, setCycleYear] = useState<number | null>(null);
+  const [cycleDirs, setCycleDirs] = useState<CycleDirectionView[]>([]);
+  const [equipPositions, setEquipPositions] = useState<EquipmentPosition[]>([]);
+  const [equipTypes, setEquipTypes] = useState<EquipmentTypeDef[]>([]);
+  const [equipForms, setEquipForms] = useState<EquipmentFormRow[]>([]);
+  const [summaryRows, setSummaryRows] = useState<SummaryRow[]>([]);
+  const [selfAuditRuns, setSelfAuditRuns] = useState<SelfAuditRunView[]>([]);
+  const [checklistCatalog, setChecklistCatalog] = useState<string[]>([]);
 
   const say = useCallback((text: string) => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -116,13 +130,21 @@ export default function ClinicCabinetPage() {
   }, []);
 
   const loadAll = useCallback(async () => {
-    const [st, s, a, p, f, c] = await Promise.all([
+    const [st, s, a, p, f, c, br, cy, eqp, eqt, eqf, sm, sa, chk] = await Promise.all([
       api.get<{ ok: true; stages: StageView[] }>('/api/clinic/stages'),
       api.get<{ ok: true; staff: StaffMember[] }>('/api/clinic/staff'),
       api.get<{ ok: true; assignments: Record<string, string> }>('/api/clinic/assignments'),
       api.get<{ ok: true; plan: PlanItem[] }>('/api/clinic/plan'),
       api.get<{ ok: true; findings: Finding[] }>('/api/clinic/capa/findings'),
       api.get<{ ok: true; items: CapaItem[] }>('/api/clinic/capa'),
+      api.get<{ ok: true; branches: Branch[] }>('/api/clinic/branches'),
+      api.get<{ ok: true; year: number; dirs: CycleDirectionView[] } | { ok: false; error: string }>('/api/clinic/cycle'),
+      api.get<{ ok: true; positions: EquipmentPosition[] }>('/api/clinic/equipment/positions'),
+      api.get<{ ok: true; types: EquipmentTypeDef[] }>('/api/panel/equip-types'),
+      api.get<{ ok: true; forms: EquipmentFormRow[] }>('/api/clinic/equipment/forms'),
+      api.get<{ ok: true; rows: SummaryRow[] }>('/api/clinic/summary'),
+      api.get<{ ok: true; runs: SelfAuditRunView[] }>('/api/clinic/selfaudit'),
+      api.get<{ ok: true; checklists: { name: string }[] }>('/api/panel/checklists'),
     ]);
     if (st.ok) setStages(st.stages);
     if (s.ok) setStaff(s.staff);
@@ -130,6 +152,14 @@ export default function ClinicCabinetPage() {
     if (p.ok) setPlan(p.plan);
     if (f.ok) setFindings(f.findings);
     if (c.ok) setCapa(c.items);
+    if (br.ok) setBranches(br.branches);
+    if (cy.ok) { setCycleYear(cy.year); setCycleDirs(cy.dirs); } else { setCycleYear(null); setCycleDirs([]); }
+    if (eqp.ok) setEquipPositions(eqp.positions);
+    if (eqt.ok) setEquipTypes(eqt.types);
+    if (eqf.ok) setEquipForms(eqf.forms);
+    if (sm.ok) setSummaryRows(sm.rows);
+    if (sa.ok) setSelfAuditRuns(sa.runs);
+    if (chk.ok) setChecklistCatalog(chk.checklists.map((c) => c.name));
   }, []);
 
   useEffect(() => {
@@ -195,6 +225,8 @@ export default function ClinicCabinetPage() {
   const canAssign = session.role === 'clinic_admin' || session.role === 'vkk_lead';
   const canManagePlan = canAssign;
   const canCreateCapa = canAssign;
+  const canManageBranches = session.role === 'clinic_admin';
+  const canManageEquip = canAssign;
 
   const tabs: { key: Tab; label: string }[] = [
     { key: 'stages', label: `Этапы и документы · ${stages.length}` },
@@ -202,6 +234,11 @@ export default function ClinicCabinetPage() {
     { key: 'plan', label: `План проверок · ${plan.length}` },
     { key: 'findings', label: `Находки · ${findings.length}` },
     { key: 'capa', label: `CAPA · ${capa.filter((c) => c.status === 'planned').length}` },
+    { key: 'branches', label: `Филиалы · ${branches.length}` },
+    { key: 'cycle', label: 'Годовой цикл' },
+    { key: 'equipment', label: `Оборудование · ${equipPositions.length}` },
+    { key: 'summary', label: 'Сводный отчёт' },
+    { key: 'selfaudit', label: `Самообследование · ${selfAuditRuns.length}` },
   ];
 
   return (
@@ -293,6 +330,95 @@ export default function ClinicCabinetPage() {
               if (!r.ok) { say(r.error); return; }
               await loadAll(); say('Мероприятие возвращено в работу');
             }}
+          />
+        )}
+
+        {tab === 'branches' && (
+          <BranchesTab branches={branches} canManage={canManageBranches}
+            onAdd={async (name) => {
+              const r = await api.post<{ ok: true } | { ok: false; error: string }>('/api/clinic/branches', { name });
+              if (!r.ok) { say(r.error); return; }
+              await loadAll(); say('Филиал добавлен');
+            }}
+            onRemove={async (id) => {
+              const r = await api.del<{ ok: true } | { ok: false; error: string }>('/api/clinic/branches/' + id);
+              if (!r.ok) { say(r.error); return; }
+              await loadAll(); say('Филиал удалён');
+            }}
+          />
+        )}
+
+        {tab === 'cycle' && (
+          <CycleTab year={cycleYear} dirs={cycleDirs} staff={staff} canManage={canManagePlan}
+            onCustomize={async (name, patch) => {
+              const r = await api.put<{ ok: true } | { ok: false; error: string }>('/api/clinic/cycle/' + encodeURIComponent(name), patch);
+              if (!r.ok) { say(r.error); return; }
+              await loadAll(); say('Направление настроено');
+            }}
+            onGenerate={async () => {
+              const r = await api.post<{ ok: true; generated: number } | { ok: false; error: string }>('/api/clinic/cycle/generate', {});
+              if (!r.ok) { say(r.error); return; }
+              await loadAll(); say(`В план добавлено строк: ${r.generated}`);
+            }}
+          />
+        )}
+
+        {tab === 'equipment' && (
+          <EquipmentTab positions={equipPositions} types={equipTypes} forms={equipForms} canManage={canManageEquip}
+            onAddPosition={async (input) => {
+              const r = await api.post<{ ok: true } | { ok: false; error: string }>('/api/clinic/equipment/positions', input);
+              if (!r.ok) { say(r.error); return; }
+              await loadAll(); say('Позиция добавлена');
+            }}
+            onRemovePosition={async (uid) => {
+              const r = await api.del<{ ok: true } | { ok: false; error: string }>('/api/clinic/equipment/positions/' + uid);
+              if (!r.ok) { say(r.error); return; }
+              await loadAll(); say('Позиция удалена');
+            }}
+            onFill={async (posUid, formName, value, note) => {
+              const r = await api.post<{ ok: true } | { ok: false; error: string }>(
+                `/api/clinic/equipment/positions/${posUid}/forms/${encodeURIComponent(formName)}/fill`,
+                { value, note, source: 'кабинет клиники' },
+              );
+              if (!r.ok) { say(r.error); return; }
+              await loadAll(); say('Форма заполнена');
+            }}
+          />
+        )}
+
+        {tab === 'summary' && (
+          <SummaryTab rows={summaryRows} canManage={canAssign}
+            onUpload={async (name, fileName, base64) => {
+              const r = await api.post<{ ok: true } | { ok: false; error: string }>('/api/clinic/summary/' + encodeURIComponent(name) + '/upload', { fileName, base64 });
+              if (!r.ok) { say(r.error); return; }
+              await loadAll(); say('Файл загружен');
+            }}
+            onRemove={async (name) => {
+              const r = await api.del<{ ok: true } | { ok: false; error: string }>('/api/clinic/summary/' + encodeURIComponent(name));
+              if (!r.ok) { say(r.error); return; }
+              await loadAll(); say('Файл удалён');
+            }}
+          />
+        )}
+
+        {tab === 'selfaudit' && (
+          <SelfAuditTab runs={selfAuditRuns} catalog={checklistCatalog} canManage={canManagePlan}
+            onStart={async (name) => {
+              const r = await api.post<{ ok: true } | { ok: false; error: string }>('/api/clinic/selfaudit/' + encodeURIComponent(name) + '/start', {});
+              if (!r.ok) { say(r.error); return; }
+              await loadAll(); say('Прогон начат');
+            }}
+            onAnswer={async (name, index, answer, comment) => {
+              const r = await api.post<{ ok: true } | { ok: false; error: string }>('/api/clinic/selfaudit/' + encodeURIComponent(name) + '/answer', { index, answer, comment });
+              if (!r.ok) { say(r.error); return; }
+              await loadAll();
+            }}
+            onFinish={async (name) => {
+              const r = await api.post<{ ok: true; capaCreated: number } | { ok: false; error: string }>('/api/clinic/selfaudit/' + encodeURIComponent(name) + '/finish', {});
+              if (!r.ok) { say(r.error); return; }
+              await loadAll(); say(r.capaCreated ? `Прогон завершён, заведено мероприятий: ${r.capaCreated}` : 'Прогон завершён, несоответствий не найдено');
+            }}
+            onExport={() => window.open('/api/clinic/selfaudit/export', '_blank')}
           />
         )}
       </div>

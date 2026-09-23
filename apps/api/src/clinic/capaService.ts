@@ -42,7 +42,7 @@ export class CapaService {
       this.repos.channels.get<Record<string, WalkResultEntry>>('tenant', account.inn, 'walk_results', {}),
       this.repos.channels.get<CapaItem[]>('tenant', account.inn, 'capa', []),
     ]);
-    const converted = new Set(capaRec.data.map((c) => `${c.sourcePlanId}|${c.sourceItemIndex}`));
+    const converted = new Set(capaRec.data.filter((c) => c.sourceKind === 'walk').map((c) => `${c.sourcePlanId}|${c.sourceItemIndex}`));
     const out: { planId: string; itemIndex: number; auditName: string; object: string; text: string; comment: string }[] = [];
     for (const entry of Object.values(resultsRec.data)) {
       if (!entry.finished) continue;
@@ -71,6 +71,7 @@ export class CapaService {
       }
       const item: CapaItem = {
         id: randomUUID(),
+        sourceKind: 'walk',
         sourcePlanId: planId,
         sourceItemIndex: itemIndex,
         auditName: entry.name,
@@ -79,6 +80,44 @@ export class CapaService {
         comment: found.comment,
         who: opts.who?.trim() || entry.who || 'не назначен',
         due: opts.due || '',
+        status: 'planned',
+        createdAt: today(),
+        createdBy: account.id,
+        closedAt: null,
+      };
+      const next = rec.data.concat([item]);
+      const res = await this.repos.channels.set('tenant', account.inn, 'capa', next, { expectedVersion: rec.version, updatedBy: account.id });
+      if (res.ok) return { ok: true, item };
+    }
+    return { ok: false, error: 'Не удалось сохранить — слишком много параллельных правок, повторите' };
+  }
+
+  /**
+   * Самообследование клиника проводит сама, тем же сотрудником, который уже
+   * держит `capa:write` (`clinic_admin`/`vkk_lead`) — в отличие от обхода, где
+   * аудитор фиксирует чужим руками, здесь privilege-эскалации нет: кто вправе
+   * завершить самообследование, вправе и завести по нему мероприятие. Право
+   * проверяется здесь заново (а не наследуется от вызывающего), а не потому,
+   * что вызывающий мог ошибиться — так каждый метод остаётся самодостаточным.
+   */
+  async createFromSelfAudit(account: Account, checklistName: string, itemIndex: number, text: string, comment: string): Promise<CapaResult<{ item: CapaItem }>> {
+    await assertPermission(this.repos.auditLog, account, 'capa:write', 'capa:create-from-selfaudit', checklistName, account.inn);
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const rec = await this.repos.channels.get<CapaItem[]>('tenant', account.inn, 'capa', []);
+      if (rec.data.some((c) => c.sourceKind === 'selfaudit' && c.sourcePlanId === checklistName && c.sourceItemIndex === itemIndex)) {
+        return { ok: false, error: 'Мероприятие по этому несоответствию уже заведено' };
+      }
+      const item: CapaItem = {
+        id: randomUUID(),
+        sourceKind: 'selfaudit',
+        sourcePlanId: checklistName,
+        sourceItemIndex: itemIndex,
+        auditName: `Самообследование · ${checklistName}`,
+        object: '',
+        findingText: text,
+        comment,
+        who: 'не назначен',
+        due: '',
         status: 'planned',
         createdAt: today(),
         createdBy: account.id,

@@ -24,6 +24,12 @@ import { CapaService } from './clinic/capaService.js';
 import { StageService } from './clinic/stageService.js';
 import { CatalogService } from './panel/catalogService.js';
 import { PaymentService } from './panel/paymentService.js';
+import { BranchService } from './clinic/branchService.js';
+import { CycleService } from './clinic/cycleService.js';
+import { EquipmentService } from './clinic/equipmentService.js';
+import { SummaryService } from './clinic/summaryService.js';
+import { SelfAuditService } from './clinic/selfAuditService.js';
+import { DashboardService } from './panel/dashboardService.js';
 
 export interface SecondHandHandler {
   /** Право, которым должен обладать ПОДТВЕРЖДАЮЩИЙ — своё для каждого типа операции (SERVER.md §4). */
@@ -67,6 +73,7 @@ export function buildContainer(prisma: PrismaClient) {
 export function buildContainerFromRepos(repos: Repos) {
   const secondHand = new SecondHandService(repos);
   const payment = new PaymentService(repos, secondHand);
+  const capa = new CapaService(repos);
 
   // Реестр операций «второй руки»: по типу запроса — кто вправе подтвердить
   // и что применить при подтверждении. Единая точка, а не разбросанные по
@@ -98,10 +105,16 @@ export function buildContainerFromRepos(repos: Repos) {
     walk: new WalkService(repos),
     staff: new StaffService(repos),
     plan: new PlanService(repos),
-    capa: new CapaService(repos),
+    capa,
     stage: new StageService(repos),
     catalog: new CatalogService(repos),
     payment,
+    branch: new BranchService(repos),
+    cycle: new CycleService(repos),
+    equipment: new EquipmentService(repos),
+    summary: new SummaryService(repos),
+    selfAudit: new SelfAuditService(repos, capa),
+    dashboard: new DashboardService(repos),
   };
 }
 

@@ -16,6 +16,7 @@ import type {
 export interface TenantRepo {
   upsert(inn: string, name: string): Promise<void>;
   findByInn(inn: string): Promise<{ inn: string; name: string } | null>;
+  listAll(): Promise<{ inn: string; name: string; createdAt: Date }[]>;
 }
 
 /** Порт репозитория учётных записей. Реализации: infra/memory (тесты), infra/prisma (прод). */
