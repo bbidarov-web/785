@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; padding: 0; background: #eef1f1; }
+  body { font-family: Manrope, "Helvetica Neue", Helvetica, sans-serif; -webkit-font-smoothing: antialiased; color: #10201f; }
+  * { box-sizing: border-box; }
+  a { color: #157f76; text-decoration: none; }
+  a:hover { color: #0d5c55; }
+</style>
+</helmet>
+
+<div style="min-height: 100vh; background: #eef1f1; padding: 26px 22px 60px; display: flex; justify-content: center">
+  <div style="width: 100%; max-width: 1240px; display: flex; flex-direction: column; gap: 18px">
+
+    <div style="background: #0f1f1e; color: #e6efee; border-radius: 16px; padding: 22px 24px; display: flex; flex-direction: column; gap: 16px">
+      <div style="display: flex; align-items: flex-start; gap: 18px; flex-wrap: wrap">
+        <div style="display: flex; flex-direction: column; gap: 6px; margin-right: auto; min-width: 0">
+          <div style="font-size: 22px; font-weight: 800; letter-spacing: -0.5px">Сопоставление кабинетов</div>
+          <div style="font-size: 12.5px; color: #8fa8a5; font-weight: 600; line-height: 1.5; max-width: 660px; text-wrap: pretty">Три рабочих поверхности обмениваются данными: кабинет клиники (ВКК), мобильный обход и панель оператора. Кабинеты методиста, менеджера и руководителя продаж — та же панель под ролью из сеанса, своих каналов у них нет; кабинет исполнителя — отдельный читатель тех же ключей в границах назначений. Столбец «отклик» читает данные арендатора прямо сейчас: есть ли значение в канале, а не только в коде. Четыре состояния: «есть» — значение в канале лежит; «пусто» — записи есть, поле не заполнено (единственное, что стоит проверять); «нет записей» — ключ есть, пустой; «канала нет» — события ещё не было, ключ создаётся первой записью. «Не проверяется» — строка описана прозой, хранилищем не сверяется.</div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 8px; align-items: flex-end">
+          <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; font-weight: 600; color: #b8ccca">{{ tenantLabel }}</div>
+          <div style="display: flex; gap: 8px">
+            <div onClick="{{ toggleOnly }}" style="padding: 9px 14px; border-radius: 9px; background: {{ onlyBg }}; color: {{ onlyColor }}; border: 1px solid #26403e; font-size: 12px; font-weight: 800; cursor: pointer; white-space: nowrap">{{ onlyLabel }}</div>
+            <div style="display: flex; align-items: center; gap: 7px; padding: 9px 13px; border-radius: 9px; background: #123330; border: 1px solid #26403e; white-space: nowrap">
+              <span style="width: 7px; height: 7px; border-radius: 50%; background: #35c9a6; flex-shrink: 0"></span>
+              <span style="font-size: 11.5px; font-weight: 700; color: #b8ccca">обновляется автоматически</span>
+            </div>
+            <div onClick="{{ refresh }}" style="padding: 9px 14px; border-radius: 9px; background: #157f76; color: #ffffff; font-size: 12px; font-weight: 800; cursor: pointer; white-space: nowrap">Перечитать</div>
+          </div>
+        </div>
+      </div>
+      <div style="display: flex; gap: 8px; flex-wrap: wrap; border-top: 1px solid #26403e; padding-top: 14px">
+        <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="4">
+          <div onClick="{{ t.pick }}" style="display: flex; align-items: center; gap: 9px; padding: 9px 14px; border-radius: 9px; background: {{ t.bg }}; color: {{ t.color }}; border: 1px solid #26403e; font-size: 12px; font-weight: 800; cursor: pointer; white-space: nowrap">
+            <span>{{ t.name }}</span>
+            <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: {{ t.badgeColor }}">{{ t.badge }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px">
+      <sc-for list="{{ stats }}" as="s" hint-placeholder-count="4">
+        <div style="background: #ffffff; border: 1px solid #dde3e2; border-radius: 12px; padding: 15px 16px; display: flex; flex-direction: column; gap: 5px">
+          <div style="font-family: 'IBM Plex Mono', monospace; font-size: 26px; font-weight: 700; color: {{ s.color }}; line-height: 1">{{ s.val }}</div>
+          <div style="font-size: 11.5px; color: #61736f; font-weight: 700; line-height: 1.35">{{ s.name }}</div>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="background: {{ brokenBg }}; border: 1px solid {{ brokenBorder }}; border-radius: 12px; padding: 16px 18px; display: flex; flex-direction: column; gap: 4px">
+      <div style="font-size: 13px; font-weight: 800; color: {{ brokenTitleColor }}; padding-bottom: 6px">Связь не подтверждена — принимающая сторона поле не читает</div>
+      <sc-for list="{{ broken }}" as="b" hint-placeholder-count="4">
+        <div style="display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap; padding: 9px 0; border-top: 1px solid #eecfc9">
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 600; color: #7c2b22; min-width: 200px">{{ b.field }}</span>
+          <span style="font-size: 12px; font-weight: 600; color: #7c2b22; line-height: 1.45; flex: 1; min-width: 280px; text-wrap: pretty">{{ b.comment }}</span>
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; font-weight: 600; color: #a8342a; white-space: nowrap">{{ b.chan }}</span>
+        </div>
+      </sc-for>
+      <sc-if value="{{ noBroken }}" hint-placeholder-val="{{ false }}">
+        <div style="font-size: 12px; font-weight: 600; color: #0d5c55; padding-top: 4px">В выбранной паре неподтверждённых связей нет — все поля читаются принимающей стороной.</div>
+      </sc-if>
+    </div>
+
+    <sc-for list="{{ channels }}" as="c" hint-placeholder-count="4">
+      <div style="background: #ffffff; border: 1px solid #dde3e2; border-radius: 14px; padding: 18px 20px 8px; display: flex; flex-direction: column; gap: 12px">
+        <div style="display: flex; align-items: flex-start; gap: 12px; flex-wrap: wrap">
+          <div style="display: flex; flex-direction: column; gap: 5px; margin-right: auto; min-width: 0">
+            <div style="display: flex; align-items: center; gap: 9px; flex-wrap: wrap">
+              <span style="font-size: 16px; font-weight: 800; letter-spacing: -0.3px">{{ c.name }}</span>
+              <span style="font-size: 10px; font-weight: 800; color: {{ c.dirColor }}; background: {{ c.dirBg }}; padding: 3px 8px; border-radius: 5px; white-space: nowrap">{{ c.dir }}</span>
+            </div>
+            <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; font-weight: 600; color: #61736f; overflow-wrap: anywhere">{{ c.key }}</div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 5px; align-items: flex-end">
+            <div style="font-size: 10.5px; font-weight: 800; color: {{ c.liveColor }}; background: {{ c.liveBg }}; padding: 4px 9px; border-radius: 5px; white-space: nowrap">{{ c.live }}</div>
+            <div style="font-size: 11px; color: #61736f; font-weight: 600">{{ c.count }}</div>
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1.1fr 1.1fr 1.7fr 0.85fr 0.6fr; gap: 10px; padding: 0 2px 6px; border-bottom: 1px solid #eef1f1">
+          <sc-for list="{{ heads }}" as="h" hint-placeholder-count="5">
+            <div style="font-size: 9.5px; font-weight: 800; color: #8a9997; letter-spacing: 0.6px; text-transform: uppercase">{{ h.name }}</div>
+          </sc-for>
+        </div>
+
+        <sc-for list="{{ c.rows }}" as="r" hint-placeholder-count="6">
+          <div style="display: grid; grid-template-columns: 1.1fr 1.1fr 1.7fr 0.85fr 0.6fr; gap: 10px; align-items: start; padding: 10px 2px; border-bottom: 1px solid #f4f6f6; background: {{ r.rowBg }}">
+            <div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 600; overflow-wrap: anywhere">{{ r.from }}</div>
+            <div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 600; color: {{ r.toColor }}; overflow-wrap: anywhere">{{ r.to }}</div>
+            <div style="font-size: 11.5px; font-weight: 600; color: #4a5c59; line-height: 1.45; text-wrap: pretty">{{ r.comment }}</div>
+            <div style="font-size: 10px; font-weight: 800; color: {{ r.color }}; background: {{ r.bg }}; padding: 4px 8px; border-radius: 5px; justify-self: start; white-space: nowrap">{{ r.status }}</div>
+            <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 600; color: {{ r.echoColor }}; white-space: nowrap">{{ r.echo }}</div>
+          </div>
+        </sc-for>
+        <sc-if value="{{ c.empty }}" hint-placeholder-val="{{ false }}">
+          <div style="padding: 14px 4px 18px; font-size: 12px; font-weight: 600; color: #8a9997">В этом канале расхождений нет.</div>
+        </sc-if>
+      </div>
+    </sc-for>
+
+    <div style="background: #ffffff; border: 1px solid #dde3e2; border-radius: 14px; padding: 18px 20px; display: flex; flex-direction: column; gap: 12px">
+      <div style="font-size: 14px; font-weight: 800">Общие каналы: кто пишет, кто читает</div>
+      <div style="display: grid; grid-template-columns: 1.5fr 1fr 1fr 0.7fr; gap: 10px; padding-bottom: 6px; border-bottom: 1px solid #eef1f1">
+        <div style="font-size: 9.5px; font-weight: 800; color: #8a9997; letter-spacing: 0.6px; text-transform: uppercase">ключ</div>
+        <div style="font-size: 9.5px; font-weight: 800; color: #8a9997; letter-spacing: 0.6px; text-transform: uppercase">пишут</div>
+        <div style="font-size: 9.5px; font-weight: 800; color: #8a9997; letter-spacing: 0.6px; text-transform: uppercase">читают</div>
+        <div style="font-size: 9.5px; font-weight: 800; color: #8a9997; letter-spacing: 0.6px; text-transform: uppercase">отклик</div>
+      </div>
+      <sc-for list="{{ keyMap }}" as="k" hint-placeholder-count="10">
+        <div style="display: grid; grid-template-columns: 1.5fr 1fr 1fr 0.7fr; gap: 10px; align-items: start; padding: 8px 0; border-bottom: 1px solid #f4f6f6; background: {{ k.rowBg }}">
+          <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; font-weight: 600; overflow-wrap: anywhere">{{ k.key }}</div>
+          <div style="font-size: 11.5px; font-weight: 700; color: #3d5a56">{{ k.w }}</div>
+          <div style="font-size: 11.5px; font-weight: 700; color: {{ k.rColor }}">{{ k.r }}</div>
+          <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 600; color: {{ k.liveColor }}">{{ k.live }}</div>
+        </div>
+      </sc-for>
+      <div style="font-size: 11.5px; color: #61736f; font-weight: 600; line-height: 1.5; text-wrap: pretty">Арендатор во всех трёх экранах — это <span style="font-family: 'IBM Plex Mono', monospace">ИНН</span>: <span style="font-family: 'IBM Plex Mono', monospace">?clinic=7712345678</span> → <span style="font-family: 'IBM Plex Mono', monospace">k785_active_tenant</span>. Название организации больше не участвует в ключах — оно подпись для человека и берётся из реестра <span style="font-family: 'IBM Plex Mono', monospace">k785_clinics</span>, который ведут оператор и сам кабинет (кабинет дописывает свою запись из профиля, чужие не трогает); оператор при этом реестр только публикует, а имена разрешает по своему внутреннему списку клиник. При первом открытии кабинет переносит данные со старых ключей «префикс + название» на ключи по ИНН. У кабинета исполнителя арендатор берётся не из адреса, а из учётной записи сотрудника: подставить чужой ИНН в ссылке нельзя.</div>
+    </div>
+
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1300,&quot;height&quot;:1500}}">
+class Component extends DCLogic {
+  state = { tick: 0, only: false, pair: 'all' };
+
+  componentDidMount() {
+    // документ живой: пересчитываем сам, кнопка «Перечитать» осталась только как явный жест.
+    // сбрасываем и кэши (арендатор, список ключей) — иначе новый канал не появлялся
+    this._h = () => {
+      this._bases = null;
+      this.setState(s => ({ tick: s.tick + 1 }));
+    };
+    window.addEventListener('storage', this._h);
+    // правки в этой же вкладке событие storage не порождают — короткий опрос обязателен
+    this._i = setInterval(this._h, 800);
+    this._vis = () => { if (!document.hidden) this._h(); };
+    document.addEventListener('visibilitychange', this._vis);
+    window.addEventListener('focus', this._h);
+  }
+  componentWillUnmount() {
+    window.removeEventListener('storage', this._h);
+    window.removeEventListener('focus', this._h);
+    document.removeEventListener('visibilitychange', this._vis);
+    clearInterval(this._i);
+  }
+
+  // тот же резолвер, что в трёх экранах: ключи строятся от ИНН, название — только подпись
+  innOf(v) {
+    const s = String(v || '').trim();
+    if (/^\d{10,12}$/.test(s)) return s;
+    try {
+      const reg = JSON.parse(window.localStorage.getItem('k785_clinics') || '{}') || {};
+      const hit = Object.keys(reg).filter(inn => (reg[inn] || {}).name === s)[0];
+      if (hit) return hit;
+    } catch (err) { /* реестр недоступен */ }
+    return '';
+  }
+
+  tenantName() {
+    try {
+      const reg = JSON.parse(window.localStorage.getItem('k785_clinics') || '{}') || {};
+      return ((reg[this.tenant()] || {}).name) || '';
+    } catch (err) { return ''; }
+  }
+
+  tenant() {
+    // арендатор мог переключиться в другой вкладке — перечитываем при каждом опросе
+    if (this._t && this._tTick === this.state.tick) return this._t;
+    this._tTick = this.state.tick;
+    let t = '';
+    try {
+      t = new URLSearchParams(window.location.search).get('clinic')
+        || window.localStorage.getItem('k785_active_tenant') || '';
+    } catch (err) { t = ''; }
+    // старая ссылка могла принести название — резолвим через реестр, иначе все probeKey
+    // собрались бы по названию и каждый канал отрапортовал бы «канала нет»
+    this._t = this.innOf(t) || '7712345678';
+    return this._t;
+  }
+
+  read(key) {
+    try { return JSON.parse(window.localStorage.getItem(key) || 'null'); } catch (err) { return null; }
+  }
+
+  records(key) {
+    const v = this.read(key);
+    if (!v) return null;
+    if (Array.isArray(v)) return v;
+    if (typeof v === 'object') return Object.keys(v).map(k => v[k]).filter(x => x && typeof x === 'object');
+    return null;
+  }
+
+  // существует ли такой канал у арендатора — по этому решаем, ключ перед нами или поле
+  // канал бывает арендаторским (k785_x_ИНН) и глобальным (k785_x) — ищем оба
+  keyOf(base) {
+    try {
+      const ls = window.localStorage;
+      const t = 'k785_' + base + '_' + this.tenant();
+      if (ls.getItem(t) !== null) return t;
+      if (ls.getItem('k785_' + base) !== null) return 'k785_' + base;
+    } catch (err) { /* хранилище недоступно */ }
+    return '';
+  }
+
+  hasKey(base) { return !!this.keyOf(base); }
+
+  // коллекция: массив как есть, объект-словарь — своими значениями
+  asList(v) {
+    if (Array.isArray(v)) return v;
+    if (v && typeof v === 'object') return Object.keys(v).map(k => v[k]);
+    return [];
+  }
+
+  filled(v) {
+    if (v === undefined || v === null || v === '') return false;
+    if (Array.isArray(v)) return v.length > 0;
+    if (typeof v === 'object') return Object.keys(v).length > 0;
+    return true;
+  }
+
+  // точечный путь разрешаем по РАЗОБРАННОМУ значению ключа, а не по «расплющенным»
+  // записям: иначе «capaPlan.newIn» искалось у самих capaPlan/uploads/equipPositions
+  // и всегда давало ложное «пусто»
+  // базы всех ключей проекта: по ним отличаем «имя канала» от «имени поля»
+  knownBases() {
+    if (this._bases) return this._bases;
+    const out = {};
+    try {
+      this.keyRows().forEach(k => String(k.key).split(' · ').forEach(n => {
+        const b = String(n).replace(/\s*\(.*$/, '').trim()
+          .replace(/^k785_/, '').replace(/_$/, '').replace(/_\d{10,12}$/, '');
+        if (b) out[b] = 1;
+      }));
+    } catch (err) { /* спецификация недоступна */ }
+    this._bases = out;
+    return out;
+  }
+
+  probe(recs, field, raw, chanKey) {
+    // колонка поля бывает прозой или именем метода («recInn(rec)», «финансовые блоки»):
+    // такие строки хранилищем не проверяются — честнее сказать это, чем показать «пусто»
+    const rawField = String(field || '');
+    if (!rawField || rawField === '—' || /[()\s]/.test(rawField) || /[а-яё]/i.test(rawField)) {
+      return { echo: 'не проверяется', echoColor: '#8a9997' };
+    }
+    // «rechecks[]» — это тот же rechecks; суффикс живёт только в подписи для человека
+    let parts = String(field).split('.').map(s => s.replace(/\[\]$/, ''));
+    // колонка поля часто указывает не на поле, а на КЛЮЧ: «walk_results.date»,
+    // «k785_doc_approve_.rev», «k785_plans_». Ведущий сегмент — имя ключа: читаем
+    // именно его (с суффиксом ИНН), остальное — путь внутри записей
+    // «k785_branch_alert (глобальный)» → branch_alert: пояснение в скобках не часть ключа
+    const head = parts[0].replace(/\s*\(.*$/, '').replace(/^k785_/, '').replace(/_$/, '');
+    const chan = String(chanKey || '').replace(/^k785_/, '').replace(/_\d{10,12}$/, '');
+    if (head === chan) {
+      // единственный сегмент = сам ключ: проверяем непустоту канала, а не свойство
+      // с именем ключа внутри записей (иначе гарантированное ложное «пусто»)
+      if (parts.length === 1) {
+        return this.filled(raw)
+          ? { echo: 'есть', echoColor: '#0d5c55' }
+          : { echo: 'нет записей', echoColor: '#a8a8a8' };
+      }
+      parts = parts.slice(1);
+    } else if (this.knownBases()[head] && !this.hasKey(head)) {
+      // ведущий сегмент — имя канала проекта, но у арендатора такого ключа нет:
+      // это «канала нет», а не отсутствующее поле внутри другого ключа
+      return { echo: 'канала нет', echoColor: '#a8a8a8' };
+    } else if (/^k785_/.test(parts[0]) || this.hasKey(head)) {
+      const kk = this.keyOf(head);
+      const alt = kk ? this.read(kk) : null;
+      if (!kk || alt === undefined || alt === null) return { echo: 'канала нет', echoColor: '#a8a8a8' };
+      raw = alt;
+      parts = parts.slice(1);
+      if (!parts.length) {
+        return this.filled(raw)
+          ? { echo: 'есть', echoColor: '#0d5c55' }
+          : { echo: 'нет записей', echoColor: '#a8a8a8' };
+      }
+      recs = this.asList(raw).filter(x => x && typeof x === 'object');
+    }
+    const isObj = raw && typeof raw === 'object' && !Array.isArray(raw);
+    // односегментное поле на канале-объекте: records() отдаёт значения ключей,
+    // поэтому сам readyPct в них не найти — читаем прямо из значения канала
+    if (parts.length === 1 && isObj && Object.prototype.hasOwnProperty.call(raw, parts[0])) {
+      return this.filled(raw[parts[0]])
+        ? { echo: 'есть', echoColor: '#0d5c55' }
+        : { echo: 'пусто', echoColor: '#8a5b0f' };
+    }
+    if (parts.length > 1 && isObj) {
+      const inner = this.asList(raw[parts[0]]);
+      if (inner.length) {
+        return inner.some(x => x && this.filled(x[parts[1]]))
+          ? { echo: 'есть', echoColor: '#0d5c55' }
+          : { echo: 'пусто', echoColor: '#8a5b0f' };
+      }
+      if (raw[parts[0]] !== undefined) return { echo: 'нет записей', echoColor: '#a8a8a8' };
+      // канал — словарь записей: вложенный путь ищем внутри каждой записи
+      const inRecs = this.asList(raw).filter(x => x && typeof x === 'object');
+      if (inRecs.length && inRecs.some(r => this.asList(r[parts[0]]).some(x => x && this.filled(x[parts[1]]))
+        || (r[parts[0]] && typeof r[parts[0]] === 'object' && this.filled(r[parts[0]][parts[1]])))) {
+        return { echo: 'есть', echoColor: '#0d5c55' };
+      }
+    }
+    // одна формулировка на отсутствие ключа: «канал пуст» осталось от раннего варианта
+    // проверки и читалось как другое состояние
+    if (!recs) return { echo: 'канала нет', echoColor: '#a8a8a8' };
+    if (!recs.length) return { echo: 'нет записей', echoColor: '#a8a8a8' };
+    const has = recs.some(r => {
+      if (parts.length === 1) return this.filled(r[parts[0]]);
+      return this.asList(r[parts[0]]).some(x => x && this.filled(x[parts[1]]));
+    });
+    return has ? { echo: 'есть', echoColor: '#0d5c55' } : { echo: 'пусто', echoColor: '#8a5b0f' };
+  }
+
+  spec() {
+    const t = this.tenant();
+    return [
+      // ——— клиника ↔ обход ———
+      {
+        pair: 'co', name: 'План проверок', key: 'k785_audit_plan_' + t, dir: 'кабинет → обход',
+        rows: [
+          ['id', 'planId', 'ok', 'Ключ, под которым обход возвращает результат. Совпадение обязательное: по нему кабинет находит обход.'],
+          ['date', 'planDate', 'ok', 'Дата плана. Строки годового цикла приходят без даты — обход подставляет срок, а если и его нет — фактическую дату проведения: недатированный обход не попадал ни в один период дашборда.'],
+          ['dir', 'dir / name', 'ok', 'Направление проверки, заголовок карточки в обходе.'],
+          ['object', 'object', 'ok', 'Объект проверки.'],
+          ['kind', 'kind', 'ok', 'Вид проверки, цвета плашек совпадают с кабинетом.'],
+          ['who', 'owner', 'ok', 'Ответственный резолвится через каталог сотрудников клиники: назначение клиники или оператора (k785_docasg_) → ответственный плана, ФИО дополняется должностью из k785_staff_ (или staffByBranch). Несколько ответственных через «+» — каждый со своей должностью.'],
+          ['check', 'items / noCheck', 'ok', 'Перечень чек-листов унифицирован оператором: выбранный клиникой или назначенный оператором чек-лист определяется строго по наименованию в каталоге (с нормализацией регистра, кавычек и префикса «NN · »). Подбор по весу слов убран — чужой чек-лист не подставляется.'],
+          ['branch', 'branch', 'ok', 'Филиал, по которому обход фильтрует список.'],
+          ['docs', 'planDocs', 'ok', 'Состав документов результата выводится в карточке обхода строкой «по плану требуются…».'],
+          ['reason', 'reasonNote', 'ok', 'Основание внеплановой проверки показано в карточке обхода.'],
+          ['due', 'dueNote', 'ok', 'Срок показан плашкой рядом с датой плана — красной, пока обход не закрыт.']
+        ]
+      },
+      {
+        pair: 'co', name: 'Результаты обхода → кабинет', key: 'k785_walk_results_' + t, dir: 'обход → кабинет',
+        rows: [
+          ['status + finished', 'finished', 'ok', 'Обход пишет признак завершения отдельным полем finished; кабинет и оператор читают его, а не разбирают формулировку статуса.'],
+          ['answered / total', 'progress', 'ok', 'Отмеченных пунктов из общего числа.'],
+          ['bad', 'badCount', 'ok', 'Число нарушений, от него зависят цвет и CAPA.'],
+          ['date', 'date', 'ok', 'Дата обхода, по ней сортируется веб-список.'],
+          ['object', 'object', 'ok', 'Объект — в веб-версии служит заголовком строки.'],
+          ['who', 'who', 'ok', 'Кто проводил.'],
+          ['kind', 'kind', 'ok', 'Вид проверки.'],
+          ['findings', 'findings', 'ok', 'Массив текстов нарушенных пунктов (до 8); кабинет показывает их в карточке проверки.'],
+          ['items.text / .answer / .comment', 'items.*', 'ok', '«ok» / «bad» → «соответствует» / «нарушение» / «без ответа», комментарий виден в акте. Обратный ход: обход восстанавливает из этого же канала незакрытый обход после перезагрузки телефона — ответы, комментарии и снимки.'],
+          ['items.photo', 'items.photo', 'ok', 'Подпись и сам снимок: обход сжимает фото до 1200 px и передаёт его полем photoSrc по пунктам с нарушением; в кабинете и реестре нарушений оператора миниатюра открывается по клику.'],
+          ['walkId', '—', 'sys', 'Служебное поле: id чек-листа внутри телефона для сверки записей. В интерфейсе его показывать не нужно — чтения не требует.'],
+          ['source', 'source', 'ok', 'Обход пишет «мобильный обход»; кабинет показывает источник в строке результата, оператор — в реестре нарушений.'],
+          ['name', 'name', 'ok', 'Обход пишет название проверки: оно стало заголовком строки в кабинете и подписью нарушения у оператора.']
+        ]
+      },
+      {
+        pair: 'co', name: 'Реестр оборудования', key: 'k785_equip_pos_' + t + ' · k785_equip_dept_' + t,
+        probeKey: 'k785_equip_pos_' + t, dir: 'кабинет → обход',
+        rows: [
+          ['uid / name / type', 'posUid / posName / type', 'ok', 'Ключ позиции, название и тип. Состав регулярных форм задаёт эталонный тип k785_equip_types, а не сама позиция — дашборд считает журналы оттуда же.'],
+          ['branch', 'branch', 'ok', 'Филиал — по нему в обходе фильтр «все филиалы».'],
+          ['who / logWho', 'who', 'ok', 'Ответственный за ведение формы.'],
+          ['logLast', 'last', 'ok', 'Дата последнего заполнения, если в канале заполнений нет.'],
+          ['room', 'meta', 'ok', 'Помещение позиции выводится в карточке оборудования обхода.'],
+          ['k785_equip_dept_ (пишет оператор)', 'meta', 'ok', 'Обход читает ключ методиста и показывает отделение в карточке позиции, не перезаписывая его; фильтр по отделению остаётся только в кабинете.']
+        ]
+      },
+      {
+        pair: 'co', name: 'Заполнение форм по оборудованию', key: 'k785_equip_fill_' + t, dir: 'обход ↔ кабинет',
+        rows: [
+          ['date / who / kind', 'date / who / kind', 'ok', 'Обе стороны пишут и читают: дата снимает признак «просрочено».'],
+          ['answers', 'answers', 'ok', 'Кабинет подставляет ответы в свой черновик; обход показывает число сохранённых ответов в строке формы.'],
+          ['value', 'value', 'ok', 'Показание журнала видно и в кабинете, и в строке формы обхода.'],
+          ['note', 'note', 'ok', 'Примечание подставляется в черновик кабинета и выводится в строке формы обхода.'],
+          ['source', 'source', 'ok', 'Источник заполнения виден плашкой во всех трёх экранах: «на месте · обход» (зелёная) или «внесён в кабинете» (янтарная). В дашборде оператора метрика «Журналы заполнены на месте», ориентир 70%.']
+        ]
+      },
+      // ——— клиника ↔ оператор ———
+      {
+        pair: 'cop', name: 'Состояние кабинета → реестр оператора', key: 'k785_client_state_' + t, dir: 'кабинет → оператор',
+        rows: [
+          ['capaPlan.text / due / who / status', 'plan.*', 'ok', 'Корректирующие мероприятия клиники попадают в раздел «работа с клиникой» у оператора.'],
+          ['capaPlan.rechecks[]', 'recheckNote', 'ok', 'Цепочка повторных проверок: раунд, дата, число нарушений раунда и признак ownBad — устранено ли именно это нарушение. Путь у оператора: Каталог → клиника → Этапы и блоки → Этап 4 → Корректирующие мероприятия; в кабинете: Аудит → Корректирующие мероприятия → Цепочка проверок.'],
+          ['capaPlan.newIn', 'origin', 'ok', 'Нарушение, впервые выявленное на повторной проверке: кабинет заводит мероприятие автоматически, оператор показывает плашку «выявлено на повторной проверке N» и счётчик в шапке блока. Путь: Каталог → клиника → Этапы и блоки → Этап 4 → Корректирующие мероприятия.'],
+          ['capaPlan.root / round', 'origin + группировка по цепочкам', 'ok', 'Корень цепочки собирает мероприятия в круги проверок в обоих экранах: шапка цепочки с объектом, плашкой круга и сводкой «кругов проверок / открытых»; от третьего круга цепочка красная. Путь: оператор — Каталог → клиника → Этап 4 → Корректирующие мероприятия; кабинет — Аудит → Корректирующие мероприятия.'],
+          ['updateLog', 'upd', 'ok', 'Журнал обновлений документов.'],
+          ['profile / assign / staffByBranch', 'k785_client_state_<клиника>', 'ok', 'Резервное чтение у оператора идёт из состояния этой клиники; глобальный ключ остался последним запасом для старых данных.'],
+          ['readyPct', 'cardProfile / cardStages', 'ok', 'Кабинет сохраняет полем readyPct агрегат по всем филиалам (не текущий вид: переключение филиала в шапке не меняет число). Оператор читает его вместо числа CRM и при расхождении больше 3 пунктов показывает оба.']
+        ]
+      },
+      {
+        pair: 'cop', name: 'Заявки и оплаты клиники', key: 'k785_payments_' + t + ' · k785_offcatalog_' + t + ' · k785_deptreq_' + t,
+        probeKey: 'k785_payments_' + t, dir: 'кабинет → оператор',
+        rows: [
+          ['payments', 'заявки / дашборд', 'ok', 'Оператор видит заявку и активирует этап через k785_stage_paid_.'],
+          ['offcatalog.name / kind / date', 'внекаталожные проверки', 'ok', 'Проверки, которые клиника завела вручную; оператор может убрать запись.'],
+          ['deptreq.name / branch / clinic / date', 'deptReqRows', 'ok', 'Заявка на новое отделение попадает в каталог оператора.'],
+          ['deptreq.note', 'r.note', 'ok', 'Комментарий методисту выводится в строке заявки у оператора.']
+        ]
+      },
+      {
+        pair: 'cop', name: 'Дашборд оператора: источники метрик', key: 'все ключи арендаторов по ИНН', probeKey: 'k785_client_state_' + t, dir: 'кабинет и обход → оператор',
+        rows: [
+          ['readyPct', 'средняя готовность', 'ok', 'Средняя считается только по клиникам с измеренным числом; оценка CRM показывается как «≈48% CRM» и в средние не входит.'],
+          ['walk_results.date / finished / bad', 'обходы по неделям, дисциплина', 'ok', 'Обходы за 30 и 90 дней, доля с нарушениями и 12-недельная диаграмма — по реальным датам записей.'],
+          ['audit_plan.due + walk_results', 'исполнение плана', 'ok', 'Срок берётся из плана кабинета, факт — из результатов обхода; просроченные проверки идут в зону риска.'],
+          ['equip_fill + equip_types', 'журналы в срок', 'ok', 'Просрочка считается по периодичности формы из эталона типов, а не по наличию хоть одного заполнения.'],
+          ['equip_fill.source', 'журналы на месте', 'ok', 'Доля заполнений, сделанных в обходе у оборудования, против внесённых за столом — признак ведения задним числом.'],
+          ['doc_approve.date', 'зависшие редакции', 'ok', 'Редакции без решения клиники дольше 14 дней попадают в очередь методиста.'],
+          ['подписки / заказы / подарки (состояние оператора)', 'финансовые блоки', 'ok', 'Каждая запись хранит собственный inn (одноразовая миграция дописала его по названиям), сопоставление идёт по нему — переименование клиники, похожие названия и опечатки больше не теряют выручку. Название осталось подписью. Заказы клиник вне реестра по-прежнему вынесены в очередь отдельной строкой.'],
+          ['— (было: сопоставление по названию)', 'recInn(rec)', 'ok', 'Резолвер: своё поле inn → резолв по названию через реестр клиник. Карточка клиники, подписка и заказы читаются по ИНН.'],
+          ['подписка.start', 'срок внедрения', 'ok', 'Срок внедрения системы качества и темп в п. п./мес считаются от даты старта подписки и измеренной готовности.']
+        ]
+      },
+      {
+        pair: 'cop', name: 'Публикации оператора → кабинет', key: 'k785_plans_ · k785_cycle_ops_ · k785_stage_paid_ · k785_grants_ · k785_delivered_ · k785_tariff_change_',
+        probeKey: 'k785_plans_' + t, dir: 'оператор → кабинет',
+        rows: [
+          ['k785_plans_', 'operatorPlans', 'ok', 'План проверок и результаты аудитов, переданные методистом.'],
+          ['k785_cycle_ops_', 'cycleOps', 'ok', 'Правки оператора по годовому циклу этой клиники.'],
+          ['k785_stage_paid_', 'stagePaid', 'ok', 'Активация этапа после поступления оплаты.'],
+          ['k785_grants_', 'grants', 'ok', 'Документы, выданные без оплаты.'],
+          ['k785_delivered_.order / name / file / date', 'delivered', 'ok', 'Переданные по заказу файлы.'],
+          ['k785_tariff_change_.name / from / to', 'tariffChange', 'ok', 'Новые условия тарифа на подтверждение.'],
+          ['k785_equip_dept_', 'фильтр по отделению', 'ok', 'Отделение позиции задаёт оператор — кабинет читает и фильтрует, не перезаписывая.'],
+          ['k785_messages_', 'messages / раздел «Сообщения от методиста»', 'ok', 'Рассылка методиста: тип (уведомление / изменение НПА / требование / информация), текст, комментарий и файлы. Кабинет выводит непрочитанные на главной и всю переписку в своём разделе.'],
+          ['k785_msg_ack_', 'квитанция прочтения', 'ok', 'Кабинет пишет отметку «прочитано» с датой и именем; оператор видит «прочитано 3 из 5» и перечень тех, кто не открыл требование.'],
+          ['k785_doc_notes_', 'комментарий к документу', 'ok', 'Клиника пишет замечание к любому документу этапа или блока — вопрос методисту, пояснение о местной практике, причина отказа от позиции. Оператор видит его в карточке клиники с датой и автором.'],
+          ['k785_accounts / k785_session', 'вход и роль', 'ok', 'Учётные записи обеих сторон с отпечатком пароля и ролью. Роль приходит из сеанса и задаёт состав разделов; кабинет роли не принимает сеанс чужой роли. Заявка сотрудника хранится с признаком pending и не пускает внутрь, пока администратор не подтвердит и не назначит роль. Исполнитель входит по ИНН и телефону — его запись заводит клиника.'],
+          ['k785_docasg_ + client_state.asgMap', 'Кабинет исполнителя', 'ok', 'Граница видимости исполнителя: документы из матрицы назначений (опубликованной или ещё рабочей), проверки из k785_audit_plan_ с его именем, журналы из logWho позиций оборудования. Разбираются совместные назначения через «+» и ФИО с филиалом через «·».'],
+          ['k785_exec_state', 'отметки исполнителя', 'weak', 'Отметка «выполнено» по документу хранится в кабинете исполнителя и пока не возвращается ни в кабинет клиники, ни оператору: ответственный за ВКК не видит, что исполнитель уже отчитался.'],
+          ['k785_branch_alert_ (по арендатору)', 'branchAlert', 'ok', 'Своя ячейка на клинику: сигналы разных клиник больше не конкурируют за одну глобальную запись. Оставшаяся старая общая запись переносится в ячейку своей клиники при первом чтении; поле clinic осталось страховкой.']
+        ]
+      },
+      {
+        pair: 'cop', name: 'Документы: ревизии и приёмка', key: 'k785_doc_revs · k785_doc_approve_' + t + ' · k785_resultdocs_' + t,
+        probeKey: 'k785_doc_approve_' + t, dir: 'кабинет ↔ оператор',
+        rows: [
+          ['k785_doc_revs (оператор)', 'docRevs', 'ok', 'Опубликованные ревизии документов видны клинике.'],
+          ['k785_doc_approve_.rev / date / status', 'приёмка у оператора', 'ok', 'Оператор перебирает ключи приёмки по всем клиникам.'],
+          ['k785_doc_approve_.acceptedAt', 'clinicState', 'ok', 'Дата решения клиники выводится в строке документа у оператора: «согласован клиникой 26.08.2026», у отклонения — рядом со статусом.'],
+          ['k785_resultdocs_', 'состав документов результата', 'ok', 'Общий канал: правки клиники и оператора складываются в один состав, удаление помечается «removed».'],
+          ['k785_stagedocs_op_ / k785_blockdocs_', 'состав подэтапа / блока', 'ok', 'Перед записью каждая сторона перечитывает ключ и сливает состав по именам документов: добавленное другой стороной сохраняется, удалённое здесь удаляется, изменённая строка берётся в своей редакции. При расхождении показывается «правки объединены».'],
+          ['k785_overlay_', 'overlayDeclined', 'ok', 'Расхождения кабинета с эталоном и отклонённые правки видны оператору.'],
+          ['k785_cycle_state_.rev / status / ownDirs', 'clinicCycle', 'ok', 'Состояние годового цикла клиники в карточке оператора.']
+        ]
+      },
+      // ——— обход ↔ оператор ———
+      {
+        pair: 'oop', name: 'Результаты обхода → реестр нарушений оператора', key: 'k785_walk_results_' + t, dir: 'обход → оператор',
+        rows: [
+          ['items.text / .answer / .comment', 'capa[].text / mark / comment', 'ok', 'Каждый пункт с ответом «bad» или комментарием становится строкой Н-NN в реестре нарушений.'],
+          ['date / object / who', 'capa[].date / object / who', 'ok', 'Шапка нарушения.'],
+          ['name', 'capa[].audit', 'ok', 'Обход пишет название проверки; при его отсутствии оператор подставляет «объект · вид проверки» вместо id плана.'],
+          ['items.photo', 'capa[].photo', 'ok', 'Оператор показывает миниатюру снимка в строке нарушения, по клику — просмотр на весь экран; записи без файла по-прежнему показывают подпись.'],
+          ['findings / bad', 'capaNote', 'ok', 'Оператор собирает нарушения из items и сверяет их число со счётчиком обхода; расхождение выводится строкой «сверка: у N обходов счётчик расходится с пунктами».'],
+          ['finished / answered / total / source', 'capa[].sourceNote', 'ok', 'Под каждым нарушением у оператора строка «источник · обход закрыт или идёт · пройдено N из M».']
+        ]
+      },
+      {
+        pair: 'oop', name: 'Состав документов результата', key: 'k785_result_docs_' + t, dir: 'обход → кабинет',
+        rows: [
+          ['result_docs (список имён)', 'кабинет: fromWalk', 'ok', 'Обход правит состав документов результата, кабинет его читает.'],
+          ['result_docs', 'resultDocsFor', 'ok', 'Оператор читает канал обхода и добавляет документы в состав с пометкой «из мобильного обхода» — обещание в тосте выполняется.'],
+          ['k785_cycle_live_', 'обход: резервный состав', 'ok', 'Если своего состава нет, обход берёт состав из опубликованного клиникой годового цикла.']
+        ]
+      },
+      {
+        pair: 'oop', name: 'Назначение ответственных', key: 'k785_docasg_' + t, dir: 'три стороны',
+        rows: [
+          ['docasg (обход)', 'docasg (кабинет / оператор)', 'ok', 'Все три экрана перечитывают ключ из хранилища непосредственно перед записью — одновременные назначения больше не затирают друг друга.'],
+          ['k785_staff_', 'список людей и должности в обходе', 'ok', 'Штат клиники — источник выбора ответственного и его должности: обход дополняет ФИО должностью из каталога (или из staffByBranch, если состав ведётся по филиалам); если пуст — подставляется демо-список.'],
+          ['k785_stageasg_', 'назначения по подэтапам', 'ok', 'Кабинет и оператор ведут один ключ, обход его не использует.']
+        ]
+      }
+    ];
+  }
+
+  keyRows() {
+    const t = this.tenant();
+    return [
+      ['k785_checklists', 'оператор', 'кабинет, обход', 1],
+      ['k785_equip_types', 'оператор', 'кабинет, обход', 1],
+      ['k785_stage_docs', 'оператор', 'кабинет, обход', 1],
+      ['k785_departments', 'оператор', 'кабинет', 1],
+      ['k785_positions · k785_licworks · k785_tariffs', 'оператор', 'кабинет', 1],
+      ['k785_blocks_catalog · k785_block_tpls · k785_block_pins', 'оператор', 'кабинет', 1],
+      ['k785_cycle_master · k785_doc_revs', 'оператор', 'кабинет', 1],
+      ['k785_summary_master', 'оператор', 'кабинет, обход', 1],
+      ['k785_audit_plan_' + t, 'кабинет', 'обход', 1],
+      ['k785_walk_results_' + t, 'обход, кабинет', 'кабинет, оператор', 1],
+      ['k785_equip_fill_' + t, 'обход, кабинет', 'обход, кабинет, оператор', 1],
+      ['k785_result_docs_' + t, 'обход', 'кабинет, оператор', 1],
+      ['k785_docasg_' + t, 'обход, кабинет, оператор', 'все три', 1],
+      ['k785_client_state_' + t, 'кабинет', 'оператор', 1],
+      ['k785_admin_state', 'оператор', 'кабинет, обход', 1],
+      ['k785_branch_alert_' + t, 'кабинет', 'оператор', 1],
+      ['k785_active_tenant', 'кабинет', 'обход', 1],
+      ['k785_clinics (ИНН → название)', 'оператор, кабинет', 'кабинет, обход', 1]
+    ].map(r => ({ key: r[0], w: r[1], r: r[2], global: r[3] }));
+  }
+
+  renderVals() {
+    const only = this.state.only;
+    const pair = this.state.pair;
+    const pal = {
+      ok: { status: 'подтверждена', color: '#0d5c55', bg: '#e8f2f0' },
+      weak: { status: 'частично', color: '#8a5b0f', bg: '#fdf3e2' },
+      none: { status: 'не подтверждена', color: '#a8342a', bg: '#f8e9e7' },
+      // служебные поля читать некому по замыслу: технические id, признаки для сверки.
+      // В списке разрывов они читались как дефект, хотя чинить там нечего
+      sys: { status: 'служебное', color: '#3d5a56', bg: '#eef1f1' }
+    };
+    const all = this.spec();
+    const counts = { all: 0, co: 0, cop: 0, oop: 0 };
+    all.forEach(c => c.rows.forEach(r => {
+      if (r[2] === 'none') { counts.all++; counts[c.pair]++; }
+    }));
+
+    let nOk = 0, nWeak = 0, nNone = 0, nSys = 0;
+    const broken = [];
+    const channels = all.filter(c => pair === 'all' || c.pair === pair).map(c => {
+      const recs = this.records(c.probeKey || c.key);
+      // разобранное значение того же канала: probe разрешает по нему точечные пути
+      const rawVal = this.read(c.probeKey || c.key);
+      const rows = c.rows.map(r => {
+        const st = pal[r[2]];
+        if (r[2] === 'ok') nOk++;
+        else if (r[2] === 'weak') nWeak++;
+        else if (r[2] === 'sys') nSys++;
+        else nNone++;
+        if (r[2] === 'none') broken.push({ field: r[0].indexOf('—') === 0 ? r[1] : r[0], comment: r[3], chan: c.name });
+        // probe сам разбирает путь, начинающийся с имени ключа, поэтому строки «k785_…»
+        // передаём как есть: раньше вместо пути уходило имя переменной принимающей стороны
+        // прочерк слева — сторона-получатель описана прозой; берём r[1] только если
+        // это похоже на путь, иначе строка честно помечается «не проверяется»
+        const probeField = r[0].indexOf('—') === 0 ? r[1] : r[0];
+        const pr = this.probe(recs, String(probeField).split(' ')[0].split('.').slice(0, 2).join('.'),
+          rawVal, c.probeKey || c.key);
+        return {
+          from: r[0], to: r[1], comment: r[3],
+          status: st.status, color: st.color, bg: st.bg,
+          // прочерк у служебного поля — норма, а не разрыв: не красим его тревожным
+          toColor: r[1] === '—' ? (r[2] === 'sys' ? '#8a9997' : '#a8342a') : '#10201f',
+          rowBg: r[2] === 'none' ? '#fefaf9' : 'transparent',
+          echo: pr.echo, echoColor: pr.echoColor
+        };
+      }).filter(r => !only || (r.status !== 'подтверждена' && r.status !== 'служебное'));
+      return {
+        name: c.name, key: c.key, dir: c.dir,
+        dirColor: c.dir.indexOf('оператор →') === 0 ? '#7c5a1a' : (c.dir.indexOf('обход →') === 0 ? '#1d4f7c' : (c.dir.indexOf('↔') > 0 || c.dir === 'три стороны' ? '#5a3d7c' : '#0d5c55')),
+        dirBg: c.dir.indexOf('оператор →') === 0 ? '#fdf3e2' : (c.dir.indexOf('обход →') === 0 ? '#e8eff7' : (c.dir.indexOf('↔') > 0 || c.dir === 'три стороны' ? '#f0eaf7' : '#e8f2f0')),
+        live: recs ? (recs.length ? 'канал живой' : 'канал пуст') : 'канала нет',
+        liveColor: recs && recs.length ? '#0d5c55' : '#8a5b0f',
+        liveBg: recs && recs.length ? '#e8f2f0' : '#fdf3e2',
+        count: recs ? 'записей: ' + recs.length : 'ключ не создан',
+        rows, empty: rows.length === 0
+      };
+    });
+
+    const tabDef = [
+      ['all', 'Все три кабинета'], ['co', 'Клиника ↔ обход'],
+      ['cop', 'Клиника ↔ оператор'], ['oop', 'Обход ↔ оператор']
+    ];
+
+    return {
+      channels, broken, noBroken: broken.length === 0,
+      // пустое состояние не должно выглядеть как ошибка
+      brokenBg: broken.length ? '#fdf1ef' : '#f1f7f5',
+      brokenBorder: broken.length ? '#e0b3ac' : '#cfe0dc',
+      brokenTitleColor: broken.length ? '#7c2b22' : '#0d5c55',
+      tenantLabel: 'арендатор: ИНН ' + this.tenant()
+        + (this.tenantName() ? ' · ' + this.tenantName() : ''),
+      heads: [{ name: 'поле в источнике' }, { name: 'поле у получателя' }, { name: 'что это значит' }, { name: 'связь' }, { name: 'отклик' }],
+      tabs: tabDef.map(td => ({
+        name: td[1],
+        badge: counts[td[0]] ? String(counts[td[0]]) : '✓',
+        badgeColor: counts[td[0]] ? '#e08b80' : '#7fbfb0',
+        bg: pair === td[0] ? '#26403e' : 'transparent',
+        color: pair === td[0] ? '#ffffff' : '#b8ccca',
+        pick: () => this.setState({ pair: td[0] })
+      })),
+      stats: [
+        { val: nOk, name: 'полей подтверждено', color: '#0d5c55' },
+        { val: nWeak, name: 'подтверждено частично', color: '#8a5b0f' },
+        { val: nNone, name: 'связь не подтверждена', color: '#a8342a' },
+        { val: nSys, name: 'служебных полей', color: '#3d5a56' },
+        { val: channels.length, name: 'каналов в срезе', color: '#10201f' }
+      ],
+      only,
+      onlyLabel: only ? 'Показаны только расхождения' : 'Показаны все поля',
+      onlyBg: only ? '#26403e' : 'transparent',
+      onlyColor: only ? '#e6efee' : '#b8ccca',
+      toggleOnly: () => this.setState(s => ({ only: !s.only })),
+      refresh: () => this.setState(s => ({ tick: s.tick + 1 })),
+      keyMap: this.keyRows().map(k => {
+        // в строке может быть несколько ключей: данные есть, если непуст ЛЮБОЙ из них.
+        // И отсутствие ключа — это «канала нет», а не сломанная связь
+        const names = k.key.split(' · ').map(s => s.replace(/\s*\(.*$/, '').trim()).filter(Boolean);
+        let exists = false, filledAny = false;
+        names.forEach(n => {
+          const base = n.replace(/^k785_/, '').replace(/_$/, '').replace(/_\d{10,12}$/, '');
+          const kk = /_\d{10,12}$/.test(n) ? n : this.keyOf(base);
+          if (!kk) return;
+          const v = this.read(kk);
+          if (v === undefined || v === null) return;
+          exists = true;
+          if (this.filled(v)) filledAny = true;
+        });
+        return {
+          key: k.key, w: k.w, r: k.r,
+          rColor: k.global ? '#3d5a56' : '#a8342a',
+          rowBg: k.global ? 'transparent' : '#fefaf9',
+          live: !exists ? 'канала нет' : (filledAny ? 'есть данные' : 'нет записей'),
+          liveColor: filledAny ? '#0d5c55' : '#8a9997'
+        };
+      })
+    };
+  }
+}
+</script>
+</body>
+</html>

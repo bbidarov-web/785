@@ -1,0 +1,236 @@
+// Схема БД "Контур 785".
+// Соответствие каналам прототипа — SERVER.md §3. Таблицы Account/Session/OtpCode/
+// AuditLogEntry/DocumentGrant/SecondHandRequest — первого класса (безопасность
+// и комплаенс). Остальные каналы экрана — версионированные JSON-строки
+// (PlatformChannel/TenantChannel), один канал = один документ прототипа;
+// нормализуются в отдельные таблицы по мере переноса каждого экрана (SERVER.md §6).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum AccountSide {
+  platform
+  clinic
+}
+
+enum Role {
+  methodist
+  sales_manager
+  sales_head
+  platform_admin
+  clinic_admin
+  vkk_lead
+  nurse
+  auditor
+  observer
+}
+
+enum TwoFactorVia {
+  sms
+  email
+}
+
+/// Арендатор — клиника, ключ ИНН (SERVER.md §2).
+model Tenant {
+  inn       String   @id
+  name      String
+  createdAt DateTime @default(now())
+
+  accounts       Account[]
+  documentGrants DocumentGrant[]
+  channels       TenantChannel[]
+  auditEntries   AuditLogEntry[]
+
+  @@map("tenants")
+}
+
+/// Учётная запись. side=platform — сотрудник платформы (ИНН общий, привязан к оператору),
+/// side=clinic — сотрудник клиники (ИНН = арендатор).
+model Account {
+  id               String        @id @default(cuid())
+  inn              String
+  login            String
+  phone            String?
+  email            String?
+  org              String?
+  fio              String
+  side             AccountSide
+  role             Role
+  pending          Boolean       @default(false)
+  requestedRole    Role?
+  passwordHash     String
+  twoFactor        Boolean       @default(false)
+  twoFactorVia     TwoFactorVia  @default(sms)
+  blocked          Boolean       @default(false)
+  mustChange       Boolean       @default(false)
+  createdAt        DateTime      @default(now())
+  lastLoginAt      DateTime?
+  approvedById     String?
+  approvedAt       DateTime?
+  passwordChangedAt DateTime?
+
+  tenant   Tenant?   @relation(fields: [inn], references: [inn], onDelete: Cascade, map: "fk_account_tenant")
+  sessions Session[]
+  otps     OtpCode[]
+
+  @@unique([inn, login])
+  @@index([inn, phone])
+  @@map("accounts")
+}
+
+/// Сессия — httpOnly cookie хранит только подписанный opaque id, сама сессия живёт
+/// на сервере (можно отозвать). SERVER.md §6.1.
+model Session {
+  id        String    @id @default(cuid())
+  accountId String
+  createdAt DateTime  @default(now())
+  expiresAt DateTime
+  userAgent String?
+  ip        String?
+  revokedAt DateTime?
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId])
+  @@map("sessions")
+}
+
+enum OtpPurpose {
+  login_2fa
+  password_reset
+}
+
+/// Код 2FA / сброса пароля. Хранится только хеш кода — сам код уходит по смс/почте
+/// и никогда не пишется в БД или логи в открытом виде (CLAUDE.md).
+model OtpCode {
+  id         String     @id @default(cuid())
+  accountId  String
+  purpose    OtpPurpose
+  codeHash   String
+  via        TwoFactorVia
+  createdAt  DateTime   @default(now())
+  expiresAt  DateTime
+  consumedAt DateTime?
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId, purpose])
+  @@map("otp_codes")
+}
+
+/// Журнал действий — ТОЛЬКО добавление (CLAUDE.md). UPDATE/DELETE запрещены
+/// миграцией (см. `prisma/migrations/.../append_only_audit_log.sql`) и правами роли БД.
+model AuditLogEntry {
+  id         String   @id @default(cuid())
+  at         DateTime @default(now())
+  actorId    String?
+  actorRole  Role?
+  tenantInn  String?
+  action     String
+  target     String?
+  meta       Json?
+  allowed    Boolean
+
+  tenant Tenant? @relation(fields: [tenantInn], references: [inn], onDelete: SetNull)
+
+  @@index([tenantInn, at])
+  @@index([actorId, at])
+  @@map("audit_log")
+}
+
+enum SecondHandStatus {
+  pending
+  confirmed
+  rejected
+  expired
+}
+
+/// «Вторая рука» — запрос и подтверждение РАЗНЫМИ пользователями (SERVER.md §4).
+model SecondHandRequest {
+  id           String            @id @default(cuid())
+  type         String
+  payload      Json
+  tenantInn    String?
+  requestedById String
+  requestedAt  DateTime          @default(now())
+  status       SecondHandStatus  @default(pending)
+  confirmedById String?
+  confirmedAt  DateTime?
+  expiresAt    DateTime
+
+  @@index([status, type])
+  @@map("second_hand_requests")
+}
+
+enum GrantEvent {
+  grant
+  revoke
+}
+
+/// Выдача документов клинике — каждая выдача и отзыв отдельной строкой (SERVER.md §5).
+/// Активна выдача, если последняя запись по (tenantInn, code) — `grant`.
+model DocumentGrant {
+  id          String     @id @default(cuid())
+  seq         Int        @default(autoincrement()) // определяет "последнее" событие — не полагаться на `at` (см. InMemoryDocumentGrantRepo)
+  tenantInn   String
+  stage       String
+  code        String
+  name        String
+  event       GrantEvent
+  byAccountId String
+  byRole      Role
+  at          DateTime   @default(now())
+  paid        Boolean    @default(true) // false → выдача без оплаты, второй-рукой (doc:grant-without-payment)
+
+  tenant Tenant @relation(fields: [tenantInn], references: [inn], onDelete: Cascade)
+
+  @@index([tenantInn, code, seq])
+  @@map("document_grants")
+}
+
+/// Глобальные/платформенные каналы прототипа (PLATFORM_KEYS в platform.js):
+/// эталоны методиста, тарифы, справочники — общие для всех арендаторов.
+model PlatformChannel {
+  key       String   @id
+  data      Json
+  version   Int      @default(1)
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+
+  @@map("platform_channels")
+}
+
+/// Каналы в разрезе арендатора (TENANT_CHANNELS в packages/shared/src/channels.ts):
+/// рабочее состояние клиники, назначения, планы проверок, журналы оборудования и т.д.
+model TenantChannel {
+  tenantInn String
+  key       String
+  data      Json
+  version   Int      @default(1)
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+
+  tenant Tenant @relation(fields: [tenantInn], references: [inn], onDelete: Cascade)
+
+  @@id([tenantInn, key])
+  @@map("tenant_channels")
+}
+
+/// Отметка исполнителя «выполнено» по документу/проверке/журналу — персональная,
+/// не путать с состоянием документа клиники.
+model ExecutorMark {
+  id        String   @id @default(cuid())
+  accountId String
+  itemKey   String // например "doc|<название документа>"
+  label     String
+  doneAt    DateTime @default(now())
+
+  @@unique([accountId, itemKey])
+  @@map("executor_marks")
+}

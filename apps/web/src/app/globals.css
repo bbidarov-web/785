@@ -1,0 +1,109 @@
+/*
+ * Дизайн-токены — перенесены дословно из reference/README.md ("Дизайн-токены").
+ * Точность high-fidelity: цвета, шрифты, отступы и состояния финальные,
+ * их нужно воспроизвести точно (CLAUDE.md), а не «переосмыслить».
+ */
+:root {
+  --text-primary: #10201f;
+  --text-secondary: #3d5a56;
+  --text-muted: #61736f;
+  --text-caption: #8a9997;
+  --text-placeholder: #a9b6b4;
+
+  --bg-app: #eef1f1;
+  --bg-card: #ffffff;
+
+  --border-1: #dde3e2;
+  --border-2: #e3e8e8;
+  --border-3: #eef1f1;
+
+  --sidebar-bg: #0f1f1e;
+  --sidebar-hover: #1b3230;
+  --sidebar-text: #e6efee;
+  --sidebar-muted: #8fa8a5;
+
+  --accent: #157f76;
+  --accent-hover: #0d5c55;
+  --accent-bg-light: #e8f2f0;
+  --accent-border-light: #bcd9d4;
+  --accent-bg-lighter: #eef7f5;
+  --accent-on-dark: #6fb3a8;
+
+  --error: #a8342a;
+  --error-strong: #c8564a;
+  --error-bg: #f8e9e7;
+  --error-border: #e8c4be;
+
+  --warn: #8a5b0f;
+  --warn-strong: #7a5209;
+  --warn-bg: #fdf3e2;
+  --warn-border: #e8cfa2;
+
+  --info: #1d4f7c;
+  --info-bg: #e8eff7;
+
+  --role-badge-fg: #d8a13f;
+  --role-badge-bg: #241a05;
+
+  --font-ui: Manrope, "Helvetica Neue", Helvetica, sans-serif;
+  --font-mono: "IBM Plex Mono", monospace;
+
+  --radius-sm: 6px;
+  --radius-md: 9px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+
+  --shadow-toast: 0 10px 28px rgba(16, 32, 31, 0.28);
+  --shadow-focus: 0 0 0 3px rgba(21, 127, 118, 0.16);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg-app);
+}
+
+body {
+  font-family: var(--font-ui);
+  -webkit-font-smoothing: antialiased;
+  color: var(--text-primary);
+}
+
+a {
+  color: var(--accent);
+}
+a:hover {
+  color: var(--accent-hover);
+}
+
+input,
+select,
+textarea {
+  box-sizing: border-box;
+  max-width: 100%;
+  font-family: inherit;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+/* Сенсорные экраны: кнопка попадается пальцем (44 px), поле не мельче 16 px —
+   иначе iOS увеличивает страницу при фокусе (README "Адаптивность"). */
+@media (max-width: 760px), (pointer: coarse) {
+  .k785-tap-target {
+    min-height: 44px;
+  }
+  input,
+  select,
+  textarea {
+    min-height: 44px;
+    font-size: 16px !important;
+  }
+}

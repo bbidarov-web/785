@@ -1,0 +1,16 @@
+{$DOMAIN} {
+	encode gzip
+
+	# API — своим префиксом, чтобы cookie сессии оставалась same-site
+	handle /api/* {
+		reverse_proxy api:4000
+	}
+
+	handle {
+		reverse_proxy web:3000
+	}
+
+	log {
+		output file /data/access.log
+	}
+}

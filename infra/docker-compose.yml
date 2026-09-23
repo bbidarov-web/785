@@ -1,0 +1,24 @@
+# Локальная разработка: docker compose -f infra/docker-compose.yml up
+# Запускать из корня репозитория. API и web собираются из живого исходника
+# (bind mount + watch), Postgres — единственный "тяжёлый" сервис в контейнере.
+name: kontur785-dev
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: kontur785
+      POSTGRES_PASSWORD: kontur785
+      POSTGRES_DB: kontur785
+    ports:
+      - '5432:5432'
+    volumes:
+      - kontur785_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U kontur785']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  kontur785_db_data:

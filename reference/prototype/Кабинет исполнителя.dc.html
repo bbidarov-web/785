@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="preconnect" href="https://fonts.googleapis.com"></link>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous"></link>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&amp;family=IBM+Plex+Mono:wght@400;600;700&amp;display=swap" rel="stylesheet"></link>
+  <style>
+    html, body { margin: 0; padding: 0; background: #eef1f1; }
+    body { font-family: Manrope, "Helvetica Neue", Helvetica, sans-serif; -webkit-font-smoothing: antialiased; color: #10201f; }
+    a { color: #157f76; }
+    a:hover { color: #0d5c55; }
+    input, select, textarea { box-sizing: border-box; max-width: 100%; }
+    /* на сенсорном экране кнопка должна попадаться пальцем: не ниже 44 px,
+       а поле ввода — не мельче 16 px, иначе iOS увеличивает страницу при фокусе */
+    @media (max-width: 760px), (pointer: coarse) {
+      [style*="cursor: pointer"][style*="white-space: nowrap"], a[href][style*="padding"] {
+        min-height: 44px; box-sizing: border-box; display: flex; align-items: center; justify-content: center;
+      }
+      input, select, textarea { min-height: 44px; font-size: 16px !important; }
+    }
+  </style>
+</helmet>
+
+<sc-if value="{{ needLogin }}" hint-placeholder-val="{{ true }}">
+  <div style="min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 28px 18px; background: #eef1f1">
+    <div style="width: 100%; max-width: 400px; background: #ffffff; border: 1px solid #dde3e2; border-radius: 16px; padding: 28px 26px; display: flex; flex-direction: column; gap: 16px">
+      <div style="display: flex; flex-direction: column; gap: 3px">
+        <div style="font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; color: #8a9997">Контур 785</div>
+        <div style="font-size: 19px; font-weight: 800">Кабинет исполнителя</div>
+        <div style="font-size: 12px; font-weight: 600; color: #61736f; line-height: 1.45; margin-top: 4px">Вход по ИНН клиники и рабочему телефону. Доступ выдаёт клиника — вы видите только то, где назначены исполнителем.</div>
+      </div>
+
+      <sc-if value="{{ hasError }}" hint-placeholder-val="{{ false }}">
+        <div style="background: #f8e9e7; border: 1px solid #e8c4be; border-radius: 9px; padding: 11px 13px; font-size: 12.5px; font-weight: 700; color: #a8342a; line-height: 1.45">{{ authError }}</div>
+      </sc-if>
+
+      <div style="display: flex; flex-direction: column; gap: 11px">
+        <div style="display: flex; flex-direction: column; gap: 5px">
+          <div style="font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; color: #8a9997">ИНН клиники</div>
+          <input value="{{ aInn }}" onChange="{{ setAInn }}" placeholder="10 или 12 цифр" style="padding: 12px 13px; border: 1px solid #dde3e2; border-radius: 9px; font-family: 'IBM Plex Mono', monospace; font-size: 15px; font-weight: 600"></input>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 5px">
+          <div style="font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; color: #8a9997">Рабочий телефон</div>
+          <input value="{{ aPhone }}" onChange="{{ setAPhone }}" placeholder="+7 900 000-00-00" style="padding: 12px 13px; border: 1px solid #dde3e2; border-radius: 9px; font-family: 'IBM Plex Mono', monospace; font-size: 15px; font-weight: 600"></input>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 5px">
+          <div style="font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; color: #8a9997">Пароль</div>
+          <input type="password" value="{{ aPass }}" onChange="{{ setAPass }}" placeholder="пароль" style="padding: 12px 13px; border: 1px solid #dde3e2; border-radius: 9px; font-size: 15px; font-weight: 600"></input>
+        </div>
+        <div onClick="{{ doLogin }}" style="padding: 14px; border-radius: 9px; background: #157f76; color: #ffffff; font-size: 15px; font-weight: 700; cursor: pointer; text-align: center" style-hover="background: #0d5c55">Войти</div>
+      </div>
+
+      <div style="font-size: 11.5px; font-weight: 600; color: #61736f; line-height: 1.5; border-top: 1px solid #eef1f1; padding-top: 12px">Нет доступа или забыли пароль — обратитесь к ответственному за ВКК вашей клиники.</div>
+    </div>
+  </div>
+</sc-if>
+
+<sc-if value="{{ isIn }}" hint-placeholder-val="{{ false }}">
+  <div style="min-height: 100vh; display: flex; flex-direction: column; background: #eef1f1">
+    <div style="background: #0f1f1e; color: #e6efee; padding: 16px 22px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap">
+      <div style="width: 34px; height: 34px; border-radius: 9px; background: #6fb3a8; color: #06231f; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 13px">{{ ini }}</div>
+      <div style="display: flex; flex-direction: column; gap: 2px; margin-right: auto; min-width: 0; flex: 1 1 180px">
+        <div style="font-size: 15px; font-weight: 800">{{ fio }}</div>
+        <div style="font-size: 11.5px; color: #8fa8a5; font-weight: 600; overflow-wrap: anywhere">{{ posLine }}</div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+        <div style="font-size: 12px; font-weight: 700; overflow-wrap: anywhere">{{ clinicName }}</div>
+        <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; color: #8fa8a5">ИНН {{ inn }}</div>
+      </div>
+      <div onClick="{{ doLogout }}" style="padding: 9px 14px; border-radius: 8px; border: 1px solid #2c4442; color: #e6efee; font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap" style-hover="background: #1b3230">Выйти</div>
+    </div>
+
+    <div style="padding: 20px clamp(12px, 4vw, 22px) 32px; display: flex; flex-direction: column; gap: 16px; max-width: 1100px; width: 100%; margin: 0 auto; box-sizing: border-box">
+      <div style="background: #ffffff; border: 1px solid #dde3e2; border-radius: 12px; padding: 16px 18px; font-size: 12.5px; font-weight: 600; color: #3d5a56; line-height: 1.55; text-wrap: pretty">{{ scopeNote }}</div>
+
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr)); gap: 10px">
+        <sc-for list="{{ kpis }}" as="k" hint-placeholder-count="4">
+          <div style="background: #ffffff; border: 1px solid #dde3e2; border-radius: 11px; padding: 14px 16px; display: flex; flex-direction: column; gap: 3px">
+            <div style="font-family: 'IBM Plex Mono', monospace; font-size: 22px; font-weight: 800; color: {{ k.color }}">{{ k.val }}</div>
+            <div style="font-size: 11.5px; font-weight: 700; color: #61736f; line-height: 1.35">{{ k.name }}</div>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="display: flex; gap: 7px; flex-wrap: wrap">
+        <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="3">
+          <div onClick="{{ t.go }}" style="padding: 9px 14px; border-radius: 8px; background: {{ t.bg }}; color: {{ t.color }}; border: 1px solid {{ t.border }}; font-size: 12.5px; font-weight: 700; cursor: pointer; white-space: nowrap">{{ t.name }}</div>
+        </sc-for>
+      </div>
+
+      <sc-if value="{{ isDocs }}" hint-placeholder-val="{{ true }}">
+        <div style="display: flex; flex-direction: column; gap: 9px">
+          <sc-if value="{{ noDocs }}" hint-placeholder-val="{{ false }}">
+            <div style="background: #ffffff; border: 1px dashed #cfd8d7; border-radius: 12px; padding: 30px; text-align: center; font-size: 13px; color: #61736f; font-weight: 600; line-height: 1.55">{{ noDocsNote }}</div>
+          </sc-if>
+          <sc-for list="{{ docs }}" as="d" hint-placeholder-count="4">
+            <div style="background: #ffffff; border: 1px solid #e3e8e8; border-radius: 11px; padding: 14px 16px; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap: 10px 16px; align-items: start">
+              <div style="display: flex; flex-direction: column; gap: 4px; min-width: 0">
+                <div style="font-size: 13px; font-weight: 800; line-height: 1.4; overflow-wrap: anywhere">{{ d.name }}</div>
+                <div style="font-size: 11px; font-weight: 600; color: #61736f; overflow-wrap: anywhere">{{ d.where }}</div>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 4px">
+                <span style="font-size: 10px; font-weight: 700; color: {{ d.stColor }}; background: {{ d.stBg }}; padding: 3px 7px; border-radius: 5px; align-self: flex-start">{{ d.state }}</span>
+                <div style="font-size: 10.5px; font-weight: 600; color: #61736f">{{ d.together }}</div>
+              </div>
+              <div style="display: flex; gap: 6px; flex-wrap: wrap; align-items: flex-start">
+                <div onClick="{{ d.open }}" style="padding: 8px 12px; border-radius: 7px; border: 1px solid #dde3e2; font-size: 11.5px; font-weight: 700; cursor: pointer; white-space: nowrap" style-hover="border-color: #157f76">Открыть</div>
+                <div onClick="{{ d.done }}" style="padding: 8px 12px; border-radius: 7px; background: #157f76; color: #ffffff; font-size: 11.5px; font-weight: 700; cursor: pointer; white-space: nowrap" style-hover="background: #0d5c55">{{ d.doneLabel }}</div>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isChecks }}" hint-placeholder-val="{{ false }}">
+        <div style="display: flex; flex-direction: column; gap: 9px">
+          <sc-if value="{{ noChecks }}" hint-placeholder-val="{{ false }}">
+            <div style="background: #ffffff; border: 1px dashed #cfd8d7; border-radius: 12px; padding: 30px; text-align: center; font-size: 13px; color: #61736f; font-weight: 600; line-height: 1.55">{{ noChecksNote }}</div>
+          </sc-if>
+          <sc-for list="{{ checks }}" as="c" hint-placeholder-count="3">
+            <div style="background: #ffffff; border: 1px solid #e3e8e8; border-radius: 11px; padding: 14px 16px; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap: 10px 16px; align-items: center">
+              <div style="display: flex; flex-direction: column; gap: 4px; min-width: 0">
+                <div style="font-size: 13px; font-weight: 800; line-height: 1.4; overflow-wrap: anywhere">{{ c.name }}</div>
+                <div style="font-size: 11px; font-weight: 600; color: #61736f; overflow-wrap: anywhere">{{ c.where }}</div>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 4px">
+                <span style="font-size: 10px; font-weight: 700; color: {{ c.stColor }}; background: {{ c.stBg }}; padding: 3px 7px; border-radius: 5px; align-self: flex-start">{{ c.state }}</span>
+                <div style="font-size: 10.5px; font-weight: 600; color: #61736f">{{ c.when }}</div>
+              </div>
+              <a href="{{ c.href }}" style="padding: 9px 12px; border-radius: 7px; background: #157f76; color: #ffffff; font-size: 11.5px; font-weight: 700; text-decoration: none; text-align: center; white-space: nowrap" style-hover="background: #0d5c55">Пройти в обходе</a>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isLogs }}" hint-placeholder-val="{{ false }}">
+        <div style="display: flex; flex-direction: column; gap: 9px">
+          <sc-if value="{{ noLogs }}" hint-placeholder-val="{{ false }}">
+            <div style="background: #ffffff; border: 1px dashed #cfd8d7; border-radius: 12px; padding: 30px; text-align: center; font-size: 13px; color: #61736f; font-weight: 600; line-height: 1.55">{{ noLogsNote }}</div>
+          </sc-if>
+          <sc-for list="{{ logs }}" as="l" hint-placeholder-count="3">
+            <div style="background: #ffffff; border: 1px solid #e3e8e8; border-radius: 11px; padding: 13px 16px; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap: 10px 16px; align-items: center">
+              <div style="display: flex; flex-direction: column; gap: 4px; min-width: 0">
+                <div style="font-size: 12.5px; font-weight: 800; line-height: 1.4; overflow-wrap: anywhere">{{ l.name }}</div>
+                <div style="font-size: 11px; font-weight: 600; color: #61736f; overflow-wrap: anywhere">{{ l.pos }}</div>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 3px">
+                <div style="font-size: 11px; font-weight: 700; color: {{ l.dueColor }}">{{ l.due }}</div>
+                <div style="font-size: 10.5px; font-weight: 600; color: #61736f">{{ l.last }}</div>
+              </div>
+              <a href="{{ l.href }}" style="padding: 9px 12px; border-radius: 7px; border: 1px solid #157f76; color: #157f76; font-size: 11.5px; font-weight: 700; text-decoration: none; text-align: center; white-space: nowrap" style-hover="background: #e8f2f0">Заполнить</a>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+
+      <div style="font-size: 11px; font-weight: 600; color: #8a9997; line-height: 1.5; text-wrap: pretty">{{ footNote }}</div>
+    </div>
+
+    <sc-if value="{{ hasToast }}" hint-placeholder-val="{{ false }}">
+      <div style="position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); max-width: 520px; background: #10201f; color: #ffffff; padding: 12px 18px; border-radius: 10px; font-size: 12.5px; font-weight: 600; line-height: 1.45; box-shadow: 0 10px 28px rgba(16,32,31,0.28); z-index: 40">{{ toast }}</div>
+    </sc-if>
+    </div>
+  </div>
+</sc-if>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1100}}">
+class Component extends DCLogic {
+  state = {
+    ready: false, session: null, authError: '',
+    aInn: '', aPhone: '', aPass: '', tab: 'docs', doneMark: {}, toast: ''
+  };
+
+  async componentDidMount() {
+    try {
+      const a = await import('./auth.js');
+      this.auth = a;
+      a.seedDemo();
+      const s = a.session();
+      // кабинет исполнителя принимает только роль исполнителя: администратор клиники
+      // и ответственный за ВКК работают в полном кабинете, а не здесь
+      const ok = s && s.side === 'clinic' && s.role === 'nurse';
+      this.setState({ session: ok ? s : null, ready: true });
+    } catch (err) {
+      this.setState({ ready: true, authError: 'Модуль входа недоступен' });
+    }
+    try {
+      const mod = await import('./platform.js');
+      this._unsub = mod.createClient({ role: 'nurse' }).subscribe(['k785_*'], () => this.forceUpdate());
+    } catch (err) { /* слой недоступен — данные читаем напрямую */ }
+    try {
+      const raw = window.localStorage.getItem('k785_exec_state');
+      if (raw) this.setState({ doneMark: (JSON.parse(raw) || {}).doneMark || {} });
+    } catch (err) { /* состояние пустое */ }
+  }
+
+  componentWillUnmount() { if (this._unsub) this._unsub(); }
+
+  json(key, def) {
+    try {
+      const v = window.localStorage.getItem(key);
+      return v ? (JSON.parse(v) || def) : def;
+    } catch (err) { return def; }
+  }
+
+  plural(n, one, few, many) {
+    const a = Math.abs(n) % 100, b = a % 10;
+    return n + ' ' + ((a > 10 && a < 20) ? many : (b === 1 ? one : (b >= 2 && b <= 4 ? few : many)));
+  }
+
+  today() {
+    const d = new Date();
+    const p = (n) => String(n).padStart(2, '0');
+    return p(d.getDate()) + '.' + p(d.getMonth() + 1) + '.' + d.getFullYear();
+  }
+
+  // назначение может быть записано на нескольких людей через « + »
+  mine(who, fio) {
+    // в назначении рядом с ФИО может стоять филиал: «Смирнов А. П. · Головная клиника»
+    return String(who || '').split(/\s*\+\s*/).map(s => s.split('·')[0].trim()).filter(Boolean)
+      .some(n => n === fio);
+  }
+
+  markDone(key, label) {
+    this.setState(s => {
+      const m = Object.assign({}, s.doneMark, { [key]: this.today() });
+      try { window.localStorage.setItem('k785_exec_state', JSON.stringify({ doneMark: m })); } catch (err) { /* не критично */ }
+      return { doneMark: m };
+    });
+    this.say('Отмечено выполненным: ' + label + ' · ' + this.today());
+  }
+
+  say(t) {
+    this._t && clearTimeout(this._t);
+    this.setState({ toast: t });
+    this._t = setTimeout(() => this.setState({ toast: '' }), 3200);
+  }
+
+  renderVals() {
+    const st = this.state;
+    const s = st.session;
+    if (!s) {
+      return {
+        needLogin: st.ready, isIn: false,
+        authError: st.authError, hasError: !!st.authError,
+        aInn: st.aInn,
+        setAInn: (e) => this.setState({ aInn: e.target.value }),
+        aPhone: st.aPhone,
+        setAPhone: (e) => this.setState({ aPhone: e.target.value }),
+        aPass: st.aPass,
+        setAPass: (e) => this.setState({ aPass: e.target.value }),
+        doLogin: () => {
+          if (!this.auth) { this.setState({ authError: 'Модуль входа недоступен' }); return; }
+          if (!String(st.aInn || '').trim() || !String(st.aPhone || '').trim() || !st.aPass) {
+            this.setState({ authError: 'Введите ИНН клиники, телефон и пароль' });
+            return;
+          }
+          const r = this.auth.loginByPhone(st.aInn, st.aPhone, st.aPass);
+          if (!r.ok) { this.setState({ authError: r.error }); return; }
+          if (r.session.role !== 'nurse') {
+            this.auth.logout();
+            this.setState({ authError: 'Эта учётная запись — не исполнитель. Войдите в кабинет клиники.' });
+            return;
+          }
+          this.setState({ session: r.session, authError: '', aPass: '' });
+        }
+      };
+    }
+
+    const inn = s.inn;
+    const fio = s.fio;
+    const reg = this.json('k785_clinics', {});
+    const clinicName = ((reg[inn] || {}).name) || s.org || ('ИНН ' + inn);
+
+    // должность берём из каталога сотрудников клиники — там она поддерживается клиникой
+    const staff = this.json('k785_staff_' + inn, []);
+    let pos = (staff.filter(p => p && String(p.fio).trim() === fio)[0] || {}).pos || '';
+    if (!pos) {
+      const cs = this.json('k785_client_state_' + inn, {});
+      Object.keys(cs.staffByBranch || {}).forEach(bi => (cs.staffByBranch[bi] || [])
+        .forEach(p => { if (p && String(p.fio).trim() === fio && !pos) pos = p.pos || ''; }));
+    }
+    if (!pos && fio === 'Петрова В. В.') pos = 'Старшая медсестра, процедурный блок';
+    if (!pos && fio === 'Сидорова В. В.') pos = 'Главная медицинская сестра';
+
+    // ДОКУМЕНТЫ: только те, где этот человек назначен исполнителем.
+    // Источник один — матрица назначений клиники и оператора, ничего «по должности»
+    // публикуемая матрица — основной источник; если клиника ещё не публиковала,
+    // читаем её рабочее состояние: назначение уже сделано, просто не выгружено
+    const asgLocal = {};
+    const rawAsg = this.json('k785_client_state_' + inn, {}).asgMap || {};
+    Object.keys(rawAsg).forEach(k => {
+      // ключи рабочего состояния составные: «этап|блок|номер|название документа».
+      // Берём только их — есть и записи вида «зона|блок|филиал», где последний
+      // сегмент не документ, и они дали бы в кабинете исполнителя мусор
+      const parts = String(k).split('|');
+      if (parts.length === 4 && /^\d+$/.test(parts[2]) && parts[3]) asgLocal[parts[3]] = rawAsg[k];
+    });
+    const docAsg = Object.assign(asgLocal, this.json('k785_docasg_' + inn, {}));
+    const done = st.doneMark || {};
+    const docs = Object.keys(docAsg).filter(n => this.mine(docAsg[n], fio)).sort().map(n => {
+      const others = String(docAsg[n] || '').split(/\s*\+\s*/).map(x => x.trim())
+        .filter(x => x && x !== fio);
+      const d = done['doc|' + n];
+      return {
+        name: n,
+        where: 'назначение клиники · документ системы качества',
+        state: d ? 'выполнено ' + d : 'в работе',
+        stColor: d ? '#0d5c55' : '#8a5b0f',
+        stBg: d ? '#e8f2f0' : '#fdf3e2',
+        together: others.length ? 'вместе с: ' + others.join(', ') : 'единственный исполнитель',
+        doneLabel: d ? 'Отмечено' : 'Выполнено',
+        open: () => this.say('«' + n + '» · вы назначены исполнителем. Правка документа ведётся в кабинете клиники ответственным за ВКК — вам открыт просмотр и отметка о выполнении.'),
+        done: () => this.markDone('doc|' + n, n)
+      };
+    });
+
+    // ЧЕК-ЛИСТЫ: план проверок клиники, где исполнитель указан проверяющим
+    const plan = this.json('k785_audit_plan_' + inn, []);
+    const results = this.json('k785_walk_results_' + inn, {});
+    const finished = {};
+    Object.keys(results).forEach(k => { if ((results[k] || {}).finished) finished[(results[k] || {}).name || k] = results[k]; });
+    const checks = (Array.isArray(plan) ? plan : []).filter(p => p && this.mine(p.who, fio)).map(p => {
+      const r = finished[p.name];
+      return {
+        name: p.name || 'Проверка',
+        where: (p.object || 'объект не указан') + (p.kind ? ' · ' + p.kind : ''),
+        state: r ? 'проведена' : 'назначена',
+        stColor: r ? '#0d5c55' : '#1d4f7c',
+        stBg: r ? '#e8f2f0' : '#e8eff7',
+        when: p.date ? 'срок ' + p.date : 'срок не задан',
+        href: 'Обход - мобильный.dc.html?clinic=' + inn
+      };
+    });
+
+    // ЖУРНАЛЫ ПО ОБОРУДОВАНИЮ: позиции, где исполнитель ведёт регулярные записи
+    const equip = this.json('k785_equip_pos_' + inn, []);
+    const fills = this.json('k785_equip_fill_' + inn, {});
+    const logs = [];
+    (Array.isArray(equip) ? equip : []).forEach(p => {
+      const who = (p.logWho || {});
+      Object.keys(who).forEach(form => {
+        if (!this.mine(who[form], fio)) return;
+        const f = fills[p.uid + '|' + form] || {};
+        logs.push({
+          name: form,
+          pos: p.name + (p.room ? ' · ' + p.room : ''),
+          due: f.date ? 'заполнялся' : 'записей нет',
+          dueColor: f.date ? '#0d5c55' : '#a8342a',
+          last: f.date ? 'последняя запись ' + f.date + ' · ' + (f.who || '') : 'ни одной записи',
+          href: 'Обход - мобильный.dc.html?clinic=' + inn
+        });
+      });
+    });
+
+    const tab = st.tab || 'docs';
+    const mk = (k, n) => ({
+      name: n, go: () => this.setState({ tab: k }),
+      bg: tab === k ? '#10201f' : '#ffffff',
+      color: tab === k ? '#ffffff' : '#10201f',
+      border: tab === k ? '#10201f' : '#dde3e2'
+    });
+
+    return {
+      needLogin: false, isIn: true,
+      toast: st.toast || '', hasToast: !!st.toast,
+      fio, inn, clinicName,
+      ini: fio.split(' ').slice(0, 2).map(w => w[0]).join(''),
+      posLine: (pos || 'должность не указана') + ' · исполнитель',
+      scopeNote: 'Вы работаете от имени «' + clinicName + '» только там, где клиника назначила вас исполнителем: '
+        + this.plural(docs.length, 'документ', 'документа', 'документов') + ', '
+        + this.plural(checks.length, 'проверка', 'проверки', 'проверок') + ', '
+        + this.plural(logs.length, 'журнал', 'журнала', 'журналов') + '. Остальное клиника вам не открыла — состав назначений меняется в кабинете клиники, во вкладке «Сотрудники и матрица ответственных».',
+      kpis: [
+        { val: String(docs.length), name: 'документов на вас', color: '#10201f' },
+        { val: String(docs.filter(d => d.state.indexOf('выполнено') === 0).length), name: 'отмечено выполненными', color: '#0d5c55' },
+        { val: String(checks.length), name: 'проверок назначено', color: '#1d4f7c' },
+        { val: String(logs.filter(l => l.due === 'записей нет').length), name: 'журналов без записей', color: '#a8342a' }
+      ],
+      tabs: [
+        mk('docs', 'Мои документы · ' + docs.length),
+        mk('checks', 'Мои проверки · ' + checks.length),
+        mk('logs', 'Мои журналы · ' + logs.length)
+      ],
+      isDocs: tab === 'docs', isChecks: tab === 'checks', isLogs: tab === 'logs',
+      docs, checks, logs,
+      noDocs: !docs.length,
+      noDocsNote: 'На вас пока не назначен ни один документ. Назначение делает ответственный за ВКК в кабинете клиники — до этого документы вам не видны.',
+      noChecks: !checks.length,
+      noChecksNote: 'Проверок на вас не назначено. Как только клиника поставит вас проверяющим в плане, чек-лист появится здесь и откроется в обходе.',
+      noLogs: !logs.length,
+      noLogsNote: 'Журналы по оборудованию на вас не закреплены.',
+      footNote: 'Доступ выдан клиникой по ИНН и рабочему телефону. Вы действуете от имени клиники в границах своих назначений: править состав документов, видеть деньги и работать за других сотрудников кабинет исполнителя не позволяет.',
+      doLogout: () => {
+        if (this.auth) this.auth.logout();
+        this.setState({ session: null, aPass: '' });
+      }
+    };
+  }
+}
+
+</script>
+</body>
+</html>

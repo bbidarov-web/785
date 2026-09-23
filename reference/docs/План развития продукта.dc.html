@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com"></link>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous"></link>
+<link href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,400;0,600;0,700;1,400&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet"></link>
+<style>
+  doc-page:not(:defined) { visibility: hidden }
+  h1, h2, h3 { font-family: 'IBM Plex Sans', sans-serif }
+  .callout, .tile, .layer, .role { break-inside: avoid }
+  table { border-collapse: collapse; width: 100% }
+  th { text-align: left }
+</style>
+<script src="./doc-page.js"></script>
+</helmet>
+
+<doc-page margin="0.8in">
+  <div slot="footer" style="display: flex; align-items: baseline; gap: 10px; padding: 8px 0 0; border-top: 1px solid #dde3e2; font-family: 'IBM Plex Sans', sans-serif; font-size: 9pt; color: #61736f">
+    <span style="font-weight: 600; color: #0d5c55">Контур 785</span>
+    <span>План развития продукта</span>
+    <span style="margin-left: auto; font-family: 'IBM Plex Mono', monospace">внутренний документ</span>
+  </div>
+
+  <h1 style="font-size: 26pt; font-weight: 700; line-height: 1.15; letter-spacing: -0.5px; margin: 0 0 10px; color: #10201f">План развития SaaS-продукта «Контур 785»</h1>
+  <p style="font-family: 'IBM Plex Sans', sans-serif; font-size: 11.5pt; line-height: 1.5; color: #3d5a56; margin: 0 0 4px; font-weight: 500">Что мы уже построили, какие задачи продукт обязан решать, какой функционал закрывает разрыв и как должна быть устроена архитектура, чтобы это выдержать.</p>
+
+  <div class="callout" style="margin: 22px 0 26px; padding: 18px 20px; background: #f2f7f6; border-left: 3px solid #157f76; font-family: 'IBM Plex Sans', sans-serif">
+    <div style="font-size: 10pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: #0d5c55; margin-bottom: 8px">Главный вывод анализа</div>
+    <p style="font-size: 11.5pt; line-height: 1.55; margin: 0; color: #10201f">Наш продаваемый актив — не библиотека шаблонов. Шаблоны копируются за месяц и обесцениваются. Актив — <strong>живой методический эталон с телеметрией внедрения</strong>: центрально версионируемый стандарт, который клиника принимает, дополняет своим и исполняет, а мы видим, кто на какой редакции и где именно система рассыпается. Всё остальное в продукте должно обслуживать этот контур.</p>
+  </div>
+
+  <h2 style="font-size: 15pt; font-weight: 700; margin: 30px 0 12px; color: #10201f; letter-spacing: -0.2px">1. Что уже есть в прототипе</h2>
+  <p style="font-size: 11.5pt; line-height: 1.65; margin: 0 0 14px">Собраны три рабочих поверхности и, что важнее, замкнут сквозной цикл между ними — ни один конкурент этого целиком не делает.</p>
+
+  <table style="font-family: 'IBM Plex Sans', sans-serif; font-size: 10pt; margin: 0 0 18px">
+    <thead>
+      <tr style="background: #f7f9f9">
+        <th style="padding: 9px 10px; border-bottom: 1.5px solid #cfd8d7; font-weight: 700; width: 27%">Поверхность</th>
+        <th style="padding: 9px 10px; border-bottom: 1.5px solid #cfd8d7; font-weight: 700">Что закрывает</th>
+        <th style="padding: 9px 10px; border-bottom: 1.5px solid #cfd8d7; font-weight: 700; width: 24%">Кто работает</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600">Панель оператора</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Эталонный состав по этапам и подэтапам, каталоги блоков и чек-листов, годовой цикл, редакции документов с возвратом из архива, пилотный тираж перед общей публикацией, тарифы, реестр клиник, массовые операции по выборке клиник, очередь работы с состоянием задачи, рассылка методиста с подтверждением прочтения, профиль компании со штатом, роли и права, хранилище файлов с печатью акта, журнал действий</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; color: #3d5a56">Методист, менеджер по продажам, руководитель продаж, администратор платформы — у каждого своё рабочее место</td>
+      </tr>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600">Кабинет клиники</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Приём рекомендаций и согласование редакций, опись всех документов по этапам и зонам с открытием файла, загрузка своих документов с содержимым и контрольной суммой, годовой план проверок, реестр аудитов и печать акта со снимками-приложениями, журнал ВКК, CAPA цепочками с повторными проверками, сообщения от методиста с отметкой прочтения, вкладка «Доступы и роли»</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; color: #3d5a56">Администратор клиники, ответственный за ВКК, медсестра / исполнитель, аудитор, наблюдатель — у каждого свой набор действий</td>
+      </tr>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600">Мобильный обход</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Проверка по назначенному чек-листу на месте, фиксация нарушений с фотофиксацией (снимок уходит в акт, а не только его название), журналы и формы по оборудованию, переключение объекта, восстановление незакрытого обхода после перезагрузки телефона, формирование состава документов результата</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; color: #3d5a56">Ответственный за ВКК, медсестра / исполнитель, аудитор</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p style="font-size: 11.5pt; line-height: 1.65; margin: 0 0 6px"><strong>Замкнутый контур, который уже работает:</strong></p>
+  <p style="font-family: 'IBM Plex Mono', monospace; font-size: 9.5pt; line-height: 1.7; margin: 0 0 20px; padding: 14px 16px; background: #f7f9f9; color: #10201f">эталон методиста → «применить во всех кабинетах» → рекомендация клинике<br>→ принятие редакции (предыдущая в архив) → годовой план проверок<br>→ обход с телефона по привязанному чек-листу → нарушения и результат<br>→ реестр аудитов и журнал ВКК → сводка внедрения у методиста</p>
+
+  <h3 style="font-size: 12pt; font-weight: 700; margin: 22px 0 8px; color: #10201f">Четыре урока, которые прототип выдал раньше продакшена</h3>
+  <p style="font-size: 11.5pt; line-height: 1.65; margin: 0 0 10px">Их стоит зафиксировать как архитектурные требования, а не как исправленные баги.</p>
+  <ol style="font-size: 11.5pt; line-height: 1.6; padding-left: 22px; margin: 0 0 20px">
+    <li style="margin-bottom: 8px"><strong>Идентификаторы обязаны быть стабильными.</strong> Результаты обхода привязывались к позиции проверки в массиве — новая запись в начале списка сдвигала всё и перевешивала чужие нарушения на другую проверку. В надзорном продукте это не косметика, а подлог данных.</li>
+    <li style="margin-bottom: 8px"><strong>Никогда не подставлять «похожее».</strong> Когда у направления не назначен чек-лист, соблазн подставить первый подходящий велик — и он даёт медсестре вопросы по лекарственной безопасности на эпидемиологической проверке. Пустое состояние с честной причиной лучше правдоподобной подделки.</li>
+    <li style="margin-bottom: 8px"><strong>Схема не может жить только в сиде.</strong> Правка значений по умолчанию не меняет ничего у тех, у кого данные уже сохранены. Каждое изменение модели нуждается в миграции — и это тем более верно, когда данные лежат у арендатора.</li>
+    <li><strong>Массовое действие не имеет права идти «наполовину молча».</strong> Первая версия групповых операций молча глотала ошибки и считала обработанными даже те клиники, к которым действие неприменимо. Пачка на сотню арендаторов требует трёх контуров: предпроверка каждой записи до записи, снимок с возможностью отката, отчёт «применено / пропущено с причиной / ошибка».</li>
+  </ol>
+
+  <h2 style="font-size: 15pt; font-weight: 700; margin: 32px 0 12px; color: #10201f; letter-spacing: -0.2px">2. Ценности продукта</h2>
+  <p style="font-size: 11.5pt; line-height: 1.65; margin: 0 0 16px">Пять обещаний, каждое из которых можно проверить фактом в интерфейсе. Если обещание не подтверждается экраном — это не ценность, а слоган.</p>
+
+  <div class="tile" style="margin: 0 0 12px; padding: 15px 18px; border: 1px solid #dde3e2; border-radius: 4px">
+    <div style="font-family: 'IBM Plex Sans', sans-serif; font-size: 11.5pt; font-weight: 700; color: #10201f; margin-bottom: 5px">1. Клиника не остаётся одна с изменением требований</div>
+    <p style="font-size: 11pt; line-height: 1.55; margin: 0; color: #3d5a56">Меняется НПА или практика надзора — методист выпускает новую редакцию, и она приходит каждой клинике как рекомендация с историей версий. Клиника решает: принять или остаться на своей. Это то, чего не даёт ни разовый пакет документов, ни модуль внутри МИС.</p>
+  </div>
+  <div class="tile" style="margin: 0 0 12px; padding: 15px 18px; border: 1px solid #dde3e2; border-radius: 4px">
+    <div style="font-family: 'IBM Plex Sans', sans-serif; font-size: 11.5pt; font-weight: 700; color: #10201f; margin-bottom: 5px">2. Готовность к проверке измерима в любой момент</div>
+    <p style="font-size: 11pt; line-height: 1.55; margin: 0; color: #3d5a56">Не «у нас вроде всё есть», а число с раскладкой: какие документы отсутствуют, какие проверки просрочены, какие нарушения не закрыты. Главврач видит это до звонка из Росздравнадзора, а не после.</p>
+  </div>
+  <div class="tile" style="margin: 0 0 12px; padding: 15px 18px; border: 1px solid #dde3e2; border-radius: 4px">
+    <div style="font-family: 'IBM Plex Sans', sans-serif; font-size: 11.5pt; font-weight: 700; color: #10201f; margin-bottom: 5px">3. Контроль происходит там, где нарушение</div>
+    <p style="font-size: 11pt; line-height: 1.55; margin: 0; color: #3d5a56">Проверка идёт с телефона в кабинете, а не переписывается вечером с бумажки. Отсюда достоверность: фото, время, объект и исполнитель фиксируются на месте.</p>
+  </div>
+  <div class="tile" style="margin: 0 0 12px; padding: 15px 18px; border: 1px solid #dde3e2; border-radius: 4px">
+    <div style="font-family: 'IBM Plex Sans', sans-serif; font-size: 11.5pt; font-weight: 700; color: #10201f; margin-bottom: 5px">4. У каждого нарушения есть закрытый цикл</div>
+    <p style="font-size: 11pt; line-height: 1.55; margin: 0; color: #3d5a56">Нарушение — не запись в журнале, а дело: акт, разбор на врачебной комиссии, мероприятие с исполнителем и сроком, проверка эффективности, закрытие. Незакрытое дело не даёт системе показать «всё в порядке».</p>
+  </div>
+  <div class="tile" style="margin: 0 0 20px; padding: 15px 18px; border: 1px solid #dde3e2; border-radius: 4px">
+    <div style="font-family: 'IBM Plex Sans', sans-serif; font-size: 11.5pt; font-weight: 700; color: #10201f; margin-bottom: 5px">5. Для сети — сравнимость объектов</div>
+    <p style="font-size: 11pt; line-height: 1.55; margin: 0; color: #3d5a56">Один стандарт на все филиалы и одна линейка измерения. Управляющая компания видит, какой объект отстаёт и по какому направлению, вместо десяти несопоставимых папок.</p>
+  </div>
+
+  <h2 style="font-size: 15pt; font-weight: 700; margin: 32px 0 12px; color: #10201f; letter-spacing: -0.2px">3. Задачи, которые продукт обязан решать</h2>
+  <p style="font-size: 11.5pt; line-height: 1.65; margin: 0 0 16px">По ролям, потому что покупатель и пользователь у нас разные, и продукт проваливается там, где мы обслуживаем только одного из них.</p>
+
+  <table style="font-family: 'IBM Plex Sans', sans-serif; font-size: 10pt; margin: 0 0 22px">
+    <thead>
+      <tr style="background: #f7f9f9">
+        <th style="padding: 9px 10px; border-bottom: 1.5px solid #cfd8d7; font-weight: 700; width: 24%">Роль</th>
+        <th style="padding: 9px 10px; border-bottom: 1.5px solid #cfd8d7; font-weight: 700">Задача, за которую платят или из-за которой уходят</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600; vertical-align: top">Главный врач<br><span style="font-weight: 400; font-size: 9pt; color: #61736f">покупатель</span></td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Не получить предписание и штраф. Знать степень готовности без погружения в детали. Иметь доказательство, что система контроля действительно работала, а не рисовалась перед проверкой.</td>
+      </tr>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600; vertical-align: top">Ответственный за ВКК<br><span style="font-weight: 400; font-size: 9pt; color: #61736f">главный пользователь</span></td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Перестать вести систему качества в Word и Excel по ночам. Не пропустить срок. Не переписывать документы после каждого изменения требований. Собрать годовой отчёт за час, а не за две недели.</td>
+      </tr>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600; vertical-align: top">Старшая медсестра<br><span style="font-weight: 400; font-size: 9pt; color: #61736f">исполнитель на местах</span></td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Провести обход быстро и без бумаги. Понимать, что именно проверять сегодня и на каком объекте. Видеть свои задачи по устранению, а не узнавать о них на разборе.</td>
+      </tr>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600; vertical-align: top">Руководитель сети<br><span style="font-weight: 400; font-size: 9pt; color: #61736f">крупный чек</span></td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Один стандарт на все объекты. Сравнить филиалы между собой. Найти системную проблему, повторяющуюся в нескольких точках. Не зависеть от того, ушёл ли эпидемиолог из конкретного филиала.</td>
+      </tr>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600; vertical-align: top">Методист платформы<br><span style="font-weight: 400; font-size: 9pt; color: #61736f">наша экономика</span></td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Обновить стандарт один раз и разослать сотням клиник. Видеть, кто не принял и почему. Обслуживать больше клиник, не увеличивая штат — это прямой множитель маржи.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2 style="font-size: 15pt; font-weight: 700; margin: 32px 0 12px; color: #10201f; letter-spacing: -0.2px">4. Функциональные разрывы</h2>
+  <p style="font-size: 11.5pt; line-height: 1.65; margin: 0 0 16px">Честная инвентаризация: что в прототипе показано как экран, но ещё не является механизмом. Порядок — по риску для продажи.</p>
+
+  <table style="font-family: 'IBM Plex Sans', sans-serif; font-size: 10pt; margin: 0 0 22px">
+    <thead>
+      <tr style="background: #f7f9f9">
+        <th style="padding: 9px 10px; border-bottom: 1.5px solid #cfd8d7; font-weight: 700; width: 30%">Разрыв</th>
+        <th style="padding: 9px 10px; border-bottom: 1.5px solid #cfd8d7; font-weight: 700">Почему это блокирует продажу</th>
+        <th style="padding: 9px 10px; border-bottom: 1.5px solid #cfd8d7; font-weight: 700; width: 12%">Состояние</th>
+        <th style="padding: 9px 10px; border-bottom: 1.5px solid #cfd8d7; font-weight: 700; width: 12%">Приоритет остатка</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600">Роли и права доступа</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">На стороне платформы сделано: четыре роли, права по действиям, чужие разделы только для чтения, вторая рука на семи необратимых операциях, назначение сотрудников из профиля компании. У методиста, менеджера и руководителя продаж — отдельные кабинеты со своим входом: войти чужой ролью нельзя, административные разделы скрыты, демо-переключателя роли нет. Регистрация сотрудника не даёт доступа сама по себе: заявка ждёт подтверждения администратора, он же назначает итоговую роль. На стороне клиники тоже пять ролей — администратор, ответственный за ВКК, медсестра, аудитор, наблюдатель; у исполнителя свой кабинет с входом по ИНН клиники и рабочему телефону: он видит только документы, проверки и журналы, где клиника назначила его исполнителем, и проходит свой чек-лист в обходе. Осталась проверка прав на сервере — в интерфейсе она защищает от ошибки, но не от запроса к API.</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 700; color: #61736f">Частично</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 700; color: #a8342a">Высокий</td>
+      </tr>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600">Неизменяемый аудит-трейл</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Журнал действий работает: автор, дата, охват, «было → стало», только на добавление, отказы в правах и массовые операции одной записью. Редакции документов не перезаписываются — возврат выпускает новую редакцию с прежним содержимым. Остаётся серверная часть: подпись записи и защита от правки в обход интерфейса.</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 700; color: #61736f">Частично</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 700; color: #a8342a">Высокий</td>
+      </tr>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600">Сроки, задачи, напоминания</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Сроки считаются от дат: кабинет показывает «просрочена с ДД.ММ» по мероприятиям, поверкам и журналам, а просрочки превращаются в задачи очереди оператора со состоянием и владельцем. Осталось главное: автоматическое напоминание исполнителю, эскалация руководителю и фактическая доставка — сейчас «напомнить» останавливается на сообщении в панели.</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 700; color: #61736f">Частично</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 700; color: #a8342a">Высокий</td>
+      </tr>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600">Файлы и электронная подпись</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Файлы больше не только названия: содержимое хранится, открывается из описи, оператор смотрит документ до подтверждения, акт печатается со снимками-приложениями. Остались объектное хранилище с версиями и антивирусом, генерация DOCX и PDF из шаблона, печать описи и УКЭП на протоколах ВК — без неё стационары и сети не подпишут.</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 700; color: #61736f">Частично</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 700; color: #a8342a">Высокий</td>
+      </tr>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600">Объекты как первый класс</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">По объектам уже разрезаны план работ (селектор филиала в форме), обход (переключатель объекта фильтрует и проверки, и оборудование), дашборд с режимами «только объект» и «консолидированно по всем», а также штат, этапы внедрения, документы и оборудование. Осталось: сводная отчётность сети за период с сравнением филиалов между собой и роли, привязанные к объекту.</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 700; color: #61736f">Частично</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 700; color: #a8342a">Высокий</td>
+      </tr>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600">Настоящий офлайн в обходе</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">В стерилизационной и на складе связи нет. Локальная половина сделана: незакрытый обход восстанавливается после перезагрузки телефона вместе с ответами, комментариями и снимками, ранее опубликованные фото не теряются при повторной отправке, есть экран очереди с режимом «нет сети». Осталась серверная: идемпотентный ключ операции, подтверждение сервера вместо отметки «отправлено», повтор до успеха и слияние по версии чек-листа — без них акт может пропасть или удвоиться.</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 700; color: #61736f">Частично</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 700; color: #a8342a">Высокий</td>
+      </tr>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600">CAPA как движок</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Мероприятия заводятся автоматически по нарушениям обхода, ведутся цепочками с повторными проверками, статусом по своему пункту и новыми нарушениями, выявленными на повторной. Осталось: сроки по критичности нарушения и формальная оценка эффективности мероприятия.</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 700; color: #61736f">Частично</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 700; color: #a8342a">Высокий</td>
+      </tr>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600">Самообследование и выгрузка</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Сделано: оператор ведёт проверочные листы как эталон (общий и по виду деятельности), клиника получает листы по своим работам по лицензии, добавляет свои пункты, проходит прогон со ссылками на подтверждающие документы и выгружает пакет для инспектора; несоответствия становятся мероприятиями, оператор видит сводку по всем клиникам. Осталось: приложения к пакету одним PDF на сервере и сверка пунктов с актуальными проверочными листами надзора.</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 700; color: #0d5c55">Сделано в демо</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 700; color: #0d5c55">Средний</td>
+      </tr>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600">Интеграция с МИС и кадрами</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Снимает ручной ввод сотрудников и подразделений, сокращает time-to-value и открывает партнёрский канал продаж.</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 700; color: #61736f">Не начат</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 700; color: #0d5c55">Средний</td>
+      </tr>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600">Обучение и аттестация</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Требование 785н и одновременно отдельный поток выручки в нише, которую сейчас занимает РОСТР.</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 700; color: #61736f">Не начат</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 700; color: #0d5c55">Средний</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2 style="font-size: 15pt; font-weight: 700; margin: 32px 0 12px; color: #10201f; letter-spacing: -0.2px">5. План развития по горизонтам</h2>
+
+  <h3 style="font-size: 12pt; font-weight: 700; margin: 20px 0 8px; color: #0d5c55">Горизонт 1 · Продукт, который можно продать без нас в комнате</h3>
+  <p style="font-size: 11.5pt; line-height: 1.65; margin: 0 0 10px">Цель — убрать всё, что сегодня требует ручного сопровождения каждой сделки.</p>
+  <ul style="font-size: 11.5pt; line-height: 1.6; padding-left: 22px; margin: 0 0 16px">
+    <li style="margin-bottom: 6px">Проверка прав на сервере: в интерфейсе матрица уже двусторонняя — четыре роли платформы со второй рукой и пять ролей клиники с вкладкой «Доступы и роли», — но обходится прямым запросом к API. Плюс ограничение роли рамками филиала: штат ведётся по объектам, а доступ по ним не разрезан, поэтому аудитор одного филиала видит данные всех.</li>
+    <li style="margin-bottom: 6px">Объектное хранилище файлов с версиями и антивирусом, генерация DOCX и PDF из шаблона с подстановкой реквизитов организации, печать описи документов.</li>
+    <li style="margin-bottom: 6px">Доставка напоминаний и эскалация: сроки, просрочки и задачи с состоянием уже считаются — нужно, чтобы система сама напоминала исполнителю и поднимала вопрос руководителю, а не ждала, пока кто-то откроет панель.</li>
+    <li style="margin-bottom: 6px">Перенос журнала действий на сервер с подписью записи (в интерфейсе журнал ведётся, включая отказы в правах и массовые операции).</li>
+    <li style="margin-bottom: 6px">Фоновые массовые операции с идемпотентным ключом и реальная отправка дайджеста: в интерфейсе есть три контура с откатом, очередь работы и настройка расписания, но письмо отправляет сервер.</li>
+    <li>Самостоятельное подключение: клиника заводит организацию, объекты и людей без участия методиста.</li>
+  </ul>
+  <p style="font-size: 11pt; line-height: 1.55; margin: 0 0 20px; color: #3d5a56"><strong style="color: #10201f">Критерий выхода:</strong> клиника проходит путь от регистрации до первого закрытого обхода без единого касания нашей команды.</p>
+
+  <h3 style="font-size: 12pt; font-weight: 700; margin: 20px 0 8px; color: #0d5c55">Горизонт 2 · Сети</h3>
+  <p style="font-size: 11.5pt; line-height: 1.65; margin: 0 0 10px">Здесь основной чек: сети уже дают 38% выручки при 11% клиентов.</p>
+  <ul style="font-size: 11.5pt; line-height: 1.6; padding-left: 22px; margin: 0 0 16px">
+    <li style="margin-bottom: 6px">Объект как первый класс во всех разрезах: план, обход, журнал, отчёт, готовность.</li>
+    <li style="margin-bottom: 6px">Кабинет управляющей компании: сравнение объектов, рейтинг, повторяющиеся нарушения по сети.</li>
+    <li style="margin-bottom: 6px">Свой стандарт сети поверх нашего эталона — сеть становится «методистом» для своих филиалов.</li>
+    <li style="margin-bottom: 6px">Мобильный обход как PWA с полноценным офлайном и очередью синхронизации.</li>
+    <li>УКЭП на протоколах врачебной комиссии и журналах.</li>
+  </ul>
+  <p style="font-size: 11pt; line-height: 1.55; margin: 0 0 20px; color: #3d5a56"><strong style="color: #10201f">Критерий выхода:</strong> сеть на 10+ объектов ведёт единый стандарт и видит сравнимую картину по всем точкам.</p>
+
+  <h3 style="font-size: 12pt; font-weight: 700; margin: 20px 0 8px; color: #0d5c55">Горизонт 3 · Незаменимость</h3>
+  <ul style="font-size: 11.5pt; line-height: 1.6; padding-left: 22px; margin: 0 0 16px">
+    <li style="margin-bottom: 6px">Самообследование перед проверкой с выгрузкой в формате надзора.</li>
+    <li style="margin-bottom: 6px">Подписка «актуализация при изменении НПА» — отдельный продукт на нашем же контуре редакций.</li>
+    <li style="margin-bottom: 6px">Интеграции с МИС и кадровыми системами; партнёрский канал.</li>
+    <li style="margin-bottom: 6px">Обучение и аттестация персонала с сертификатами.</li>
+    <li>Отраслевой бенчмарк готовности по обезличенным данным — маркетинг и удержание одновременно.</li>
+  </ul>
+
+  <h3 style="font-size: 12pt; font-weight: 700; margin: 20px 0 8px; color: #0d5c55">Горизонт 4 · Платформа</h3>
+  <ul style="font-size: 11.5pt; line-height: 1.6; padding-left: 22px; margin: 0 0 22px">
+    <li style="margin-bottom: 6px">White-label для консалтинговых бюро, страховых компаний ДМС и франшиз.</li>
+    <li style="margin-bottom: 6px">Публичное API и конструктор собственных чек-листов и направлений.</li>
+    <li>Смежные контуры на том же движке: аптеки, лаборатории, санатории, охрана труда.</li>
+  </ul>
+
+  <h2 style="font-size: 15pt; font-weight: 700; margin: 34px 0 12px; color: #10201f; letter-spacing: -0.2px">6. Статус рекомендаций технических аудитов</h2>
+  <p style="font-size: 11.5pt; line-height: 1.65; margin: 0 0 14px">За время работы над прототипом проведено два сквозных технических аудита: статический анализ, карта контрактов обмена данными между экранами и прогон сквозных сценариев. Часть рекомендаций закрыта в самом прототипе, часть требует работы за пределами интерфейса и переходит в горизонты выше. Полный разбор каждой находки — в документе «Технический аудит».</p>
+
+  <h3 style="font-size: 12pt; font-weight: 700; margin: 20px 0 8px; color: #0d5c55">Закрыто в прототипе</h3>
+  <table style="font-family: 'IBM Plex Sans', sans-serif; font-size: 10pt; margin: 0 0 20px">
+    <thead>
+      <tr style="background: #f7f9f9">
+        <th style="padding: 9px 10px; border-bottom: 1.5px solid #cfd8d7; font-weight: 700; width: 34%">Находка</th>
+        <th style="padding: 9px 10px; border-bottom: 1.5px solid #cfd8d7; font-weight: 700">Чем закрыта</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600">Арендатор был вшит в 27 ключей хранения</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Арендатор определяется один раз и подставляется во все ключи, включая состояние кабинета. Вторая клиника теперь физически может работать; оператор открывает кабинет выбранной клиники.</td>
+      </tr>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600">Молчаливая потеря сохранения</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Отказ записи виден постоянной плашкой в шапке с причиной и кнопкой выгрузки, а не исчезающей подсказкой на пару секунд.</td>
+      </tr>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600">Идентификаторы записей от текущего времени</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Одиннадцать мест переведены на генератор «время + счётчик сессии + случайный хвост». Двойное нажатие и работа в двух вкладках больше не сливают две записи в одну.</td>
+      </tr>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600">Экспорт и переносимость данных клиники</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Выгрузка и восстановление архива по явному перечню ключей арендатора. Эталон платформы в архив клиники не попадает и не может быть откатан из него.</td>
+      </tr>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600">Миграции состояния на каждой загрузке</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Введена версия схемы, преобразования прежних форматов привязаны к ней и выполняются однократно.</td>
+      </tr>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600">Расходящиеся даты и подмена пустого правдоподобным</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Все штампы записей идут из одного источника даты. Разрыв связи документа с блоком показывается явной пометкой, а не пустым списком.</td>
+      </tr>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600">Владение общими ключами</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">У каждого набора данных один владелец: методист — эталон, клиника — свои реестры, обход — заполнения форм. Остальные накладывают чужие данные при чтении.</td>
+      </tr>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600">Мёртвый код</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Убраны 37 неиспользуемых полей и два метода, оставшихся после переработки годового цикла и объединения таблиц.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3 style="font-size: 12pt; font-weight: 700; margin: 20px 0 8px; color: #0d5c55">Требует работы за пределами интерфейса</h3>
+  <table style="font-family: 'IBM Plex Sans', sans-serif; font-size: 10pt; margin: 0 0 20px">
+    <thead>
+      <tr style="background: #f7f9f9">
+        <th style="padding: 9px 10px; border-bottom: 1.5px solid #cfd8d7; font-weight: 700; width: 32%">Задача</th>
+        <th style="padding: 9px 10px; border-bottom: 1.5px solid #cfd8d7; font-weight: 700; width: 12%">Горизонт</th>
+        <th style="padding: 9px 10px; border-bottom: 1.5px solid #cfd8d7; font-weight: 700">Почему нельзя откладывать дальше</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600">Серверное хранение вместо браузера</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600; color: #0d5c55">1</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Упирается в потолок раньше любой функциональности: сеть на 15 объектов с годовой историей редакций в браузер не поместится. Нет доступа с другого устройства и резервных копий.</td>
+      </tr>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600">Аутентификация и серверная проверка прав</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600; color: #0d5c55">1</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Роль пока выбирается переключателем — разграничение доступа декоративно и не выдержит вопроса службы безопасности клиники.</td>
+      </tr>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600">Журнал действий на сервере</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600; color: #157f76">1–2</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Читаемая история с автором, охватом и парой «было → стало» в панели уже работает. Осталось перенести её на сервер с подписью записи и выгрузкой: в браузере журнал доказателен ровно настолько, насколько доверяют хранилищу.</td>
+      </tr>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600">Изоляция арендаторов на уровне доступа</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600; color: #157f76">2</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Ключи разделены, но любой код в браузере видит данные всех арендаторов. Блокирует продажу сетям и white-label.</td>
+      </tr>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600">Телеметрия внедрения по фактическим событиям</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600; color: #157f76">2</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Метрики воронки пока демонстрационные. Без фактических событий не отследить предиктор оттока — готовность ниже 40% через 30 дней.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2 style="font-size: 15pt; font-weight: 700; margin: 34px 0 12px; color: #10201f; letter-spacing: -0.2px; break-before: page">7. Видение архитектуры</h2>
+  <p style="font-size: 11.5pt; line-height: 1.65; margin: 0 0 8px">Прототип интуитивно нашёл правильное разделение: эталон методиста, принятая клиникой редакция и локальные правки клиники живут отдельно друг от друга. Это не деталь реализации, а несущая конструкция всего продукта, и её надо сделать явной.</p>
+
+  <div class="callout" style="margin: 16px 0 22px; padding: 18px 20px; background: #f2f7f6; border-left: 3px solid #157f76; font-family: 'IBM Plex Sans', sans-serif">
+    <div style="font-size: 10pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: #0d5c55; margin-bottom: 8px">Несущий принцип</div>
+    <p style="font-size: 11.5pt; line-height: 1.55; margin: 0; color: #10201f">Стандарт и его исполнение — разные сущности с разными правилами жизни. Стандарт версионируется и никогда не меняется задним числом. Исполнение — это поток фактов, который тоже нельзя переписывать. Всё, что клиника видит на экране, — проекция этих двух неизменяемых слоёв.</p>
+  </div>
+
+  <h3 style="font-size: 12pt; font-weight: 700; margin: 22px 0 10px; color: #10201f">Пять плоскостей</h3>
+
+  <div class="layer" style="margin: 0 0 12px; padding: 15px 18px; border: 1px solid #dde3e2; border-left: 3px solid #0d5c55; border-radius: 3px">
+    <div style="font-family: 'IBM Plex Sans', sans-serif; font-size: 11pt; font-weight: 700; color: #10201f; margin-bottom: 5px">Плоскость стандарта <span style="font-family: 'IBM Plex Mono', monospace; font-size: 9.5pt; font-weight: 500; color: #61736f">standard registry</span></div>
+    <p style="font-size: 11pt; line-height: 1.55; margin: 0; color: #3d5a56">Этапы, подэтапы, блоки контроля, чек-листы, шаблоны документов, годовой цикл. Издание — неизменяемое: редакция один раз выпущена и больше не правится, новая правка даёт новую редакцию. Один арендатор — платформа; читают все. Здесь живёт наша методическая экспертиза и здесь же формируется цена подписки.</p>
+  </div>
+  <div class="layer" style="margin: 0 0 12px; padding: 15px 18px; border: 1px solid #dde3e2; border-left: 3px solid #157f76; border-radius: 3px">
+    <div style="font-family: 'IBM Plex Sans', sans-serif; font-size: 11pt; font-weight: 700; color: #10201f; margin-bottom: 5px">Плоскость внедрения <span style="font-family: 'IBM Plex Mono', monospace; font-size: 9.5pt; font-weight: 500; color: #61736f">tenant overlay</span></div>
+    <p style="font-size: 11pt; line-height: 1.55; margin: 0; color: #3d5a56">Наложение клиники на стандарт: какая редакция принята, что отклонено, какие строки клиника добавила своими и какие поля переопределила. Никогда не мутирует стандарт — только ссылается на него. Отсюда бесплатно берутся две вещи: клиника может дополнять эталон, не ломая его, а мы видим телеметрию внедрения по всей базе.</p>
+  </div>
+  <div class="layer" style="margin: 0 0 12px; padding: 15px 18px; border: 1px solid #dde3e2; border-left: 3px solid #d8a13f; border-radius: 3px">
+    <div style="font-family: 'IBM Plex Sans', sans-serif; font-size: 11pt; font-weight: 700; color: #10201f; margin-bottom: 5px">Плоскость исполнения <span style="font-family: 'IBM Plex Mono', monospace; font-size: 9.5pt; font-weight: 500; color: #61736f">execution</span></div>
+    <p style="font-size: 11pt; line-height: 1.55; margin: 0; color: #3d5a56">Планы, проверки, обходы, задачи, мероприятия, сроки. Здесь работают люди, здесь живёт движок сроков и напоминаний. Каждая сущность несёт стабильный идентификатор, выданный при создании, и ссылку на редакцию стандарта, по которой она исполнялась.</p>
+  </div>
+  <div class="layer" style="margin: 0 0 12px; padding: 15px 18px; border: 1px solid #dde3e2; border-left: 3px solid #a8342a; border-radius: 3px">
+    <div style="font-family: 'IBM Plex Sans', sans-serif; font-size: 11pt; font-weight: 700; color: #10201f; margin-bottom: 5px">Плоскость доказательств <span style="font-family: 'IBM Plex Mono', monospace; font-size: 9.5pt; font-weight: 500; color: #61736f">evidence</span></div>
+    <p style="font-size: 11pt; line-height: 1.55; margin: 0; color: #3d5a56">Журнал событий только на добавление: кто, что, когда, на каком объекте, чем подтверждено, по какой редакции. Журнал учёта ВКК, акты, протоколы и отчёты не хранятся как редактируемые записи — они собираются из этого потока. Именно это делает данные пригодными для надзора и снимает вопрос «а не переписали ли вы задним числом».</p>
+  </div>
+  <div class="layer" style="margin: 0 0 20px; padding: 15px 18px; border: 1px solid #dde3e2; border-left: 3px solid #1d4f7c; border-radius: 3px">
+    <div style="font-family: 'IBM Plex Sans', sans-serif; font-size: 11pt; font-weight: 700; color: #10201f; margin-bottom: 5px">Плоскость наблюдения <span style="font-family: 'IBM Plex Mono', monospace; font-size: 9.5pt; font-weight: 500; color: #61736f">insight</span></div>
+    <p style="font-size: 11pt; line-height: 1.55; margin: 0; color: #3d5a56">Отдельное аналитическое хранилище: готовность, воронка внедрения, предикторы оттока, отраслевые бенчмарки на обезличенных данных. Читает из плоскости доказательств, но никогда в неё не пишет и не участвует в операционных запросах.</p>
+  </div>
+
+  <h3 style="font-size: 12pt; font-weight: 700; margin: 24px 0 10px; color: #10201f">Правила, которые нельзя нарушать</h3>
+  <table style="font-family: 'IBM Plex Sans', sans-serif; font-size: 10pt; margin: 0 0 20px">
+    <thead>
+      <tr style="background: #f7f9f9">
+        <th style="padding: 9px 10px; border-bottom: 1.5px solid #cfd8d7; font-weight: 700; width: 32%">Правило</th>
+        <th style="padding: 9px 10px; border-bottom: 1.5px solid #cfd8d7; font-weight: 700">Что оно предотвращает</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600">Идентификатор выдаётся при создании и не зависит от позиции</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Ровно тот класс ошибок, который прототип и поймал: результаты проверки перевешиваются на другую проверку при сортировке или вставке.</td>
+      </tr>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600">Операции идемпотентны по идентификатору клиента</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Дубли при повторной отправке из офлайн-очереди мобильного обхода.</td>
+      </tr>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600">Изданная редакция неизменяема</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Ситуацию, когда документ, по которому клиника работала в марте, выглядит иначе при проверке в ноябре.</td>
+      </tr>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600">Никогда не подставлять правдоподобное вместо пустого</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Ложные данные в надзорной отчётности — хуже отсутствующих, потому что их не видно.</td>
+      </tr>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600">Каждое изменение модели — с миграцией</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Расхождение между новыми и существующими арендаторами, которое проявляется только в проде.</td>
+      </tr>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600">Изоляция арендатора проверяется на уровне доступа к данным</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Утечку между клиниками — для медицинского SaaS это конец продукта, а не инцидент.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3 style="font-size: 12pt; font-weight: 700; margin: 24px 0 10px; color: #10201f">Что это даёт продукту напрямую</h3>
+  <p style="font-size: 11.5pt; line-height: 1.65; margin: 0 0 10px">Архитектура выбрана не из инженерной эстетики — каждая плоскость окупается конкретной строкой в выручке или в удержании.</p>
+  <ul style="font-size: 11.5pt; line-height: 1.6; padding-left: 22px; margin: 0 0 18px">
+    <li style="margin-bottom: 6px">Разделение стандарта и наложения делает возможной подписку «актуализация при изменении НПА» — самый маржинальный продукт на нашей же базе.</li>
+    <li style="margin-bottom: 6px">Оно же позволяет сети иметь собственный стандарт поверх нашего, что и открывает крупный чек.</li>
+    <li style="margin-bottom: 6px">Плоскость доказательств превращает «мы ведём документы» в «мы можем доказать надзору» — это разница между удобным инструментом и обязательным.</li>
+    <li style="margin-bottom: 6px">Телеметрия внедрения даёт предиктор оттока до того, как клиника перестанет платить.</li>
+    <li>Обезличенный бенчмарк по базе — актив, который невозможно скопировать, не имея базы.</li>
+  </ul>
+
+  <h2 style="font-size: 15pt; font-weight: 700; margin: 30px 0 12px; color: #10201f; letter-spacing: -0.2px">8. За чем следить</h2>
+  <p style="font-size: 11.5pt; line-height: 1.65; margin: 0 0 12px">Четыре метрики, каждая с порогом действия, а не для отчёта.</p>
+  <table style="font-family: 'IBM Plex Sans', sans-serif; font-size: 10pt; margin: 0 0 16px">
+    <thead>
+      <tr style="background: #f7f9f9">
+        <th style="padding: 9px 10px; border-bottom: 1.5px solid #cfd8d7; font-weight: 700">Метрика</th>
+        <th style="padding: 9px 10px; border-bottom: 1.5px solid #cfd8d7; font-weight: 700; width: 22%">Сейчас</th>
+        <th style="padding: 9px 10px; border-bottom: 1.5px solid #cfd8d7; font-weight: 700; width: 34%">Действие при отклонении</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600">Доля клиник, дошедших до первой проверки</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-family: 'IBM Plex Mono', monospace">31%</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Главный провал воронки. Упрощать путь до первого обхода, а не добавлять функции.</td>
+      </tr>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600">Время до первого документа</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-family: 'IBM Plex Mono', monospace">2,4 дня → &lt; 1 дня</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Автозаполнение реквизитов, интеграция с кадрами.</td>
+      </tr>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600">Готовность через 30 дней</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-family: 'IBM Plex Mono', monospace">порог 40%</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Ниже порога — автоматический триггер звонка методиста.</td>
+      </tr>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600">Доля отклонённых редакций эталона</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-family: 'IBM Plex Mono', monospace">новая метрика</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Прямая обратная связь по качеству методологии: массовый отказ — сигнал переписать документ, а не давить внедрение.</td>
+      </tr>
+    </tbody>
+  </table>
+  <p style="font-size: 11pt; line-height: 1.55; margin: 0; color: #3d5a56">Последняя метрика появляется только благодаря контуру редакций и раньше была недоступна — хороший пример того, как архитектурное решение сразу даёт продуктовый инструмент.</p>
+</doc-page>
+</x-dc>
+</body>
+</html>

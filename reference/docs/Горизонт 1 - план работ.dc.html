@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com"></link>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous"></link>
+<link href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,400;0,600;0,700;1,400&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet"></link>
+<style>
+  doc-page:not(:defined) { visibility: hidden }
+  h1, h2, h3 { font-family: 'IBM Plex Sans', sans-serif }
+  .callout, .epic, .risk { break-inside: avoid; orphans: 3; widows: 3 }
+  table { border-collapse: collapse; width: 100% }
+  th { text-align: left }
+</style>
+<script src="./doc-page.js"></script>
+</helmet>
+
+<doc-page margin="0.8in">
+  <div slot="footer" style="display: flex; align-items: baseline; gap: 10px; padding: 8px 0 0; border-top: 1px solid #dde3e2; font-family: 'IBM Plex Sans', sans-serif; font-size: 9pt; color: #61736f">
+    <span style="font-weight: 600; color: #0d5c55">Контур 785</span>
+    <span>Горизонт 1 · план работ</span>
+    <span style="margin-left: auto; font-family: 'IBM Plex Mono', monospace">внутренний документ</span>
+  </div>
+
+  <h1 style="font-size: 26pt; font-weight: 700; line-height: 1.15; letter-spacing: -0.5px; margin: 0 0 10px; color: #10201f">Горизонт 1 · план работ</h1>
+  <p style="font-family: 'IBM Plex Sans', sans-serif; font-size: 11.5pt; line-height: 1.5; color: #3d5a56; margin: 0 0 4px; font-weight: 500">Продукт, который продаётся без нашего участия в сделке. Шесть направлений, модель данных, матрица прав, порядок работ и критерии приёмки.</p>
+
+  <div class="callout" style="margin: 22px 0 26px; padding: 18px 20px; background: #f2f7f6; border-left: 3px solid #157f76; font-family: 'IBM Plex Sans', sans-serif">
+    <div style="font-size: 10pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: #0d5c55; margin-bottom: 8px">Критерий выхода из горизонта</div>
+    <p style="font-size: 11.5pt; line-height: 1.55; margin: 0; color: #10201f">Клиника проходит путь <strong>от регистрации до первого закрытого обхода с подписанным актом</strong> без единого касания нашей команды. Пока этот путь требует звонка методиста, горизонт не закрыт — сколько бы функций ни было сделано.</p>
+  </div>
+
+  <h2 style="font-size: 15pt; font-weight: 700; margin: 30px 0 12px; color: #10201f; letter-spacing: -0.2px">1. Что переносим, а что переписываем</h2>
+  <p style="font-size: 11.5pt; line-height: 1.65; margin: 0 0 14px">Прототип — не черновик на выброс. Методология в нём проверена на реальных данных, и её надо забрать целиком. Переписыванию подлежит только слой хранения и доступа.</p>
+
+  <table style="font-family: 'IBM Plex Sans', sans-serif; font-size: 10pt; margin: 0 0 20px">
+    <thead>
+      <tr style="background: #f7f9f9">
+        <th style="padding: 9px 10px; border-bottom: 1.5px solid #cfd8d7; font-weight: 700; width: 34%">Из прототипа</th>
+        <th style="padding: 9px 10px; border-bottom: 1.5px solid #cfd8d7; font-weight: 700; width: 20%">Решение</th>
+        <th style="padding: 9px 10px; border-bottom: 1.5px solid #cfd8d7; font-weight: 700">Почему</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600">Состав этапов, подэтапов и блоков контроля</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 700; color: #0d5c55">Забрать как есть</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Это и есть наш методический актив. Структура выверена по 785н и обкатана на демо-клинике.</td>
+      </tr>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600">Годовой цикл: направления, график, справочники, статусы, сроки CAPA</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 700; color: #0d5c55">Забрать как есть</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Готовая схема эталона с наложением клиники — переносится в модель данных почти буквально.</td>
+      </tr>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600">Контур редакций и согласования</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 700; color: #0d5c55">Забрать логику</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Поведение проверено сквозным сценарием: выпуск, рекомендация, принятие, архив, обратная сводка.</td>
+      </tr>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600">Схема сквозной нумерации</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 700; color: #0d5c55">Забрать как есть</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Префиксы разводят номерные пространства; номер выводится из позиции и не хранится.</td>
+      </tr>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600">Экраны всех трёх поверхностей</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 700; color: #8a5b0f">Спецификация UI</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Компоновка и формулировки готовы к реализации, но верстать заново под роли и состояния загрузки.</td>
+      </tr>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600">Хранение состояния в браузере</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 700; color: #a8342a">Переписать</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Обмен через локальное хранилище был приёмом прототипа. В продукте — сервер, изоляция арендатора, транзакции.</td>
+      </tr>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600">Опрос хранилища по таймеру</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 700; color: #a8342a">Переписать</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Заменить событиями от сервера. Опрос был обходным путём и уже давал подвисания на больших данных.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2 style="font-size: 15pt; font-weight: 700; margin: 32px 0 12px; color: #10201f; letter-spacing: -0.2px">2. Модель данных</h2>
+  <p style="font-size: 11.5pt; line-height: 1.65; margin: 0 0 14px">Сущности разложены по плоскостям из архитектурного видения. Разделение обязательно соблюсти с первого дня: пересадить его потом означает переписать всё.</p>
+
+  <table style="font-family: 'IBM Plex Sans', sans-serif; font-size: 9.5pt; margin: 0 0 12px">
+    <thead>
+      <tr style="background: #f7f9f9">
+        <th style="padding: 9px 10px; border-bottom: 1.5px solid #cfd8d7; font-weight: 700; width: 26%">Сущность</th>
+        <th style="padding: 9px 10px; border-bottom: 1.5px solid #cfd8d7; font-weight: 700; width: 21%">Плоскость</th>
+        <th style="padding: 9px 10px; border-bottom: 1.5px solid #cfd8d7; font-weight: 700">Ключевое свойство</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td style="padding: 8px 10px; border-bottom: 1px solid #eef1f1; font-family: 'IBM Plex Mono', monospace; font-size: 9pt">StandardEdition</td>
+        <td style="padding: 8px 10px; border-bottom: 1px solid #eef1f1; color: #0d5c55; font-weight: 600">стандарт</td>
+        <td style="padding: 8px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Издание стандарта: номер, дата, автор. После выпуска неизменяемо.</td>
+      </tr>
+      <tr>
+        <td style="padding: 8px 10px; border-bottom: 1px solid #eef1f1; font-family: 'IBM Plex Mono', monospace; font-size: 9pt">Stage · Substage</td>
+        <td style="padding: 8px 10px; border-bottom: 1px solid #eef1f1; color: #0d5c55; font-weight: 600">стандарт</td>
+        <td style="padding: 8px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Этапы и подэтапы издания. Код подэтапа — часть номера документа.</td>
+      </tr>
+      <tr>
+        <td style="padding: 8px 10px; border-bottom: 1px solid #eef1f1; font-family: 'IBM Plex Mono', monospace; font-size: 9pt">ControlBlock</td>
+        <td style="padding: 8px 10px; border-bottom: 1px solid #eef1f1; color: #0d5c55; font-weight: 600">стандарт</td>
+        <td style="padding: 8px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Направление контроля по 785н. Ключ привязки чек-листов и годовой сетки.</td>
+      </tr>
+      <tr>
+        <td style="padding: 8px 10px; border-bottom: 1px solid #eef1f1; font-family: 'IBM Plex Mono', monospace; font-size: 9pt">DocumentTemplate · TemplateRevision</td>
+        <td style="padding: 8px 10px; border-bottom: 1px solid #eef1f1; color: #0d5c55; font-weight: 600">стандарт</td>
+        <td style="padding: 8px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Шаблон и его редакции с файлом и полями подстановки. Редакция неизменяема.</td>
+      </tr>
+      <tr>
+        <td style="padding: 8px 10px; border-bottom: 1px solid #eef1f1; font-family: 'IBM Plex Mono', monospace; font-size: 9pt">Checklist · ChecklistItem</td>
+        <td style="padding: 8px 10px; border-bottom: 1px solid #eef1f1; color: #0d5c55; font-weight: 600">стандарт</td>
+        <td style="padding: 8px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Пункты с привязкой к блоку и подэтапу. Версионируются вместе с изданием.</td>
+      </tr>
+      <tr>
+        <td style="padding: 8px 10px; border-bottom: 1px solid #eef1f1; font-family: 'IBM Plex Mono', monospace; font-size: 9pt">AnnualCycleSpec</td>
+        <td style="padding: 8px 10px; border-bottom: 1px solid #eef1f1; color: #0d5c55; font-weight: 600">стандарт</td>
+        <td style="padding: 8px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Эталонные направления, график по месяцам, справочники, статусы, сроки по критичности.</td>
+      </tr>
+      <tr style="background: #fbfcfc">
+        <td style="padding: 8px 10px; border-bottom: 1px solid #eef1f1; font-family: 'IBM Plex Mono', monospace; font-size: 9pt">Tenant · Facility · Person</td>
+        <td style="padding: 8px 10px; border-bottom: 1px solid #eef1f1; color: #157f76; font-weight: 600">внедрение</td>
+        <td style="padding: 8px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Организация, объекты, люди. Объект — обязательный разрез, а не поле профиля.</td>
+      </tr>
+      <tr style="background: #fbfcfc">
+        <td style="padding: 8px 10px; border-bottom: 1px solid #eef1f1; font-family: 'IBM Plex Mono', monospace; font-size: 9pt">Adoption</td>
+        <td style="padding: 8px 10px; border-bottom: 1px solid #eef1f1; color: #157f76; font-weight: 600">внедрение</td>
+        <td style="padding: 8px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Какое издание принято, что отклонено и когда. Источник телеметрии внедрения.</td>
+      </tr>
+      <tr style="background: #fbfcfc">
+        <td style="padding: 8px 10px; border-bottom: 1px solid #eef1f1; font-family: 'IBM Plex Mono', monospace; font-size: 9pt">Overlay</td>
+        <td style="padding: 8px 10px; border-bottom: 1px solid #eef1f1; color: #157f76; font-weight: 600">внедрение</td>
+        <td style="padding: 8px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Добавленные клиникой строки и переопределённые поля. Ссылается на стандарт, не мутирует его.</td>
+      </tr>
+      <tr>
+        <td style="padding: 8px 10px; border-bottom: 1px solid #eef1f1; font-family: 'IBM Plex Mono', monospace; font-size: 9pt">AuditPlanItem</td>
+        <td style="padding: 8px 10px; border-bottom: 1px solid #eef1f1; color: #8a5b0f; font-weight: 600">исполнение</td>
+        <td style="padding: 8px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Запланированная проверка: объект, направление, дата, исполнитель, чек-лист. Стабильный id с рождения.</td>
+      </tr>
+      <tr>
+        <td style="padding: 8px 10px; border-bottom: 1px solid #eef1f1; font-family: 'IBM Plex Mono', monospace; font-size: 9pt">Walk · WalkAnswer</td>
+        <td style="padding: 8px 10px; border-bottom: 1px solid #eef1f1; color: #8a5b0f; font-weight: 600">исполнение</td>
+        <td style="padding: 8px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Обход и ответы по пунктам. Несёт ссылку на издание, по которому проверяли.</td>
+      </tr>
+      <tr>
+        <td style="padding: 8px 10px; border-bottom: 1px solid #eef1f1; font-family: 'IBM Plex Mono', monospace; font-size: 9pt">Finding · CapaAction</td>
+        <td style="padding: 8px 10px; border-bottom: 1px solid #eef1f1; color: #8a5b0f; font-weight: 600">исполнение</td>
+        <td style="padding: 8px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Нарушение и мероприятия по нему: исполнитель, срок по критичности, проверка эффективности.</td>
+      </tr>
+      <tr>
+        <td style="padding: 8px 10px; border-bottom: 1px solid #eef1f1; font-family: 'IBM Plex Mono', monospace; font-size: 9pt">Task · Deadline</td>
+        <td style="padding: 8px 10px; border-bottom: 1px solid #eef1f1; color: #8a5b0f; font-weight: 600">исполнение</td>
+        <td style="padding: 8px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Единая сущность задачи для плана, CAPA и принятия редакций. Один движок сроков на всё.</td>
+      </tr>
+      <tr style="background: #fdfbfb">
+        <td style="padding: 8px 10px; border-bottom: 1px solid #eef1f1; font-family: 'IBM Plex Mono', monospace; font-size: 9pt">Event</td>
+        <td style="padding: 8px 10px; border-bottom: 1px solid #eef1f1; color: #a8342a; font-weight: 600">доказательства</td>
+        <td style="padding: 8px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Только на добавление: кто, что, когда, объект, чем подтверждено, по какому изданию.</td>
+      </tr>
+      <tr style="background: #fdfbfb">
+        <td style="padding: 8px 10px; border-bottom: 1px solid #eef1f1; font-family: 'IBM Plex Mono', monospace; font-size: 9pt">FileObject</td>
+        <td style="padding: 8px 10px; border-bottom: 1px solid #eef1f1; color: #a8342a; font-weight: 600">доказательства</td>
+        <td style="padding: 8px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Файл с контрольной суммой и версией. Не перезаписывается — добавляется новая версия.</td>
+      </tr>
+      <tr style="background: #fdfbfb">
+        <td style="padding: 8px 10px; border-bottom: 1px solid #eef1f1; font-family: 'IBM Plex Mono', monospace; font-size: 9pt">Signature</td>
+        <td style="padding: 8px 10px; border-bottom: 1px solid #eef1f1; color: #a8342a; font-weight: 600">доказательства</td>
+        <td style="padding: 8px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Подпись поверх версии файла. В этом горизонте — простая, с задела под УКЭП.</td>
+      </tr>
+    </tbody>
+  </table>
+  <p style="font-size: 11pt; line-height: 1.55; margin: 0 0 20px; color: #3d5a56"><strong style="color: #10201f">Журнал ВКК, акты и годовой отчёт в этом списке отсутствуют намеренно.</strong> Это не таблицы, а проекции потока событий. Как только они станут редактируемыми записями, продукт потеряет доказательную силу.</p>
+
+  <h2 style="font-size: 15pt; font-weight: 700; margin: 32px 0 12px; color: #10201f; letter-spacing: -0.2px; break-before: page">3. Матрица прав</h2>
+  <p style="font-size: 11.5pt; line-height: 1.65; margin: 0 0 14px">Пять роль-типов. Разделение решает две задачи сразу: снимает блокер продажи сети и закрывает вопрос по защите данных.</p>
+
+  <table style="font-family: 'IBM Plex Sans', sans-serif; font-size: 9.5pt; margin: 0 0 12px">
+    <thead>
+      <tr style="background: #f7f9f9">
+        <th style="padding: 8px 8px; border-bottom: 1.5px solid #cfd8d7; font-weight: 700; width: 30%">Область</th>
+        <th style="padding: 8px 6px; border-bottom: 1.5px solid #cfd8d7; font-weight: 700; text-align: center">Методист<br>платформы</th>
+        <th style="padding: 8px 6px; border-bottom: 1.5px solid #cfd8d7; font-weight: 700; text-align: center">Админ<br>клиники</th>
+        <th style="padding: 8px 6px; border-bottom: 1.5px solid #cfd8d7; font-weight: 700; text-align: center">Ответственный<br>за ВКК</th>
+        <th style="padding: 8px 6px; border-bottom: 1.5px solid #cfd8d7; font-weight: 700; text-align: center">Аудитор</th>
+        <th style="padding: 8px 6px; border-bottom: 1.5px solid #cfd8d7; font-weight: 700; text-align: center">Наблю-<br>датель</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td style="padding: 8px 8px; border-bottom: 1px solid #eef1f1; font-weight: 600">Эталон и издания стандарта</td>
+        <td style="padding: 8px 6px; border-bottom: 1px solid #eef1f1; text-align: center; font-weight: 700; color: #0d5c55">правка</td>
+        <td style="padding: 8px 6px; border-bottom: 1px solid #eef1f1; text-align: center; color: #61736f">чтение</td>
+        <td style="padding: 8px 6px; border-bottom: 1px solid #eef1f1; text-align: center; color: #61736f">чтение</td>
+        <td style="padding: 8px 6px; border-bottom: 1px solid #eef1f1; text-align: center; color: #a9b6b4">—</td>
+        <td style="padding: 8px 6px; border-bottom: 1px solid #eef1f1; text-align: center; color: #a9b6b4">—</td>
+      </tr>
+      <tr>
+        <td style="padding: 8px 8px; border-bottom: 1px solid #eef1f1; font-weight: 600">Принятие редакций</td>
+        <td style="padding: 8px 6px; border-bottom: 1px solid #eef1f1; text-align: center; color: #61736f">видит сводку</td>
+        <td style="padding: 8px 6px; border-bottom: 1px solid #eef1f1; text-align: center; font-weight: 700; color: #0d5c55">решает</td>
+        <td style="padding: 8px 6px; border-bottom: 1px solid #eef1f1; text-align: center; font-weight: 700; color: #0d5c55">решает</td>
+        <td style="padding: 8px 6px; border-bottom: 1px solid #eef1f1; text-align: center; color: #a9b6b4">—</td>
+        <td style="padding: 8px 6px; border-bottom: 1px solid #eef1f1; text-align: center; color: #a9b6b4">—</td>
+      </tr>
+      <tr>
+        <td style="padding: 8px 8px; border-bottom: 1px solid #eef1f1; font-weight: 600">Организация, объекты, люди</td>
+        <td style="padding: 8px 6px; border-bottom: 1px solid #eef1f1; text-align: center; color: #61736f">чтение</td>
+        <td style="padding: 8px 6px; border-bottom: 1px solid #eef1f1; text-align: center; font-weight: 700; color: #0d5c55">правка</td>
+        <td style="padding: 8px 6px; border-bottom: 1px solid #eef1f1; text-align: center; color: #61736f">чтение</td>
+        <td style="padding: 8px 6px; border-bottom: 1px solid #eef1f1; text-align: center; color: #a9b6b4">—</td>
+        <td style="padding: 8px 6px; border-bottom: 1px solid #eef1f1; text-align: center; color: #a9b6b4">—</td>
+      </tr>
+      <tr>
+        <td style="padding: 8px 8px; border-bottom: 1px solid #eef1f1; font-weight: 600">Годовой план проверок</td>
+        <td style="padding: 8px 6px; border-bottom: 1px solid #eef1f1; text-align: center; color: #61736f">чтение</td>
+        <td style="padding: 8px 6px; border-bottom: 1px solid #eef1f1; text-align: center; color: #61736f">чтение</td>
+        <td style="padding: 8px 6px; border-bottom: 1px solid #eef1f1; text-align: center; font-weight: 700; color: #0d5c55">правка</td>
+        <td style="padding: 8px 6px; border-bottom: 1px solid #eef1f1; text-align: center; color: #61736f">свои</td>
+        <td style="padding: 8px 6px; border-bottom: 1px solid #eef1f1; text-align: center; color: #61736f">чтение</td>
+      </tr>
+      <tr>
+        <td style="padding: 8px 8px; border-bottom: 1px solid #eef1f1; font-weight: 600">Проведение обхода</td>
+        <td style="padding: 8px 6px; border-bottom: 1px solid #eef1f1; text-align: center; color: #a9b6b4">—</td>
+        <td style="padding: 8px 6px; border-bottom: 1px solid #eef1f1; text-align: center; color: #a9b6b4">—</td>
+        <td style="padding: 8px 6px; border-bottom: 1px solid #eef1f1; text-align: center; font-weight: 700; color: #0d5c55">да</td>
+        <td style="padding: 8px 6px; border-bottom: 1px solid #eef1f1; text-align: center; font-weight: 700; color: #0d5c55">да</td>
+        <td style="padding: 8px 6px; border-bottom: 1px solid #eef1f1; text-align: center; color: #a9b6b4">—</td>
+      </tr>
+      <tr>
+        <td style="padding: 8px 8px; border-bottom: 1px solid #eef1f1; font-weight: 600">Документы клиники</td>
+        <td style="padding: 8px 6px; border-bottom: 1px solid #eef1f1; text-align: center; color: #a9b6b4">—</td>
+        <td style="padding: 8px 6px; border-bottom: 1px solid #eef1f1; text-align: center; font-weight: 700; color: #0d5c55">правка</td>
+        <td style="padding: 8px 6px; border-bottom: 1px solid #eef1f1; text-align: center; font-weight: 700; color: #0d5c55">правка</td>
+        <td style="padding: 8px 6px; border-bottom: 1px solid #eef1f1; text-align: center; color: #61736f">чтение</td>
+        <td style="padding: 8px 6px; border-bottom: 1px solid #eef1f1; text-align: center; color: #61736f">чтение</td>
+      </tr>
+      <tr>
+        <td style="padding: 8px 8px; border-bottom: 1px solid #eef1f1; font-weight: 600">Мероприятия CAPA</td>
+        <td style="padding: 8px 6px; border-bottom: 1px solid #eef1f1; text-align: center; color: #a9b6b4">—</td>
+        <td style="padding: 8px 6px; border-bottom: 1px solid #eef1f1; text-align: center; color: #61736f">чтение</td>
+        <td style="padding: 8px 6px; border-bottom: 1px solid #eef1f1; text-align: center; font-weight: 700; color: #0d5c55">правка</td>
+        <td style="padding: 8px 6px; border-bottom: 1px solid #eef1f1; text-align: center; color: #61736f">свои</td>
+        <td style="padding: 8px 6px; border-bottom: 1px solid #eef1f1; text-align: center; color: #61736f">чтение</td>
+      </tr>
+      <tr>
+        <td style="padding: 8px 8px; border-bottom: 1px solid #eef1f1; font-weight: 600">Тарифы и биллинг</td>
+        <td style="padding: 8px 6px; border-bottom: 1px solid #eef1f1; text-align: center; font-weight: 700; color: #0d5c55">правка</td>
+        <td style="padding: 8px 6px; border-bottom: 1px solid #eef1f1; text-align: center; color: #61736f">свой тариф</td>
+        <td style="padding: 8px 6px; border-bottom: 1px solid #eef1f1; text-align: center; color: #a9b6b4">—</td>
+        <td style="padding: 8px 6px; border-bottom: 1px solid #eef1f1; text-align: center; color: #a9b6b4">—</td>
+        <td style="padding: 8px 6px; border-bottom: 1px solid #eef1f1; text-align: center; color: #a9b6b4">—</td>
+      </tr>
+      <tr>
+        <td style="padding: 8px 8px; border-bottom: 1px solid #eef1f1; font-weight: 600">Журнал событий</td>
+        <td style="padding: 8px 6px; border-bottom: 1px solid #eef1f1; text-align: center; color: #61736f">по клинике</td>
+        <td style="padding: 8px 6px; border-bottom: 1px solid #eef1f1; text-align: center; color: #61736f">чтение</td>
+        <td style="padding: 8px 6px; border-bottom: 1px solid #eef1f1; text-align: center; color: #61736f">чтение</td>
+        <td style="padding: 8px 6px; border-bottom: 1px solid #eef1f1; text-align: center; color: #a9b6b4">—</td>
+        <td style="padding: 8px 6px; border-bottom: 1px solid #eef1f1; text-align: center; color: #61736f">чтение</td>
+      </tr>
+    </tbody>
+  </table>
+  <p style="font-size: 11pt; line-height: 1.55; margin: 0 0 20px; color: #3d5a56"><strong style="color: #10201f">Наблюдатель</strong> — роль для внешнего консультанта и для управляющей компании до появления полноценного кабинета сети. <strong style="color: #10201f">«Свои»</strong> означает доступ только к записям, где человек назначен исполнителем.</p>
+
+  <h2 style="font-size: 15pt; font-weight: 700; margin: 32px 0 12px; color: #10201f; letter-spacing: -0.2px">4. Шесть направлений работ</h2>
+
+  <div class="epic" style="margin: 0 0 14px; padding: 16px 18px; border: 1px solid #dde3e2; border-left: 3px solid #a8342a; border-radius: 3px">
+    <div style="font-family: 'IBM Plex Sans', sans-serif; font-size: 11.5pt; font-weight: 700; color: #10201f; margin-bottom: 6px">Н1 · Основание: арендаторы, роли, журнал событий</div>
+    <p style="font-size: 11pt; line-height: 1.55; margin: 0 0 8px; color: #3d5a56">Организация, объекты, люди, приглашения, пять ролей, изоляция арендатора на уровне доступа к данным, журнал событий только на добавление. Сюда же — стабильные идентификаторы и идемпотентность операций. Журнал уже работает в панели оператора — автор, охват, «было → стало», сигнал по критичным событиям; на сервер он переносится как есть, с подписью записи.</p>
+    <p style="font-size: 10.5pt; line-height: 1.5; margin: 0; color: #10201f"><strong>Приёмка:</strong> аудитор физически не может открыть тарифы или изменить эталон; попытка попадает в журнал. Два арендатора не видят друг друга при прямом обращении к данным по идентификатору.</p>
+  </div>
+
+  <div class="epic" style="margin: 0 0 14px; padding: 16px 18px; border: 1px solid #dde3e2; border-left: 3px solid #a8342a; border-radius: 3px">
+    <div style="font-family: 'IBM Plex Sans', sans-serif; font-size: 11.5pt; font-weight: 700; color: #10201f; margin-bottom: 6px">Н2 · Стандарт и внедрение</div>
+    <p style="font-size: 11pt; line-height: 1.55; margin: 0 0 8px; color: #3d5a56">Издания стандарта с неизменяемостью, наложение клиники, контур рекомендаций и согласования. Перенос методологии прототипа: этапы, блоки, чек-листы, годовой цикл. Телеметрия внедрения для методиста.</p>
+    <p style="font-size: 10.5pt; line-height: 1.5; margin: 0; color: #10201f"><strong>Приёмка:</strong> методист выпускает издание, три клиники получают рекомендацию, одна принимает, одна отклоняет, одна игнорирует — сводка показывает все три состояния верно. Клиника, добавившая своё направление, сохраняет его после принятия нового издания.</p>
+  </div>
+
+  <div class="epic" style="margin: 0 0 14px; padding: 16px 18px; border: 1px solid #dde3e2; border-left: 3px solid #a8342a; border-radius: 3px">
+    <div style="font-family: 'IBM Plex Sans', sans-serif; font-size: 11.5pt; font-weight: 700; color: #10201f; margin-bottom: 6px">Н3 · Файлы и генерация документов</div>
+    <p style="font-size: 11pt; line-height: 1.55; margin: 0 0 8px; color: #3d5a56">Хранилище файлов с версиями и контрольными суммами, генерация DOCX и PDF из шаблона с подстановкой реквизитов организации, простая подпись с заделом под УКЭП.</p>
+    <p style="font-size: 10.5pt; line-height: 1.5; margin: 0; color: #10201f"><strong>Приёмка:</strong> клиника получает готовый приказ со своими реквизитами, номером и датой, в DOCX и PDF, без ручного редактирования. Загрузка новой версии файла не затирает предыдущую.</p>
+  </div>
+
+  <div class="epic" style="margin: 0 0 14px; padding: 16px 18px; border: 1px solid #dde3e2; border-left: 3px solid #8a5b0f; border-radius: 3px">
+    <div style="font-family: 'IBM Plex Sans', sans-serif; font-size: 11.5pt; font-weight: 700; color: #10201f; margin-bottom: 6px">Н4 · Движок сроков и задач</div>
+    <p style="font-size: 11pt; line-height: 1.55; margin: 0 0 8px; color: #3d5a56">Единая сущность задачи для плана проверок, мероприятий CAPA и принятия редакций. Напоминание исполнителю, эскалация руководителю, признак просрочки. Уведомления по почте, задел под мессенджер.</p>
+    <p style="font-size: 10.5pt; line-height: 1.5; margin: 0; color: #10201f"><strong>Приёмка:</strong> проверка, запланированная на дату, за три дня даёт напоминание исполнителю, в срок — руководителю, после срока попадает в просрочку и снижает готовность. Ни одного места, где срок остался текстом в интерфейсе.</p>
+  </div>
+
+  <div class="epic" style="margin: 0 0 14px; padding: 16px 18px; border: 1px solid #dde3e2; border-left: 3px solid #8a5b0f; border-radius: 3px">
+    <div style="font-family: 'IBM Plex Sans', sans-serif; font-size: 11.5pt; font-weight: 700; color: #10201f; margin-bottom: 6px">Н5 · Исполнение: план, обход, CAPA</div>
+    <p style="font-size: 11pt; line-height: 1.55; margin: 0 0 8px; color: #3d5a56">Годовой план по объектам, обход по назначенному чек-листу с фото и временем, нарушения с критичностью, мероприятия с исполнителем и сроком, проверка эффективности, закрытие. Журнал ВКК и акт — как проекции событий.</p>
+    <p style="font-size: 10.5pt; line-height: 1.5; margin: 0; color: #10201f"><strong>Приёмка:</strong> обход, проведённый на телефоне, даёт акт с номером и подписью, нарушение — мероприятие со сроком по критичности, а запись в журнале ВКК собирается автоматически и не редактируется вручную.</p>
+  </div>
+
+  <div class="epic" style="margin: 0 0 14px; padding: 16px 18px; border: 1px solid #dde3e2; border-left: 3px solid #0d5c55; border-radius: 3px">
+    <div style="font-family: 'IBM Plex Sans', sans-serif; font-size: 11.5pt; font-weight: 700; color: #10201f; margin-bottom: 6px">Н5а · Работа оператора с массивом клиник</div>
+    <p style="font-size: 11pt; line-height: 1.55; margin: 0 0 8px; color: #3d5a56">Групповые операции и рассылка методиста. В прототипе уже сделаны в три контура: предпроверка каждой клиники до записи, предпросмотр с построчным «что произойдёт» и снимок затрагиваемых данных для откáта, отчёт «применено · пропущено · ошибок» и одна запись в журнале на всю пачку. На сервере это фоновая задача с прогрессом и идемпотентным ключом: пачка на сотни клиник не должна зависеть от открытой вкладки. Рассылка становится настоящей доставкой — сообщение, файлы, комментарий, отметка прочтения, видимая оператору.</p>
+    <p style="font-size: 10.5pt; line-height: 1.5; margin: 0; color: #10201f"><strong>Приёмка:</strong> групповая операция на сотне клиник не оставляет частично применённого состояния: каждая клиника либо изменена, либо пропущена с названной причиной. Откат возвращает данные к состоянию до пачки. Оператор видит, какие клиники прочитали требование, а какие нет.</p>
+  </div>
+
+  <div class="epic" style="margin: 0 0 20px; padding: 16px 18px; border: 1px solid #dde3e2; border-left: 3px solid #0d5c55; border-radius: 3px">
+    <div style="font-family: 'IBM Plex Sans', sans-serif; font-size: 11.5pt; font-weight: 700; color: #10201f; margin-bottom: 6px">Н6 · Самостоятельное подключение и готовность</div>
+    <p style="font-size: 11pt; line-height: 1.55; margin: 0 0 8px; color: #3d5a56">Регистрация, заведение организации и объектов, приглашение людей, выбор тарифа, стартовый сценарий до первого обхода. Индикатор готовности с раскладкой по причинам.</p>
+    <p style="font-size: 10.5pt; line-height: 1.5; margin: 0; color: #10201f"><strong>Приёмка:</strong> человек без нашей помощи регистрируется и закрывает первый обход. Показатель готовности объясняет каждый недостающий процент конкретной строкой.</p>
+  </div>
+
+  <h2 style="font-size: 15pt; font-weight: 700; margin: 32px 0 12px; color: #10201f; letter-spacing: -0.2px">5. Порядок работ</h2>
+  <p style="font-size: 11.5pt; line-height: 1.65; margin: 0 0 12px">Последовательность задана зависимостями, а не удобством. Два правила: Н1 идёт первым целиком, потому что роли и журнал нельзя добавить поверх готовой системы; Н6 идёт последним, потому что подключать некуда, пока нет остального. Н5а идёт после Н5: групповая операция должна иметь что применять, а откат — что восстанавливать.</p>
+
+  <table style="font-family: 'IBM Plex Sans', sans-serif; font-size: 10pt; margin: 0 0 18px">
+    <thead>
+      <tr style="background: #f7f9f9">
+        <th style="padding: 9px 10px; border-bottom: 1.5px solid #cfd8d7; font-weight: 700; width: 14%">Такт</th>
+        <th style="padding: 9px 10px; border-bottom: 1.5px solid #cfd8d7; font-weight: 700; width: 26%">Направления</th>
+        <th style="padding: 9px 10px; border-bottom: 1.5px solid #cfd8d7; font-weight: 700">Что появляется в конце такта</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 700; color: #0d5c55">1</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600">Н1</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Многоарендная основа с ролями и журналом. Демо-клиника заводится и живёт по правам.</td>
+      </tr>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 700; color: #0d5c55">2</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600">Н2 + Н3</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Контур редакций с реальными файлами. Первая продаваемая ценность целиком.</td>
+      </tr>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 700; color: #0d5c55">3</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600">Н4 + Н5 + Н5а</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Рабочий операционный цикл: план, обход, нарушение, мероприятие, закрытие, журнал. Плюс работа с массивом клиник: групповые операции с откатом и адресная рассылка методиста.</td>
+      </tr>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 700; color: #0d5c55">4</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600">Н6</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Самостоятельный вход. Критерий выхода из горизонта достигнут.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p style="font-size: 11.5pt; line-height: 1.65; margin: 0 0 20px">После второго такта продукт уже можно продавать вручную: контур редакций и генерация документов сами по себе снимают главную боль ответственного за ВКК. Это удобная точка для первых платящих клиник и проверки цены.</p>
+
+  <h2 style="font-size: 15pt; font-weight: 700; margin: 32px 0 12px; color: #10201f; letter-spacing: -0.2px">6. Риски</h2>
+
+  <div class="risk" style="margin: 0 0 12px; padding: 15px 18px; border: 1px solid #dde3e2; border-radius: 4px">
+    <div style="font-family: 'IBM Plex Sans', sans-serif; font-size: 11pt; font-weight: 700; color: #10201f; margin-bottom: 5px">Соблазн начать с экранов</div>
+    <p style="font-size: 11pt; line-height: 1.55; margin: 0; color: #3d5a56">Прототип красив и создаёт впечатление, что осталось «подключить базу». Роли, журнал событий и неизменяемость изданий поверх готового интерфейса не встраиваются — их придётся вносить через переписывание. Отсюда жёсткий приоритет Н1.</p>
+  </div>
+  <div class="risk" style="margin: 0 0 12px; padding: 15px 18px; border: 1px solid #dde3e2; border-radius: 4px">
+    <div style="font-family: 'IBM Plex Sans', sans-serif; font-size: 11pt; font-weight: 700; color: #10201f; margin-bottom: 5px">Смешение стандарта и исполнения под давлением сроков</div>
+    <p style="font-size: 11pt; line-height: 1.55; margin: 0; color: #3d5a56">Самый вероятный способ потерять продукт: разрешить клинике править эталон напрямую, потому что так быстрее. Это одним движением убивает и подписку на актуализацию, и продажу сетям, и телеметрию внедрения.</p>
+  </div>
+  <div class="risk" style="margin: 0 0 12px; padding: 15px 18px; border: 1px solid #dde3e2; border-radius: 4px">
+    <div style="font-family: 'IBM Plex Sans', sans-serif; font-size: 11pt; font-weight: 700; color: #10201f; margin-bottom: 5px">Объект как поле, а не как разрез</div>
+    <p style="font-size: 11pt; line-height: 1.55; margin: 0; color: #3d5a56">Если в первом горизонте объект останется свойством профиля, второй горизонт превратится в переписывание плана, обхода и отчётности. Разрезать по объектам нужно сразу, даже если кабинет сети появится позже.</p>
+  </div>
+  <div class="risk" style="margin: 0 0 20px; padding: 15px 18px; border: 1px solid #dde3e2; border-radius: 4px">
+    <div style="font-family: 'IBM Plex Sans', sans-serif; font-size: 11pt; font-weight: 700; color: #10201f; margin-bottom: 5px">Методист как узкое место</div>
+    <p style="font-size: 11pt; line-height: 1.55; margin: 0; color: #3d5a56">Экономика держится на том, что один методист обслуживает сотни клиник. Любая функция, требующая его ручного участия в каждой сделке, ломает маржу — и должна проходить проверку вопросом «масштабируется ли это без найма».</p>
+  </div>
+
+  <div class="callout" style="margin: 22px 0 0; padding: 18px 20px; background: #f2f7f6; border-left: 3px solid #157f76; font-family: 'IBM Plex Sans', sans-serif">
+    <div style="font-size: 10pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: #0d5c55; margin-bottom: 8px">Что делать первым</div>
+    <p style="font-size: 11.5pt; line-height: 1.55; margin: 0; color: #10201f">Зафиксировать модель данных из раздела 2 и матрицу прав из раздела 3 как контракт, от которого нельзя отступать по ходу разработки. Всё остальное в этом плане — следствие этих двух решений.</p>
+  </div>
+</doc-page>
+</x-dc>
+</body>
+</html>

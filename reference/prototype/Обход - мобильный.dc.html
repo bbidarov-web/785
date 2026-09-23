@@ -1,0 +1,1797 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f1f1e">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; padding: 0; background: #eef1f1; }
+  body { font-family: Manrope, "Helvetica Neue", Helvetica, sans-serif; -webkit-font-smoothing: antialiased; color: #10201f; overscroll-behavior-y: contain; }
+  * { box-sizing: border-box; }
+  input, textarea, select, button { font-family: inherit; color: inherit; }
+  input, select, textarea { transition: border-color .15s, box-shadow .15s, background-color .15s; }
+  textarea:focus, input:focus, select:focus {
+    outline: none; border-color: #157f76 !important; background-color: #ffffff;
+    box-shadow: 0 0 0 3px rgba(21, 127, 118, 0.16), 0 2px 10px rgba(16, 32, 31, 0.07);
+    position: relative; z-index: 1;
+  }
+  input::placeholder, textarea::placeholder { color: #a9b6b4; }
+  [style*="cursor: pointer"] { transition: background-color .15s, border-color .15s, color .15s, box-shadow .15s, transform .1s; -webkit-tap-highlight-color: transparent; }
+  [style*="cursor: pointer"]:active { transform: scale(0.985); }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+  /* обход держат одной рукой: кнопка не ниже 44 px, поле не мельче 16 px —
+     иначе iOS увеличивает страницу при фокусе и сбивает раскладку */
+  @media (max-width: 760px), (pointer: coarse) {
+    [style*="cursor: pointer"][style*="white-space: nowrap"] { min-height: 44px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; }
+    input, select, textarea { font-size: 16px !important; box-sizing: border-box; max-width: 100%; }
+    input:not([type="file"]):not([type="checkbox"]), select { min-height: 44px; }
+  }
+  ::-webkit-scrollbar { width: 0; height: 0; }
+</style>
+</helmet>
+
+<div style="min-height: 100vh; background: #eef1f1; display: flex; justify-content: center">
+  <div style="width: 100%; max-width: 680px; min-height: 100vh; background: #f4f6f6; display: flex; flex-direction: column; position: relative">
+
+    <div style="background: #0f1f1e; color: #e6efee; padding: 16px 18px 14px; display: flex; flex-direction: column; gap: 10px; position: sticky; top: 0; z-index: 20">
+      <div style="display: flex; align-items: center; gap: 10px">
+        <div style="width: 30px; height: 30px; border-radius: 8px; background: #157f76; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 12px; color: #ffffff; flex-shrink: 0">785</div>
+        <div style="display: flex; flex-direction: column; gap: 1px; margin-right: auto; min-width: 0">
+          <div style="font-size: 14px; font-weight: 800; letter-spacing: -0.2px">Обход</div>
+          <div style="font-size: 11px; color: #8fa8a5; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{ userName }}</div>
+        </div>
+        <div onClick="{{ toggleSearch }}" style="width: 32px; height: 32px; border-radius: 50%; background: #26403e; color: #b8ccca; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 700; cursor: pointer; flex-shrink: 0">⌕</div>
+        <div onClick="{{ toggleNet }}" style="display: flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 20px; background: {{ netBg }}; color: {{ netColor }}; font-size: 10.5px; font-weight: 800; cursor: pointer; white-space: nowrap">
+          <span style="width: 6px; height: 6px; border-radius: 50%; background: {{ netDot }}"></span>{{ netLabel }}
+        </div>
+      </div>
+      <sc-if value="{{ searchOpen }}" hint-placeholder-val="{{ false }}">
+        <input value="{{ search }}" onChange="{{ setSearch }}" placeholder="Поиск: чек-лист, объект, ответственный…" style="padding: 10px 12px; border: 1px solid #26403e; border-radius: 9px; background: #16302e; color: #e6efee; font-size: 13px; font-weight: 600; width: 100%"></input>
+      </sc-if>
+      <sc-if value="{{ hasQueue }}" hint-placeholder-val="{{ false }}">
+        <div onClick="{{ syncNow }}" style="display: flex; align-items: center; gap: 9px; padding: 9px 11px; border-radius: 9px; background: #26403e; cursor: pointer">
+          <div style="font-size: 11.5px; font-weight: 700; margin-right: auto; color: #e6efee">{{ queueNote }}</div>
+          <div style="font-size: 11px; font-weight: 800; color: #4fb3a7; white-space: nowrap">{{ queueAction }}</div>
+        </div>
+      </sc-if>
+    </div>
+
+    <div style="position: fixed; bottom: 0; left: 0; right: 0; z-index: 30; display: flex; justify-content: center; pointer-events: none">
+      <div style="width: 100%; max-width: 680px; background: #0f1f1e; color: #e6efee; padding: 10px 16px calc(10px + env(safe-area-inset-bottom)); display: flex; align-items: center; gap: 10px; pointer-events: auto; box-shadow: 0 -6px 18px rgba(16, 32, 31, 0.18)">
+        <div style="display: flex; flex-direction: column; gap: 1px; margin-right: auto; min-width: 0">
+          <div style="font-family: 'IBM Plex Mono', monospace; font-size: 12.5px; font-weight: 700">{{ nowClock }}</div>
+          <div style="font-size: 10.5px; color: #8fa8a5; font-weight: 600">{{ todayLabel }}</div>
+        </div>
+        <div onClick="{{ supportCall }}" style="padding: 8px 12px; border-radius: 8px; background: #157f76; color: #ffffff; font-size: 11.5px; font-weight: 800; cursor: pointer; white-space: nowrap">Позвонить</div>
+        <div onClick="{{ supportChat }}" style="padding: 8px 12px; border-radius: 8px; border: 1px solid #26403e; color: #b8ccca; font-size: 11.5px; font-weight: 800; cursor: pointer; white-space: nowrap">Написать</div>
+      </div>
+    </div>
+
+    <sc-if value="{{ hasViewDoc }}" hint-placeholder-val="{{ false }}">
+      <div style="position: fixed; inset: 0; z-index: 80; background: rgba(16, 32, 31, 0.5); display: flex; align-items: flex-end; justify-content: center">
+        <div style="width: 100%; max-width: 680px; max-height: 88%; background: #ffffff; border-radius: 16px 16px 0 0; padding: 18px 16px 22px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto">
+          <div style="display: flex; align-items: flex-start; gap: 10px">
+            <div style="display: flex; flex-direction: column; gap: 3px; margin-right: auto; min-width: 0">
+              <div style="font-size: 14px; font-weight: 800; overflow-wrap: anywhere">{{ viewDocName }}</div>
+              <div style="font-size: 11px; color: #61736f; font-weight: 600">{{ viewDocMeta }}</div>
+            </div>
+            <div onClick="{{ closeViewDoc }}" style="font-size: 16px; font-weight: 800; color: #61736f; cursor: pointer; flex-shrink: 0">✕</div>
+          </div>
+          <div style="font-size: 11px; font-weight: 700; color: #8a5b0f; background: #fdf8ef; border: 1px solid #ecd7ab; border-radius: 8px; padding: 8px 10px; line-height: 1.4">{{ viewDocMode }}</div>
+          <sc-if value="{{ viewDocReadonly }}" hint-placeholder-val="{{ true }}">
+            <div style="border: 1px solid #e3e8e8; border-radius: 10px; background: #fcfdfd; padding: 16px; font-size: 13px; line-height: 1.7; user-select: none; white-space: pre-wrap">{{ viewDocText }}</div>
+          </sc-if>
+          <sc-if value="{{ viewDocEditable }}" hint-placeholder-val="{{ false }}">
+            <textarea value="{{ viewDocText }}" onChange="{{ setViewDocText }}" style="border: 1px solid #157f76; border-radius: 10px; padding: 14px; font-size: 13px; line-height: 1.7; min-height: 220px; resize: vertical; width: 100%; font-family: inherit"></textarea>
+          </sc-if>
+          <div style="display: flex; gap: 9px; flex-wrap: wrap">
+            <sc-if value="{{ viewDocEditable }}" hint-placeholder-val="{{ false }}">
+              <div onClick="{{ saveViewDoc }}" style="flex: 1; padding: 13px; border-radius: 10px; background: #157f76; color: #ffffff; text-align: center; font-size: 13px; font-weight: 800; cursor: pointer">Сохранить</div>
+            </sc-if>
+            <div onClick="{{ printViewDoc }}" style="flex: 1; padding: 13px; border-radius: 10px; border: 1px solid #157f76; color: #157f76; text-align: center; font-size: 13px; font-weight: 800; cursor: pointer">Распечатать</div>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isList }}" hint-placeholder-val="{{ true }}">
+      <div style="flex: 1; padding: 16px 14px 90px; display: flex; flex-direction: column; gap: 14px">
+        <sc-if value="{{ isMenu }}" hint-placeholder-val="{{ true }}">
+          <div style="display: flex; flex-direction: column; gap: 12px">
+            <div style="display: flex; flex-direction: column; gap: 3px; padding: 0 4px">
+              <div style="font-size: 19px; font-weight: 800; letter-spacing: -0.4px">{{ menuTitle }}</div>
+              <div style="font-size: 12px; color: #61736f; font-weight: 600">{{ menuNote }}</div>
+            </div>
+            <sc-for list="{{ menuItems }}" as="m" hint-placeholder-count="2">
+              <div onClick="{{ m.go }}" style="background: #ffffff; border: 1px solid #dde3e2; border-radius: 14px; padding: 16px 16px; display: flex; align-items: center; gap: 12px; cursor: pointer; min-height: 76px" style-hover="border-color: #157f76" style-active="background: #f7f9f9">
+                <div style="width: 40px; height: 40px; border-radius: 11px; background: #e8f2f0; color: #0d5c55; font-family: 'IBM Plex Mono', monospace; font-size: 14px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0">{{ m.num }}</div>
+                <div style="display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1 1 auto">
+                  <div style="font-size: 15px; font-weight: 800">{{ m.name }}</div>
+                  <div style="font-size: 11.5px; color: #61736f; font-weight: 600; line-height: 1.4; overflow-wrap: anywhere; text-wrap: pretty">{{ m.note }}</div>
+                  <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap">
+                    <span style="font-size: 10.5px; color: #3d5a56; font-weight: 700; white-space: nowrap">{{ m.cntLabel }}</span>
+                    <sc-if value="{{ m.hasHot }}" hint-placeholder-val="{{ false }}">
+                      <span style="font-size: 9.5px; font-weight: 700; color: #a8342a; background: #f8e9e7; padding: 2px 6px; border-radius: 4px; white-space: nowrap">{{ m.hotLabel }}</span>
+                    </sc-if>
+                  </div>
+                </div>
+                <div style="font-size: 18px; font-weight: 800; color: #157f76; flex-shrink: 0">›</div>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+        <sc-if value="{{ isSection }}" hint-placeholder-val="{{ false }}">
+        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap">
+          <div onClick="{{ backToMenu }}" style="display: flex; align-items: center; gap: 7px; min-height: 44px; padding: 0 13px 0 9px; border-radius: 10px; border: 1px solid #dde3e2; background: #ffffff; font-size: 12.5px; font-weight: 700; color: #157f76; cursor: pointer" style-hover="border-color: #157f76"><span style="font-size: 16px; line-height: 1">←</span>Разделы</div>
+          <sc-if value="{{ hasBranchPick }}" hint-placeholder-val="{{ false }}">
+            <div onClick="{{ nextBranch }}" title="нажмите, чтобы переключить объект" style="display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 13px; border-radius: 10px; border: 1px solid #dde3e2; background: #ffffff; cursor: pointer; margin-left: auto; min-width: 0" style-hover="border-color: #157f76">
+              <span style="display: flex; flex-direction: column; gap: 1px; min-width: 0">
+                <span style="font-size: 9px; font-weight: 700; letter-spacing: 0.4px; text-transform: uppercase; color: #a9b6b4">{{ branchPickLabel }}</span>
+                <span style="font-size: 12.5px; font-weight: 800; color: #10201f; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{ branchPickName }}</span>
+              </span>
+              <span style="font-size: 13px; font-weight: 800; color: #157f76; flex-shrink: 0">⇄</span>
+            </div>
+          </sc-if>
+        </div>
+
+        <sc-if value="{{ isEquipTab }}" hint-placeholder-val="{{ false }}">
+          <div style="display: flex; flex-direction: column; gap: 12px">
+            <div style="display: flex; flex-direction: column; gap: 5px; padding: 0 4px">
+              <div style="font-size: 17px; font-weight: 800; letter-spacing: -0.4px">{{ equipTitle }}</div>
+              <div style="font-size: 11.5px; color: #61736f; font-weight: 600; line-height: 1.45; text-wrap: pretty">{{ equipNote }}</div>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px">
+              <sc-for list="{{ equipStats }}" as="s" hint-placeholder-count="4">
+                <div style="background: #ffffff; border: 1px solid #dde3e2; border-radius: 10px; padding: 9px 5px; display: flex; flex-direction: column; gap: 3px; align-items: center">
+                  <div style="font-size: 17px; font-weight: 800; font-family: 'IBM Plex Mono', monospace; color: {{ s.color }}; line-height: 1">{{ s.val }}</div>
+                  <div style="font-size: 9px; color: #61736f; font-weight: 700; line-height: 1.25; text-align: center">{{ s.name }}</div>
+                </div>
+              </sc-for>
+            </div>
+            <sc-for list="{{ equipCards }}" as="p" hint-placeholder-count="4">
+              <div style="background: #ffffff; border: 1px solid #dde3e2; border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px">
+                <div style="display: flex; align-items: flex-start; gap: 9px">
+                  <div style="display: flex; flex-direction: column; gap: 3px; margin-right: auto; min-width: 0">
+                    <div style="display: flex; align-items: center; gap: 7px; flex-wrap: wrap">
+                      <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 700; color: #61736f">{{ p.num }}</span>
+                      <span style="font-size: 14px; font-weight: 800; overflow-wrap: anywhere">{{ p.name }}</span>
+                    </div>
+                    <div style="font-size: 11px; color: #61736f; font-weight: 600; overflow-wrap: anywhere">{{ p.meta }}</div>
+                  </div>
+                  <div style="font-size: 9.5px; font-weight: 700; color: {{ p.statusColor }}; background: {{ p.statusBg }}; padding: 3px 6px; border-radius: 5px; flex-shrink: 0; white-space: nowrap">{{ p.status }}</div>
+                </div>
+                <sc-for list="{{ p.forms }}" as="f" hint-placeholder-count="2">
+                  <div style="display: flex; flex-direction: column; gap: 8px; padding: 11px 12px; border-radius: 10px; background: #f7f9f9; border: 1px solid #eef1f1">
+                    <div style="display: flex; align-items: flex-start; gap: 8px; flex-wrap: wrap">
+                      <div style="font-size: 12.5px; font-weight: 700; overflow-wrap: anywhere; margin-right: auto">{{ f.name }}</div>
+                      <div style="font-size: 9px; font-weight: 700; color: {{ f.kindColor }}; background: {{ f.kindBg }}; padding: 2px 5px; border-radius: 4px; white-space: nowrap">{{ f.kind }}</div>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 7px; flex-wrap: wrap">
+                      <span style="font-size: 10.5px; color: #61736f; font-weight: 600">{{ f.freq }}</span>
+                      <span style="font-size: 10.5px; color: #3d5a56; font-weight: 700">{{ f.who }}</span>
+                      <span style="font-size: 9.5px; font-weight: 700; color: {{ f.dueColor }}; background: {{ f.dueBg }}; padding: 2px 5px; border-radius: 4px; white-space: nowrap">{{ f.dueLabel }}</span>
+                    </div>
+                    <sc-if value="{{ f.hasFillNote }}" hint-placeholder-val="{{ false }}">
+                      <div style="font-size: 10.5px; color: #3d5a56; font-weight: 600; line-height: 1.45; text-wrap: pretty">{{ f.fillNote }}</div>
+                    </sc-if>
+                    <div style="display: flex; align-items: center; gap: 9px; flex-wrap: wrap">
+                      <div style="font-size: 10px; color: #61736f; font-weight: 600; margin-right: auto">{{ f.last }}</div>
+                      <div onClick="{{ f.fill }}" style="padding: 10px 16px; border-radius: 9px; background: #157f76; color: #ffffff; font-size: 12px; font-weight: 800; cursor: pointer; white-space: nowrap; min-height: 44px; display: flex; align-items: center">{{ f.fillLabel }}</div>
+                    </div>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isSummaryTab }}" hint-placeholder-val="{{ false }}">
+        <div style="display: flex; flex-direction: column; gap: 10px">
+          <div style="display: flex; flex-direction: column; gap: 4px; padding: 0 4px">
+            <div style="font-size: 15px; font-weight: 800">{{ sumTitle }}</div>
+            <div style="font-size: 11.5px; color: #61736f; font-weight: 600; line-height: 1.45">{{ sumNote }}</div>
+          </div>
+          <sc-if value="{{ noSumRows }}" hint-placeholder-val="{{ false }}">
+            <div style="background: #ffffff; border: 1px dashed #cfd8d7; border-radius: 12px; padding: 24px 18px; font-size: 12.5px; color: #61736f; font-weight: 600; text-align: center; line-height: 1.5">{{ noSumNote }}</div>
+          </sc-if>
+          <sc-for list="{{ sumRows }}" as="r" hint-placeholder-count="3">
+            <div onClick="{{ r.open }}" style="background: #ffffff; border: 1px solid #e3e8e8; border-radius: 12px; padding: 13px 14px; display: flex; flex-direction: column; gap: 7px; cursor: pointer">
+              <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap">
+                <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 700; color: #3d5a56">{{ r.num }}</div>
+                <div style="font-size: 10px; font-weight: 700; color: {{ r.reqColor }}; background: {{ r.reqBg }}; padding: 3px 6px; border-radius: 4px">{{ r.reqLabel }}</div>
+                <div style="margin-left: auto; font-size: 10px; font-weight: 700; color: {{ r.stateColor }}; background: {{ r.stateBg }}; padding: 3px 6px; border-radius: 4px; white-space: nowrap">{{ r.state }}</div>
+              </div>
+              <div style="font-size: 13.5px; font-weight: 700; line-height: 1.35; overflow-wrap: anywhere">{{ r.name }}</div>
+              <sc-if value="{{ r.hasNote }}" hint-placeholder-val="{{ false }}">
+                <div style="font-size: 11.5px; color: #61736f; font-weight: 600; line-height: 1.45">{{ r.note }}</div>
+              </sc-if>
+              <sc-if value="{{ r.hasFile }}" hint-placeholder-val="{{ false }}">
+                <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 600; color: #157f76; overflow-wrap: anywhere">{{ r.file }}</div>
+              </sc-if>
+            </div>
+          </sc-for>
+        </div>
+        </sc-if>
+
+        <sc-if value="{{ isAuditTab }}" hint-placeholder-val="{{ true }}">
+        <div style="display: flex; align-items: center; gap: 8px; padding: 0 4px; flex-wrap: wrap">
+          <div style="font-size: 17px; font-weight: 800; letter-spacing: -0.4px">Мои проверки</div>
+          <div style="font-size: 10px; font-weight: 700; color: {{ planSrcColor }}; background: {{ planSrcBg }}; padding: 3px 7px; border-radius: 5px; white-space: nowrap">{{ planSrc }}</div>
+          <select value="{{ branch }}" onChange="{{ setBranch }}" style="padding: 6px 9px; border: 1px solid #dde3e2; border-radius: 8px; background: #ffffff; font-size: 11px; font-weight: 700; max-width: 172px">
+            <sc-for list="{{ branchOptions }}" as="o" hint-placeholder-count="3">
+              <option value="{{ o }}">{{ o }}</option>
+            </sc-for>
+          </select>
+          <div onClick="{{ toggleYears }}" style="margin-left: auto; padding: 6px 11px; border-radius: 8px; background: #ffffff; border: 1px solid #dde3e2; font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; font-weight: 700; cursor: pointer; white-space: nowrap">{{ yearLabel }} ▾</div>
+        </div>
+
+        <div style="display: flex; gap: 6px; padding: 0 4px">
+          <sc-for list="{{ viewTabs }}" as="v" hint-placeholder-count="2">
+            <div onClick="{{ v.go }}" style="flex: 1; padding: 9px; border-radius: 9px; background: {{ v.bg }}; color: {{ v.color }}; border: 1px solid {{ v.border }}; font-size: 12px; font-weight: 800; text-align: center; cursor: pointer">{{ v.name }}</div>
+          </sc-for>
+        </div>
+
+        <sc-if value="{{ yearsOpen }}" hint-placeholder-val="{{ false }}">
+          <div style="display: flex; gap: 6px; flex-wrap: wrap; padding: 0 4px">
+            <sc-for list="{{ yearTabs }}" as="y" hint-placeholder-count="3">
+              <div onClick="{{ y.go }}" style="padding: 7px 12px; border-radius: 20px; background: {{ y.bg }}; color: {{ y.color }}; border: 1px solid {{ y.border }}; font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; font-weight: 700; cursor: pointer; white-space: nowrap">{{ y.name }}</div>
+            </sc-for>
+          </div>
+        </sc-if>
+
+        <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px">
+          <sc-for list="{{ stats }}" as="s" hint-placeholder-count="4">
+            <div style="background: #ffffff; border: 1px solid #dde3e2; border-radius: 10px; padding: 9px 5px; display: flex; flex-direction: column; gap: 3px; align-items: center">
+              <div style="font-size: 17px; font-weight: 800; font-family: 'IBM Plex Mono', monospace; color: {{ s.color }}; line-height: 1">{{ s.val }}</div>
+              <div style="font-size: 9px; color: #61736f; font-weight: 700; line-height: 1.25; text-align: center">{{ s.name }}</div>
+            </div>
+          </sc-for>
+        </div>
+
+        <sc-if value="{{ isArchiveView }}" hint-placeholder-val="{{ false }}">
+          <sc-for list="{{ archiveList }}" as="a" hint-placeholder-count="4">
+            <div style="background: #ffffff; border: 1px solid #dde3e2; border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px">
+              <div style="display: flex; align-items: flex-start; gap: 10px">
+                <div style="font-size: 13.5px; font-weight: 800; line-height: 1.3; margin-right: auto; min-width: 0; text-wrap: pretty">{{ a.name }}</div>
+                <div style="padding: 3px 9px; border-radius: 6px; background: {{ a.resBg }}; color: {{ a.resColor }}; font-size: 10px; font-weight: 800; white-space: nowrap; flex-shrink: 0">{{ a.res }}</div>
+              </div>
+              <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap">
+                <div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 700">{{ a.year }}</div>
+                <div style="font-size: 11px; color: #61736f; font-weight: 600">{{ a.date }} · {{ a.rev }}</div>
+              </div>
+              <div style="font-size: 11px; color: #61736f; font-weight: 600">проводил: {{ a.who }}</div>
+            </div>
+          </sc-for>
+        </sc-if>
+
+        <sc-if value="{{ isActiveView }}" hint-placeholder-val="{{ true }}">
+        <sc-for list="{{ walks }}" as="w" hint-placeholder-count="4">
+          <div style="background: #ffffff; border: 1px solid {{ w.border }}; border-left: 4px solid {{ w.accent }}; border-radius: 12px; padding: 15px 16px; display: flex; flex-direction: column; gap: 10px">
+            <div style="display: flex; align-items: flex-start; gap: 10px">
+              <div style="font-size: 14.5px; font-weight: 800; line-height: 1.3; margin-right: auto; min-width: 0; text-wrap: pretty">{{ w.name }}</div>
+              <div onClick="{{ w.cycleStatus }}" style="padding: 4px 9px; border-radius: 6px; background: {{ w.badgeBg }}; color: {{ w.badgeColor }}; font-size: 10px; font-weight: 800; white-space: nowrap; flex-shrink: 0; cursor: pointer">{{ w.status }}</div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 7px; flex-wrap: wrap">
+              <div style="font-size: 10px; font-weight: 800; color: {{ w.kindColor }}; background: {{ w.kindBg }}; padding: 2px 7px; border-radius: 5px; white-space: nowrap">{{ w.kind }}</div>
+              <div style="font-size: 12px; color: #61736f; font-weight: 600; line-height: 1.4">{{ w.object }}</div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap">
+              <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 700; color: #0d5c55; background: #e8f2f0; border-radius: 6px; padding: 4px 8px">план {{ w.planDate }}</div>
+              <sc-if value="{{ w.hasDue }}" hint-placeholder-val="{{ false }}">
+                <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 700; color: {{ w.dueColor }}; background: {{ w.dueBg }}; border-radius: 6px; padding: 4px 8px">{{ w.dueNote }}</div>
+              </sc-if>
+              <div style="font-size: 11px; font-weight: 600; color: #61736f">отв.: {{ w.owner }}</div>
+            </div>
+            <sc-if value="{{ w.hasReason }}" hint-placeholder-val="{{ false }}">
+              <div style="font-size: 11.5px; font-weight: 600; color: #6f4a0d; line-height: 1.45; text-wrap: pretty">{{ w.reasonNote }}</div>
+            </sc-if>
+            <div onClick="{{ w.toggleCard }}" style="display: flex; align-items: center; gap: 8px; cursor: pointer">
+              <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; font-weight: 600; color: #8a5b0f; background: #fdf8ef; border-radius: 6px; padding: 4px 8px; white-space: nowrap">{{ w.runNo }}</div>
+              <div style="margin-left: auto; font-size: 11px; font-weight: 700; color: #157f76; white-space: nowrap">{{ w.cardLabel }}</div>
+            </div>
+
+            <sc-if value="{{ w.cardOpen }}" hint-placeholder-val="{{ true }}">
+            <div style="display: flex; align-items: center; gap: 10px">
+              <div style="flex: 1; height: 6px; border-radius: 3px; background: #eef1f1; overflow: hidden">
+                <div style="width: {{ w.pct }}; height: 100%; background: {{ w.accent }}"></div>
+              </div>
+              <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 600; color: #61736f; white-space: nowrap">{{ w.progress }}</div>
+            </div>
+
+            <sc-if value="{{ w.noCheck }}" hint-placeholder-val="{{ false }}">
+              <div style="padding: 10px 11px; border-radius: 9px; background: #fdf8ef; border: 1px solid #ecd7ab; font-size: 11px; font-weight: 700; color: #6f4a0d; line-height: 1.45; text-wrap: pretty">{{ w.noCheckNote }}</div>
+            </sc-if>
+
+            <sc-if value="{{ w.hasPlanDocs }}" hint-placeholder-val="{{ false }}">
+              <div style="padding: 10px 11px; border-radius: 9px; background: #f7fbfa; border: 1px solid #d7e6e3; font-size: 11px; font-weight: 700; color: #0d5c55; line-height: 1.45; text-wrap: pretty">{{ w.planDocsNote }}</div>
+            </sc-if>
+
+            <div style="display: flex; gap: 7px; flex-wrap: wrap; border-top: 1px solid #eef1f1; padding-top: 10px">
+              <div onClick="{{ w.open }}" style="flex: 1 1 92px; padding: 10px; border-radius: 9px; background: {{ w.startBg }}; color: {{ w.startColor }}; font-size: 12px; font-weight: 800; text-align: center; cursor: {{ w.startCursor }}">{{ w.startLabel }}</div>
+              <sc-if value="{{ w.finished }}" hint-placeholder-val="{{ false }}">
+                <div onClick="{{ w.viewResult }}" style="flex: 1 1 92px; padding: 10px; border-radius: 9px; border: 1px solid #dde3e2; color: #10201f; font-size: 12px; font-weight: 700; text-align: center; cursor: pointer" style-hover="border-color: #157f76; color: #157f76">Результаты</div>
+              </sc-if>
+              <div onClick="{{ w.toggleDocs }}" style="flex: 1 1 92px; padding: 10px; border-radius: 9px; border: 1px solid {{ w.docsBorder }}; background: {{ w.docsBg }}; color: {{ w.docsColor }}; font-size: 12px; font-weight: 700; text-align: center; cursor: pointer">Документы</div>
+              <div onClick="{{ w.edit }}" style="flex: 0 0 44px; padding: 10px; border-radius: 9px; border: 1px solid #dde3e2; color: #3d5a56; font-size: 12px; font-weight: 700; text-align: center; cursor: pointer" style-hover="border-color: #157f76">✎</div>
+            </div>
+
+            <div onClick="{{ w.toggleArchive }}" style="font-size: 11.5px; font-weight: 700; color: #157f76; cursor: pointer; padding: 2px 0">{{ w.archiveLabel }}</div>
+
+            <sc-if value="{{ w.archiveOpen }}" hint-placeholder-val="{{ false }}">
+              <div style="display: flex; flex-direction: column; gap: 8px; padding: 11px; border-radius: 10px; background: #f7f9f9">
+                <sc-for list="{{ w.archiveRows }}" as="a" hint-placeholder-count="2">
+                  <div style="display: flex; flex-direction: column; gap: 7px; padding: 9px 10px; border: 1px solid #e3e8e8; border-radius: 9px; background: #ffffff">
+                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap">
+                      <div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 700">{{ a.year }}</div>
+                      <div style="font-size: 11px; color: #61736f; font-weight: 600">{{ a.date }} · {{ a.rev }}</div>
+                      <div style="font-size: 11px; font-weight: 800; color: {{ a.resColor }}; margin-left: auto; white-space: nowrap">{{ a.res }}</div>
+                    </div>
+                    <div style="font-size: 10.5px; color: #61736f; font-weight: 600">проводил: {{ a.who }}</div>
+                    <div onClick="{{ a.toggle }}" style="padding: 7px 10px; border-radius: 7px; border: 1px solid #dde3e2; background: {{ a.cmpBg }}; color: {{ a.cmpColor }}; font-size: 11px; font-weight: 700; text-align: center; cursor: pointer">{{ a.cmpLabel }}</div>
+                    <sc-if value="{{ a.picked }}" hint-placeholder-val="{{ false }}">
+                      <div style="padding: 9px 10px; border-radius: 8px; background: #fdf8ef; border: 1px solid #ecd7ab; font-size: 11px; font-weight: 600; color: #6f4a0d; line-height: 1.5">{{ a.diff }}</div>
+                    </sc-if>
+                    <sc-if value="{{ a.hasBadList }}" hint-placeholder-val="{{ false }}">
+                      <div style="display: flex; flex-direction: column; gap: 6px; padding: 9px 10px; border-radius: 8px; background: #fdf5f4; border: 1px solid #f0d9d5">
+                        <div style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.4px; font-weight: 800; color: #a8342a">Нарушения по пунктам</div>
+                        <sc-for list="{{ a.badRows }}" as="r" hint-placeholder-count="2">
+                          <div style="display: flex; flex-direction: column; gap: 3px; padding: 6px 8px; border-radius: 7px; background: #ffffff">
+                            <div style="font-size: 11px; font-weight: 700; line-height: 1.35; overflow-wrap: anywhere">{{ r.name }}</div>
+                            <div style="display: flex; gap: 10px; flex-wrap: wrap">
+                              <div style="font-size: 10.5px; font-weight: 800; color: {{ r.curColor }}">сейчас: {{ r.curMark }}</div>
+                              <div style="font-size: 10.5px; font-weight: 800; color: {{ r.oldColor }}">архив: {{ r.oldMark }}</div>
+                            </div>
+                          </div>
+                        </sc-for>
+                      </div>
+                    </sc-if>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ w.docsOpen }}" hint-placeholder-val="{{ false }}">
+              <div style="display: flex; flex-direction: column; gap: 7px; padding: 11px; border-radius: 10px; background: #f7f9f9">
+                <sc-for list="{{ w.docs }}" as="d" hint-placeholder-count="4">
+                  <div style="display: flex; align-items: center; gap: 9px">
+                    <div style="width: 19px; height: 19px; border-radius: 50%; background: {{ d.bg }}; color: {{ d.color }}; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 800; flex-shrink: 0">{{ d.mark }}</div>
+                    <div style="font-size: 12px; font-weight: 700; margin-right: auto; min-width: 0">{{ d.name }}</div>
+                    <div style="font-size: 11px; color: #61736f; font-weight: 600; white-space: nowrap">{{ d.note }}</div>
+                    <div onClick="{{ d.remove }}" style="font-size: 12px; font-weight: 800; color: #c8564a; cursor: pointer; flex-shrink: 0">✕</div>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 7px; flex-wrap: wrap; padding: 0 0 8px 28px">
+                    <div onClick="{{ d.open }}" style="padding: 6px 10px; border-radius: 7px; border: 1px solid #dde3e2; background: #ffffff; font-size: 10.5px; font-weight: 700; color: #3d5a56; cursor: pointer">Открыть</div>
+                    <div onClick="{{ d.edit }}" style="padding: 6px 10px; border-radius: 7px; border: 1px solid #dde3e2; background: #ffffff; font-size: 10.5px; font-weight: 700; color: #3d5a56; cursor: pointer">Редактировать</div>
+                    <sc-for list="{{ d.owners }}" as="o" hint-placeholder-count="1">
+                      <div style="display: flex; align-items: center; gap: 5px; padding: 4px 8px; border-radius: 6px; background: #e8f2f0; color: #0d5c55; font-size: 10px; font-weight: 700">
+                        {{ o.name }}<span onClick="{{ o.remove }}" style="font-weight: 800; color: #a8342a">✕</span>
+                      </div>
+                    </sc-for>
+                    <select value="{{ d.addPick }}" onChange="{{ d.addOwner }}" style="padding: 5px 8px; border: 1px solid #dde3e2; border-radius: 6px; background: #ffffff; font-size: 10px; font-weight: 700; min-width: 150px">
+                      <sc-for list="{{ peopleOptions }}" as="o" hint-placeholder-count="4">
+                        <option value="{{ o }}">{{ o }}</option>
+                      </sc-for>
+                    </select>
+                  </div>
+                </sc-for>
+                <div onClick="{{ w.addDoc }}" style="padding: 9px; border-radius: 8px; border: 1px dashed #cfd8d7; text-align: center; font-size: 11.5px; font-weight: 700; color: #157f76; cursor: pointer">+ Добавить документ результата</div>
+              </div>
+            </sc-if>
+            </sc-if>
+          </div>
+        </sc-for>
+        </sc-if>
+
+        <sc-if value="{{ noWalks }}" hint-placeholder-val="{{ false }}">
+          <div style="background: #ffffff; border: 1px dashed #cfd8d7; border-radius: 12px; padding: 28px 20px; text-align: center; font-size: 13px; color: #61736f; font-weight: 600; line-height: 1.5">На сегодня проверок не назначено. Новые появятся здесь автоматически.</div>
+        </sc-if>
+        </sc-if>
+      </sc-if>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isWalk }}" hint-placeholder-val="{{ false }}">
+      <div style="background: #ffffff; border-bottom: 1px solid #e3e8e8; padding: 13px 16px; display: flex; flex-direction: column; gap: 9px; position: sticky; top: 88px; z-index: 15">
+        <div style="display: flex; align-items: center; gap: 10px">
+          <div onClick="{{ backToList }}" title="К списку проверок" style="width: 44px; height: 44px; margin: -6px 0 -6px -8px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 19px; font-weight: 800; color: #157f76; cursor: pointer; flex-shrink: 0" style-hover="background: #e8f2f0" style-active="background: #d7e8e5">←</div>
+          <div style="font-size: 14px; font-weight: 800; margin-right: auto; min-width: 0; line-height: 1.3">{{ walkName }}</div>
+          <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; font-weight: 600; color: #61736f; white-space: nowrap">{{ walkProgress }}</div>
+        </div>
+        <div style="font-size: 11.5px; color: #61736f; font-weight: 600">{{ walkObject }}</div>
+        <div style="height: 5px; border-radius: 3px; background: #eef1f1; overflow: hidden"><div style="width: {{ walkPct }}; height: 100%; background: #157f76"></div></div>
+      </div>
+
+      <div style="flex: 1; padding: 14px 14px 130px; display: flex; flex-direction: column; gap: 12px">
+        <sc-for list="{{ items }}" as="q" hint-placeholder-count="6">
+          <div style="background: #ffffff; border: 1px solid {{ q.border }}; border-radius: 12px; padding: 15px; display: flex; flex-direction: column; gap: 12px">
+            <div style="display: flex; align-items: flex-start; gap: 9px">
+              <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 700; color: #9aa8a6; flex-shrink: 0; padding-top: 2px">{{ q.num }}</div>
+              <div style="font-size: 14px; font-weight: 600; line-height: 1.45; text-wrap: pretty">{{ q.text }}</div>
+            </div>
+            <div style="display: flex; gap: 9px">
+              <div onClick="{{ q.ok }}" style="flex: 1; text-align: center; padding: 15px 8px; border-radius: 11px; font-size: 13.5px; font-weight: 800; cursor: pointer; border: 1.5px solid {{ q.okBorder }}; background: {{ q.okBg }}; color: {{ q.okColor }}">Соответствует</div>
+              <div onClick="{{ q.bad }}" style="flex: 1; text-align: center; padding: 15px 8px; border-radius: 11px; font-size: 13.5px; font-weight: 800; cursor: pointer; border: 1.5px solid {{ q.badBorder }}; background: {{ q.badBg }}; color: {{ q.badColor }}">Нарушение</div>
+            </div>
+            <sc-if value="{{ q.isBad }}" hint-placeholder-val="{{ false }}">
+              <div style="display: flex; flex-direction: column; gap: 9px; border-top: 1px dashed #f0d9d5; padding-top: 11px">
+                <div style="font-size: 11.5px; font-weight: 800; color: #a8342a">Что именно не соответствует</div>
+                <textarea value="{{ q.comment }}" onChange="{{ q.setComment }}" placeholder="Опишите нарушение — попадёт в акт и журнал" style="padding: 11px; border: 1px solid #e0b3ac; border-radius: 9px; background: #fdf5f4; font-size: 13px; color: #7c2b22; font-weight: 600; line-height: 1.45; min-height: 66px; resize: vertical; width: 100%"></textarea>
+                <sc-if value="{{ q.hasPhotoSrc }}" hint-placeholder-val="{{ false }}">
+                  <div onClick="{{ q.openPhoto }}" style="display: flex; align-items: center; gap: 10px; padding: 8px; border: 1px solid #e0b3ac; border-radius: 9px; background: #ffffff; cursor: pointer">
+                    {{ q.photoImg }}
+                    <span style="font-size: 11px; font-weight: 700; color: #0d5c55; min-width: 0; overflow-wrap: anywhere">снимок приложен — нажмите, чтобы открыть</span>
+                  </div>
+                </sc-if>
+                <div style="display: flex; gap: 9px">
+                  <label style="flex: 1; text-align: center; padding: 12px 8px; border-radius: 9px; background: {{ q.photoBg }}; font-size: 12px; font-weight: 700; cursor: pointer; color: {{ q.photoColor }}">
+                    {{ q.photoLabel }}<input type="file" accept="image/*" capture="environment" onChange="{{ q.addPhoto }}" style="display: none"></input>
+                  </label>
+                  <div onClick="{{ q.voice }}" style="flex: 1; text-align: center; padding: 12px 8px; border-radius: 9px; background: #eef1f1; font-size: 12px; font-weight: 700; cursor: pointer">🎙 Голосом</div>
+                </div>
+              </div>
+            </sc-if>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="position: sticky; bottom: calc(58px + env(safe-area-inset-bottom)); z-index: 40; background: #ffffff; border-top: 1px solid #e3e8e8; padding: 12px 14px 16px; display: flex; flex-direction: column; gap: 9px">
+        <sc-if value="{{ hasViolations }}" hint-placeholder-val="{{ false }}">
+          <div style="padding: 10px 12px; border-radius: 9px; background: #fdf5f4; border: 1px solid #f0d9d5; font-size: 11.5px; font-weight: 700; color: #a8342a; line-height: 1.45">{{ violationNote }}</div>
+        </sc-if>
+        <div onClick="{{ finish }}" style="padding: 16px; border-radius: 12px; background: {{ finishBg }}; color: #ffffff; text-align: center; font-size: 14.5px; font-weight: 800; cursor: pointer">{{ finishLabel }}</div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isDone }}" hint-placeholder-val="{{ false }}">
+      <div style="flex: 1; padding: 24px 18px 40px; display: flex; flex-direction: column; gap: 18px">
+        <div style="background: #ffffff; border: 2px solid #157f76; border-radius: 14px; padding: 22px 20px; display: flex; flex-direction: column; gap: 14px">
+          <div style="width: 46px; height: 46px; border-radius: 50%; background: #e8f2f0; color: #157f76; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 800">✓</div>
+          <div style="font-size: 18px; font-weight: 800; letter-spacing: -0.4px; line-height: 1.25">Проверка завершена</div>
+          <div style="font-size: 13px; color: #3d5a56; font-weight: 500; line-height: 1.55">{{ doneSummary }}</div>
+          <div style="display: flex; flex-direction: column; gap: 9px; border-top: 1px solid #eef1f1; padding-top: 14px">
+            <sc-for list="{{ doneChain }}" as="c" hint-placeholder-count="4">
+              <div style="display: flex; align-items: center; gap: 10px">
+                <div style="width: 20px; height: 20px; border-radius: 50%; background: {{ c.bg }}; color: {{ c.color }}; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 800; flex-shrink: 0">{{ c.mark }}</div>
+                <div style="font-size: 12.5px; font-weight: 700; margin-right: auto; min-width: 0">{{ c.name }}</div>
+                <div style="font-size: 11px; color: #61736f; font-weight: 600; white-space: nowrap">{{ c.note }}</div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+        <div onClick="{{ backToList }}" style="padding: 16px; border-radius: 12px; background: #157f76; color: #ffffff; text-align: center; font-size: 14px; font-weight: 800; cursor: pointer">К списку проверок</div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ equipFormOpen }}" hint-placeholder-val="{{ false }}">
+      <div style="position: fixed; inset: 0; z-index: 92; background: rgba(16, 32, 31, 0.5); display: flex; align-items: flex-end; justify-content: center">
+        <div style="width: 100%; max-width: 680px; max-height: 92vh; overflow-y: auto; background: #ffffff; border-radius: 16px 16px 0 0; padding: 18px 16px 22px; display: flex; flex-direction: column; gap: 12px">
+          <div style="display: flex; align-items: flex-start; gap: 8px">
+            <div style="display: flex; flex-direction: column; gap: 4px; margin-right: auto; min-width: 0">
+              <div style="font-size: 15px; font-weight: 800; line-height: 1.3; overflow-wrap: anywhere">{{ equipFormTitle }}</div>
+              <div style="font-size: 11px; color: #61736f; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{ equipFormMeta }}</div>
+            </div>
+            <div onClick="{{ closeEquipForm }}" style="width: 44px; height: 44px; margin: -8px -8px 0 0; display: flex; align-items: center; justify-content: center; font-size: 17px; font-weight: 800; color: #61736f; cursor: pointer; flex-shrink: 0">✕</div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 7px; flex-wrap: wrap">
+            <span style="font-size: 9.5px; font-weight: 700; color: {{ equipFormKindColor }}; background: {{ equipFormKindBg }}; padding: 3px 6px; border-radius: 4px">{{ equipFormKind }}</span>
+            <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; font-weight: 700; color: #3d5a56">{{ equipFormDate }}</span>
+            <span style="font-size: 10.5px; font-weight: 700; color: #3d5a56">{{ equipFormWho }}</span>
+          </div>
+
+          <sc-if value="{{ equipFormIsCheck }}" hint-placeholder-val="{{ false }}">
+            <div style="display: flex; flex-direction: column; gap: 8px">
+              <sc-for list="{{ equipFormItems }}" as="i" hint-placeholder-count="3">
+                <div style="display: flex; flex-direction: column; gap: 8px; padding: 11px 12px; border: 1px solid #e9eded; border-radius: 10px">
+                  <div style="display: flex; align-items: flex-start; gap: 8px">
+                    <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; font-weight: 700; color: #61736f; flex-shrink: 0">{{ i.num }}</span>
+                    <span style="font-size: 12.5px; font-weight: 600; line-height: 1.4; overflow-wrap: anywhere; text-wrap: pretty">{{ i.text }}</span>
+                  </div>
+                  <div style="display: flex; gap: 6px">
+                    <div onClick="{{ i.setYes }}" style="flex: 1 1 0; min-height: 44px; display: flex; align-items: center; justify-content: center; border-radius: 8px; border: 1px solid #dde3e2; background: {{ i.yesBg }}; color: {{ i.yesColor }}; font-size: 12px; font-weight: 800; cursor: pointer">Да</div>
+                    <div onClick="{{ i.setNo }}" style="flex: 1 1 0; min-height: 44px; display: flex; align-items: center; justify-content: center; border-radius: 8px; border: 1px solid #dde3e2; background: {{ i.noBg }}; color: {{ i.noColor }}; font-size: 12px; font-weight: 800; cursor: pointer">Нет</div>
+                    <div onClick="{{ i.setNa }}" style="flex: 1 1 0; min-height: 44px; display: flex; align-items: center; justify-content: center; border-radius: 8px; border: 1px solid #dde3e2; background: {{ i.naBg }}; color: {{ i.naColor }}; font-size: 12px; font-weight: 800; cursor: pointer">Н/П</div>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ equipFormIsJournal }}" hint-placeholder-val="{{ false }}">
+            <div style="display: flex; flex-direction: column; gap: 5px">
+              <div style="font-size: 10px; font-weight: 700; color: #61736f; text-transform: uppercase; letter-spacing: 0.3px">Показатель за период</div>
+              <input value="{{ equipFormValue }}" onChange="{{ setEquipFormValue }}" placeholder="например: 4,8 °C · без отклонений" style="padding: 12px; border: 1px solid #dde3e2; border-radius: 9px; font-size: 15px; font-weight: 600; width: 100%; min-height: 44px"></input>
+            </div>
+          </sc-if>
+
+          <div style="display: flex; flex-direction: column; gap: 5px">
+            <div style="font-size: 10px; font-weight: 700; color: #61736f; text-transform: uppercase; letter-spacing: 0.3px">Примечание</div>
+            <textarea value="{{ equipFormNote }}" onChange="{{ setEquipFormNote }}" placeholder="отклонения и принятые меры" style="padding: 11px; border: 1px solid #dde3e2; border-radius: 9px; font-size: 14px; font-weight: 500; width: 100%; min-height: 66px; font-family: inherit; resize: vertical"></textarea>
+          </div>
+
+          <div style="display: flex; gap: 8px">
+            <div onClick="{{ saveEquipForm }}" style="flex: 1 1 0; min-height: 48px; display: flex; align-items: center; justify-content: center; border-radius: 10px; background: #157f76; color: #ffffff; font-size: 13px; font-weight: 800; cursor: pointer">Сохранить</div>
+            <div onClick="{{ closeEquipForm }}" style="min-height: 48px; padding: 0 16px; display: flex; align-items: center; justify-content: center; border-radius: 10px; border: 1px solid #dde3e2; color: #3d5a56; font-size: 13px; font-weight: 700; cursor: pointer">Отмена</div>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ lightboxOpen }}" hint-placeholder-val="{{ false }}">
+      <div onClick="{{ closeLightbox }}" style="position: fixed; inset: 0; z-index: 95; background: rgba(8, 16, 15, 0.88); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 20px">
+        {{ lightboxImg }}
+        <div style="font-size: 12px; font-weight: 700; color: #e6efee; text-align: center; overflow-wrap: anywhere">{{ lightboxName }}</div>
+        <div style="padding: 11px 20px; border-radius: 10px; background: #ffffff; color: #10201f; font-size: 13px; font-weight: 800; cursor: pointer">Закрыть</div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ hasConfirm }}" hint-placeholder-val="{{ false }}">
+      <div style="position: fixed; inset: 0; z-index: 90; background: rgba(16, 32, 31, 0.5); display: flex; align-items: flex-end; justify-content: center">
+        <div style="width: 100%; max-width: 680px; background: #ffffff; border-radius: 16px 16px 0 0; padding: 20px 16px 24px; display: flex; flex-direction: column; gap: 14px">
+          <div style="font-size: 14px; font-weight: 700; color: #10201f; line-height: 1.45">{{ confirmMsg }}</div>
+          <div style="display: flex; gap: 10px">
+            <div onClick="{{ confirmNo }}" style="flex: 1; text-align: center; padding: 13px 16px; border-radius: 10px; border: 1px solid #dde3e2; font-size: 13px; font-weight: 700; color: #3d5a56; cursor: pointer">Отмена</div>
+            <div onClick="{{ confirmYes }}" style="flex: 1; text-align: center; padding: 13px 16px; border-radius: 10px; background: #157f76; color: #ffffff; font-size: 13px; font-weight: 700; cursor: pointer">Подтвердить</div>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ toast }}" hint-placeholder-val="{{ false }}">
+      <div style="position: fixed; left: 14px; right: 14px; bottom: 100px; max-width: 652px; margin: 0 auto; padding: 13px 16px; border-radius: 11px; background: #10201f; color: #ffffff; font-size: 12.5px; font-weight: 600; line-height: 1.45; box-shadow: 0 12px 34px rgba(16, 32, 31, 0.32); z-index: 40">{{ toast }}</div>
+    </sc-if>
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:430,&quot;height&quot;:880}}">
+class Component extends DCLogic {
+  state = {
+    screen: 'list', mainTab: 'menu', equipDone: {}, active: null, online: true, queue: [],
+    answers: {}, comments: {}, photos: {}, done: {}, toast: '', walkStatus: {}, openDocs: null,
+    archive: null, openArchive: null, compareWith: {}, openCard: {}, view: 'active', branch: '', search: '', archYear: 'все годы', searchOpen: false, yearsOpen: false,
+    checklists: null, lastResult: null, confirm: null, plan: null, lightbox: null
+  };
+
+  componentDidMount() {
+    this.read();
+    this.restoreDrafts();
+    this.hydrate();
+    try { this.setState({ online: navigator.onLine !== false }); } catch (err) { /* нет доступа */ }
+    this._on = () => this.setState({ online: true });
+    this._off = () => this.setState({ online: false });
+    window.addEventListener('online', this._on);
+    window.addEventListener('offline', this._off);
+  }
+
+  componentWillUnmount() {
+    window.removeEventListener('storage', this._sync);
+    window.removeEventListener('online', this._on);
+    window.removeEventListener('offline', this._off);
+    if (this._unsub) this._unsub();
+    clearInterval(this._resPoll);
+    clearTimeout(this._t);
+    clearTimeout(this._pubT);
+  }
+
+  // подписка на изменения вместо опроса хранилища по таймеру
+  async hydrate() {
+    try {
+      const mod = await import('./platform.js');
+      this._notify = mod.notify;
+      this.platform = mod.createClient({ tenant: this.tenant(), role: 'auditor' });
+      // на собственные записи не реагируем: иначе своя же публикация гонит перечитывание
+      this._unsub = this.platform.subscribe(['k785_*'], (evt) => {
+        const k = evt && evt.key;
+        if (k && this.isOwn(k)) return;
+        if (!k || k === 'k785_admin_state') this._admDirty = true;
+        this.read();
+      });
+      this.read();
+      this.setState({ ready: true });
+    } catch (err) {
+      this._sync = (e) => { if (!e || (e.key && String(e.key).indexOf('k785') === 0)) this.read(); };
+      window.addEventListener('storage', this._sync);
+      this.read();
+      this.setState({ ready: true, offlineLayer: true });
+    }
+  }
+
+  read() {
+    try {
+      const raw = window.localStorage.getItem('k785_checklists');
+      if (raw && raw !== this._rawCl) {
+        this._rawCl = raw;
+        const cl = JSON.parse(raw);
+        if (Array.isArray(cl)) this.setState({ checklists: cl });
+      }
+    } catch (err) { /* хранилище недоступно */ }
+    // план проверок, назначенный в кабинете клиники
+    try {
+      const rp = window.localStorage.getItem(this.tkey('k785_audit_plan_'));
+      if (rp !== this._rawPlan) {
+        this._rawPlan = rp;
+        const arr = rp ? JSON.parse(rp) : [];
+        if (Array.isArray(arr)) this.setState({ plan: arr });
+      }
+    } catch (err) { /* хранилище недоступно */ }
+  }
+
+  // незакрытый обход восстанавливаем из опубликованных результатов: ответы, комментарии
+  // и снимки жили только в памяти экрана, и перезагрузка телефона теряла пройденные пункты
+  restoreDrafts() {
+    try {
+      const res = JSON.parse(window.localStorage.getItem(this.tkey('k785_walk_results_')) || '{}') || {};
+      const answers = {}, comments = {}, photos = {};
+      Object.keys(res).forEach(pid => {
+        const r = res[pid] || {};
+        const wid = r.walkId || pid;
+        (r.items || []).forEach((it, i) => {
+          if (it && it.answer) {
+            answers[wid] = answers[wid] || {};
+            answers[wid][i] = it.answer;
+          }
+          if (it && it.comment) {
+            comments[wid] = comments[wid] || {};
+            comments[wid][i] = it.comment;
+          }
+          if (it && (it.photo || it.photoSrc)) {
+            photos[wid] = photos[wid] || {};
+            photos[wid][i] = { name: it.photo || 'фотофиксация', src: it.photoSrc || '' };
+          }
+        });
+      });
+      if (Object.keys(answers).length || Object.keys(photos).length) {
+        this.setState(s => ({
+          answers: Object.assign({}, answers, s.answers),
+          comments: Object.assign({}, comments, s.comments),
+          photos: Object.assign({}, photos, s.photos)
+        }));
+      }
+    } catch (err) { /* прежних результатов нет */ }
+  }
+
+  // результаты обхода уходят в кабинет клиники и в панель оператора
+  publishResults(walks) {
+    try {
+      const out = {};
+      (walks || []).forEach(w => {
+        if (!w.planId || w.noCheck) return;
+        const ans = this.state.answers[w.id] || {};
+        if (!Object.keys(ans).length && !w.finished) return;
+        out[w.planId] = {
+          status: w.finished ? (w.bad ? 'нарушения выявлены' : 'закрыта') : 'проводится',
+          // признак завершения отдельным полем: получатели не разбирают формулировку статуса
+          finished: !!w.finished,
+          answered: w.answered, total: w.total, bad: w.bad,
+          // дата результата обязательна: недатированный обход не попадает ни в один период
+          // и на проверке не доказывает ничего — если план даты не дал, ставим фактическую
+          date: /\d{2}\.\d{2}\.\d{4}/.test(String(w.planDate || '')) ? w.planDate : this.today(),
+          walkId: w.id,
+          // название проверки и способ проведения: кабинет и панель оператора подписывают
+          // ими строку результата и нарушения, без них там оставался технический id плана
+          name: w.name || '', source: 'мобильный обход',
+          object: w.object || '', who: w.owner || '', kind: w.kind || '',
+          // ответы лежат под числовым индексом пункта — так их пишет setAns
+          findings: w.items.filter((x, i) => ans[i] === 'bad').slice(0, 8),
+          // пункты с ответами: по ним кабинет показывает результат обхода в веб-версии
+          items: (w.items || []).map((text, i) => {
+            const ph = ((this.state.photos || {})[w.id] || {})[i];
+            const nm = ph ? (typeof ph === 'string' ? ph : ph.name || '') : '';
+            // сам снимок передаём только по пунктам с нарушением: доказательство нужно
+            // там, а хранилище не резиновое — «в норме» остаётся с подписью
+            const src = (ph && typeof ph === 'object' && ans[i] === 'bad') ? (ph.src || '') : '';
+            return {
+              text,
+              answer: ans[i] || '',
+              comment: ((this.state.comments[w.id] || {})[i]) || '',
+              photo: nm, photoSrc: src
+            };
+          })
+        };
+      });
+      // снимки живут в состоянии экрана и не переживают перезагрузку телефона:
+      // при повторной публикации переносим уже опубликованные фото, иначе первая же
+      // правка ответа стирала доказательство из акта у клиники и у оператора
+      try {
+        const prev = JSON.parse(window.localStorage.getItem(this.tkey('k785_walk_results_')) || '{}') || {};
+        Object.keys(out).forEach(pid => {
+          const old = prev[pid];
+          if (!old || !Array.isArray(old.items)) return;
+          (out[pid].items || []).forEach((it, i) => {
+            const was = old.items[i] || {};
+            if (!it.photo && was.photo) it.photo = was.photo;
+            if (!it.photoSrc && was.photoSrc && it.answer === 'bad') it.photoSrc = was.photoSrc;
+          });
+        });
+      } catch (err) { /* прежних результатов нет */ }
+      let json = JSON.stringify(out);
+      // хранилище ограничено ~5 МБ на весь проект: если снимки не влезают, отдаём
+      // результат без них, но с подписями — обход не должен падать на записи
+      if (json.length > 3000000) {
+        Object.keys(out).forEach(k => (out[k].items || []).forEach(it => { it.photoSrc = ''; }));
+        json = JSON.stringify(out);
+        this.say('Снимки не поместились в хранилище — переданы подписи без файлов.');
+      }
+      if (json !== this._pubRes) {
+        this._pubRes = json;
+        this.put(this.tkey('k785_walk_results_'), json);
+      }
+    } catch (err) { /* хранилище недоступно */ }
+  }
+
+  // сжатие снимка перед сохранением: телефонное фото 3–6 МБ не влезает в хранилище
+  // и не нужно для доказательства — 1200 px по длинной стороне достаточно для акта
+  shrinkImage(file, done) {
+    try {
+      const rd = new FileReader();
+      rd.onload = () => {
+        const img = new Image();
+        img.onload = () => {
+          const max = 1200;
+          const k = Math.min(1, max / Math.max(img.width || max, img.height || max));
+          const c = document.createElement('canvas');
+          c.width = Math.max(1, Math.round((img.width || max) * k));
+          c.height = Math.max(1, Math.round((img.height || max) * k));
+          try {
+            c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+            const src = c.toDataURL('image/jpeg', 0.72);
+            done(src, Math.round(src.length * 0.75 / 1024));
+          } catch (err) { done('', 0); }
+        };
+        img.onerror = () => done('', 0);
+        img.src = String(rd.result || '');
+      };
+      rd.onerror = () => done('', 0);
+      rd.readAsDataURL(file);
+    } catch (err) { done('', 0); }
+  }
+
+  // публикация только по действию аудитора. Ранее стояла в componentDidUpdate и давала цикл
+  // «запись → оповещение → чтение → рендер → запись» с периодом 400 мс
+  publishNow() {
+    clearTimeout(this._pubT);
+    this._pubT = setTimeout(() => {
+      this._pubT = null;
+      if (this._walksForPub) this.publishResults(this._walksForPub);
+    }, 250);
+  }
+
+  // нужна ли форма сегодня: считаем от периодичности из эталона и даты последнего
+  // заполнения. Без даты или с неразобранной датой форму показываем к заполнению —
+  // ложное «заполнено» опаснее лишнего напоминания
+  formDue(freq, lastDate) {
+    const days = {
+      'каждое включение': 1, 'каждый цикл': 1, '2 раза в день': 1, 'ежедневно': 1,
+      '1 раз в неделю': 7, '1 раз в месяц': 30, '1 раз в квартал': 92,
+      '1 раз в полгода': 183, '1 раз в год': 365
+    }[String(freq || '').trim()] || 30;
+    const raw = String(lastDate || '').match(/(\d{2})\.(\d{2})\.(\d{4})/);
+    if (!raw) return true;
+    const d = new Date(Number(raw[3]), Number(raw[2]) - 1, Number(raw[1]));
+    if (isNaN(d.getTime())) return true;
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    return Math.round((now - d) / 86400000) >= days;
+  }
+
+  // дата в том же формате, что пишут кабинет и панель оператора: «DD.MM.YYYY»
+  today() {
+    const d = new Date();
+    const p = (n) => (n < 10 ? '0' : '') + n;
+    return p(d.getDate()) + '.' + p(d.getMonth() + 1) + '.' + d.getFullYear();
+  }
+
+  // реестр оборудования клиники и эталонные типы: разбираем строку только при изменении
+  equipData() {
+    // сравниваем СЫРЫЕ строки до любого разбора: k785_admin_state — самый большой объект
+    // в хранилище, его разбор на каждый рендер блокировал основной поток
+    let raw = '', tRaw = '', fRaw = '';
+    try {
+      raw = window.localStorage.getItem(this.tkey('k785_equip_pos_')) || '';
+      fRaw = window.localStorage.getItem(this.tkey('k785_equip_fill_')) || '';
+      tRaw = window.localStorage.getItem('k785_equip_types') || '';
+    } catch (err) { raw = ''; tRaw = ''; fRaw = ''; }
+    const sig = raw + '|' + tRaw + '|' + fRaw;
+    if (this._eqRaw !== sig) {
+      this._eqRaw = sig;
+      try { this._eqPos = raw ? (JSON.parse(raw) || []) : []; } catch (err) { this._eqPos = []; }
+      try { this._eqFill = fRaw ? (JSON.parse(fRaw) || {}) : {}; } catch (err) { this._eqFill = {}; }
+      try {
+        if (tRaw) this._eqTypes = JSON.parse(tRaw) || [];
+        else this._eqTypes = (this.adminState().equipTypes || []).filter(t => t.on !== false);
+      } catch (err) { this._eqTypes = []; }
+    }
+    return { pos: this._eqPos || [], types: this._eqTypes || [], fill: this._eqFill || {} };
+  }
+
+  // бланк открывается для работы, а не отмечается «заполнено» одним нажатием:
+  // состав пунктов берём из одноимённого чек-листа каталога, ответы вводит аудитор
+  openEquipForm(f, prev) {
+    this.setState({
+      equipForm: f,
+      equipDraft: prev
+        ? { answers: Object.assign({}, prev.answers), value: prev.value || '', note: prev.note || '', who: prev.who || f.who }
+        : { answers: {}, value: '', note: '', who: f.who }
+    });
+  }
+
+  setEquipAnswer(i, v) {
+    this.setState(s => {
+      const d = Object.assign({}, s.equipDraft);
+      d.answers = Object.assign({}, d.answers, { [i]: v });
+      return { equipDraft: d };
+    });
+  }
+
+  equipFormItems(f) {
+    const cl = (this.state.checklists || []).filter(c => c.name === f.name)[0];
+    const items = (cl && cl.items && cl.items.length) ? cl.items : [
+      'Форма заполнена в срок', 'Показатели в пределах нормы', 'Отклонения зафиксированы и переданы'
+    ];
+    return items.map(it => (typeof it === 'string' ? it : (it[0] || '')));
+  }
+
+  // заполнение формы по оборудованию: результат уходит в кабинет клиники
+  fillEquipForm(f) {
+    // журналы по оборудованию ведут исполнитель, ответственный за ВКК и админ клиники
+    if (this.platform && !this.platform.can('journal:write')) {
+      this.platform.deny('journal:write', 'Заполнение журнала по оборудованию');
+      this.say('Недостаточно прав: вести журналы могут «Администратор клиники», «Ответственный за ВКК» и «Медсестра / исполнитель». Вы вошли как «'
+        + this.platform.roleName() + '».');
+      return;
+    }
+    const done = Object.assign({}, this.state.equipDone);
+    done[f.id] = this.today();
+    this.setState({ equipDone: done });
+    // заполнения пишем в СВОЙ ключ: реестром позиций владеет кабинет, и его публикация
+    // затирала бы нашу запись. Кабинет и оператор накладывают заполнения при чтении
+    const d = this.state.equipDraft || {};
+    try {
+      const key = this.tkey('k785_equip_fill_');
+      const cur = JSON.parse(window.localStorage.getItem(key) || '{}') || {};
+      cur[f.posUid + '|' + f.name] = {
+        date: this.today(), who: d.who || f.who, kind: f.kind,
+        answers: d.answers || {}, value: d.value || '', note: d.note || '', source: 'обход'
+      };
+      this.put(key, JSON.stringify(cur));
+    } catch (err) { /* хранилище недоступно */ }
+    this.setState({ equipForm: null, equipDraft: null });
+    this.say('«' + f.name + '» заполнен · ' + this.today() + ' · ' + (d.who || f.who));
+  }
+
+  // помечаем свои записи, чтобы подписка не реагировала на наше же событие
+  markOwn(key) {
+    this._own = this._own || {};
+    this._own[key] = Date.now();
+  }
+
+  isOwn(key) {
+    const t = (this._own || {})[key];
+    return !!t && (Date.now() - t) < 2500;
+  }
+
+  // единая точка записи: права, версии, идемпотентность, изоляция арендатора
+  put(key, json) {
+    this.markOwn(key);
+    const isStandard = /^k785_(stage_docs|checklists|blocks_catalog|doc_catalogs|block_tpls|block_pins|required|positions|licworks|doc_revs|cycle_master|sheets)$/.test(key);
+    if (isStandard && this.platform && !this.platform.can('standard:publish')) {
+      this.platform.deny('standard:publish', key);
+      this.say('Недостаточно прав: публикация эталона доступна роли «Методист платформы». Вы вошли как «' + this.platform.roleName() + '».');
+      return false;
+    }
+    let parsed = null;
+    let ok = true;
+    try { parsed = JSON.parse(json); } catch (err) { ok = false; }
+    if (this.platform && ok) {
+      this.platform.set(key, parsed, { perm: isStandard ? 'standard:publish' : null, opId: key + ':' + Date.now() })
+        .then(r => {
+          if (r && !r.ok) {
+            this.say(r.conflict
+              ? 'Данные изменены другим пользователем — обновите экран.'
+              : 'Не сохранено: ' + r.error);
+          }
+        });
+      return true;
+    }
+    // фоллбэк, когда слой недоступен или значение не JSON
+    try {
+      window.localStorage.setItem(key, json);
+      if (this._notify) this._notify(key);
+    } catch (err) { return false; }
+    return true;
+  }
+
+  // арендатор задаётся адресом (?clinic=…) или выбранным ранее; имя больше не вшито в ключи
+  // сквозной идентификатор арендатора — ИНН: название клиники изменяемое и ключом быть не может
+  innOf(v) {
+    const s = String(v || '').trim();
+    if (/^\d{10,12}$/.test(s)) return s;
+    try {
+      const reg = JSON.parse(window.localStorage.getItem('k785_clinics') || '{}') || {};
+      const hit = Object.keys(reg).filter(inn => (reg[inn] || {}).name === s)[0];
+      if (hit) return hit;
+    } catch (err) { /* реестр недоступен */ }
+    return '';
+  }
+
+  clinicName() {
+    try {
+      const reg = JSON.parse(window.localStorage.getItem('k785_clinics') || '{}') || {};
+      return ((reg[this.tenant()] || {}).name) || ('ИНН ' + this.tenant());
+    } catch (err) { return 'ИНН ' + this.tenant(); }
+  }
+
+  tenant() {
+    if (this._tenant) return this._tenant;
+    let t = '';
+    try {
+      t = new URLSearchParams(window.location.search).get('clinic')
+        || window.localStorage.getItem('k785_active_tenant') || '';
+    } catch (err) { t = ''; }
+    this._tenant = this.innOf(t) || '7712345678';
+    return this._tenant;
+  }
+
+  tkey(base) { return base + this.tenant(); }
+
+  // состояние оператора — самый большой объект в хранилище: читаем и разбираем один раз,
+  // а не на каждом рендере. Обновляем по подписке, когда оператор действительно записал
+  adminState() {
+    if (this._admDirty !== false) {
+      this._admDirty = false;
+      try {
+        this._admVal = JSON.parse(window.localStorage.getItem('k785_admin_state') || '{}') || {};
+      } catch (err) { this._admVal = {}; }
+    }
+    return this._admVal || {};
+  }
+
+  say(msg) {
+    this.setState({ toast: msg });
+    clearTimeout(this._t);
+    this._t = setTimeout(() => this.setState({ toast: '' }), 3200);
+  }
+
+  ask(msg, fn, okMsg) { this.setState({ confirm: { msg, fn, okMsg: okMsg || '' } }); }
+  saved(msg) { this.say(msg ? 'Сохранено · ' + msg : 'Сохранено'); }
+
+  renderVals() {
+    const st = this.state;
+    const clinicKey = this.tenant();
+    if (!this._resPoll) {
+      this._resPoll = setInterval(() => {
+        try {
+          const raw = window.localStorage.getItem('k785_result_docs_' + clinicKey) || '';
+          if (raw !== this._resRaw) { this._resRaw = raw; this.forceUpdate(); }
+        } catch (err) { /* хранилище недоступно */ }
+      }, 2000);
+    }
+    let resultDocNames = st.resultDocs;
+    if (!resultDocNames) {
+      try {
+        const raw = window.localStorage.getItem('k785_result_docs_' + clinicKey);
+        if (raw) resultDocNames = JSON.parse(raw);
+        // состав от клиники: годовой цикл (эталон + её правки) старше разбора этапов
+        if (!resultDocNames || !resultDocNames.length) {
+          try {
+            const live = JSON.parse(window.localStorage.getItem('k785_cycle_live_' + clinicKey) || '{}') || {};
+            // состав может прийти парами [название, вид] — приводим к именам
+            const flat = (live.resultDocs || []).map(d => (Array.isArray(d) ? d[0] : d)).filter(Boolean);
+            if (flat.length) resultDocNames = flat;
+          } catch (err3) { /* состав возьмём из этапов */ }
+        }
+        if (!resultDocNames || !resultDocNames.length) {
+          // тяжёлый разбор состава этапов кэшируем: парсим только при изменении данных оператора
+          const rawSd = window.localStorage.getItem('k785_stage_docs') || '';
+          if (rawSd !== this._rawSd) {
+            this._rawSd = rawSd;
+            let list = [];
+            try {
+              const sd = JSON.parse(rawSd || '[]');
+              const step = (sd || []).filter(p => String(p.code).indexOf('4.') === 0)[0];
+              if (step && step.docs) list = step.docs.map(d => d[0]);
+            } catch (err2) { list = []; }
+            this._sdDocs = list;
+          }
+          resultDocNames = this._sdDocs || [];
+        }
+      } catch (err) { resultDocNames = null; }
+    }
+    // защита от дублей и от неограниченно длинного состава, приходящего от оператора
+    resultDocNames = (resultDocNames || [])
+      .map(d => (Array.isArray(d) ? d[0] : d))
+      .filter((n, i, a) => n && a.indexOf(n) === i).slice(0, 12);
+    if (!resultDocNames || !resultDocNames.length) {
+      resultDocNames = ['Акт проверки', 'Запись в журнале ВКК', 'План CAPA', 'Протокол ВК'];
+    }
+    // сроки CAPA задаёт клиника в годовом цикле — обход не должен их выдумывать
+    let capaTerms = [];
+    try {
+      capaTerms = (JSON.parse(window.localStorage.getItem('k785_cycle_live_' + clinicKey) || '{}') || {}).capaTerms || [];
+      // эталон цикла мог быть ещё не опубликован — берём сроки из состояния оператора
+      if (!capaTerms.length) capaTerms = ((this.adminState().cycle || {}).capaTerms) || [];
+    } catch (errC) { capaTerms = []; }
+    // берём самый жёсткий срок и называем его степень: иначе «срок» читается как срок любого нарушения
+    const capaDue = capaTerms.length
+      ? String(capaTerms[0].days || '') + ' (' + String(capaTerms[0].level || '').split('—')[0].trim() + ')'
+      : '';
+    let docAsg = {};
+    let peopleList = [];
+    try {
+      docAsg = JSON.parse(window.localStorage.getItem('k785_docasg_' + clinicKey) || '{}') || {};
+      peopleList = (JSON.parse(window.localStorage.getItem('k785_staff_' + clinicKey) || '[]') || []).map(p => p.fio);
+    } catch (err) { docAsg = {}; peopleList = []; }
+    // каталог сотрудников клиники: ФИО → должность. Заполняет клиника в кабинете,
+    // оператор видит и правит тот же ключ; часть клиник ведёт состав по филиалам
+    const staffPos = {};
+    try {
+      const raw = JSON.parse(window.localStorage.getItem('k785_staff_' + clinicKey) || '[]') || [];
+      raw.forEach(p => { if (p && p.fio) staffPos[String(p.fio).trim()] = String(p.pos || '').trim(); });
+      if (!Object.keys(staffPos).length) {
+        const cs = JSON.parse(window.localStorage.getItem('k785_client_state_' + clinicKey) || '{}') || {};
+        Object.keys(cs.staffByBranch || {}).forEach(bi => (cs.staffByBranch[bi] || [])
+          .forEach(s => { if (s && s.fio) staffPos[String(s.fio).trim()] = String(s.pos || '').trim(); }));
+      }
+    } catch (err) { /* каталог недоступен */ }
+    if (!peopleList.length) peopleList = Object.keys(staffPos);
+    if (!peopleList.length) peopleList = ['Иванова М. А.', 'Сидорова В. В.', 'Петрова В. В.', 'Козлов Д. Н.'];
+    // назначенный ответственный: имя приходит из назначений клиники или оператора,
+    // должность подтягивается из каталога сотрудников той же клиники
+    this._ownerOf = (val, name) => {
+      const asg = name && docAsg[name] ? String(docAsg[name]) : '';
+      const src = String(asg || val || '').trim();
+      if (!src) return 'не назначен';
+      return src.split('+').map(s => {
+        const fio = s.trim().split('·')[0].trim();
+        if (!fio) return '';
+        const pos = staffPos[fio];
+        return pos ? fio + ' · ' + pos : fio;
+      }).filter(Boolean).join(' + ') || 'не назначен';
+    };
+    const writeDocAsg = (nm, val) => {
+      // ключ ведут три экрана: перечитываем его перед записью, иначе назначение,
+      // сделанное в кабинете или у оператора между рендерами, затиралось молча
+      let live = docAsg;
+      try { live = JSON.parse(window.localStorage.getItem('k785_docasg_' + clinicKey) || '{}') || docAsg; } catch (err) { live = docAsg; }
+      const next = Object.assign({}, live);
+      if (val) next[nm] = val; else delete next[nm];
+      try { this.put('k785_docasg_' + clinicKey, JSON.stringify(next)); } catch (err) { /* хранилище недоступно */ }
+      this.forceUpdate();
+    };
+    const base = st.checklists && st.checklists.length ? st.checklists : [
+      { name: 'Чек-лист аудита процедурного кабинета', items: [
+        'Термолабильные препараты хранятся при +2…+8 °C, есть термометр и термокарта?',
+        'Журнал термометрии холодильников заполняется 2 раза в сутки?',
+        'Препараты ПКУ хранятся в сейфе, ведётся предметно-количественный учёт?',
+        'Укладка при анафилаксии укомплектована, сроки годности в норме?',
+        'На рабочем месте есть действующий СОП и инструкция по хранению ЛП?',
+        'Препараты с истекшим сроком годности изолированы и промаркированы?'
+      ] },
+      { name: 'Чек-лист аудита стерилизационной', items: [
+        'Режимы стерилизации соблюдаются, журнал контроля заполнен?',
+        'Химические индикаторы вклеены в журнал за текущую неделю?',
+        'Упаковка простерилизованных изделий не нарушена, срок годности читается?',
+        'Разделение зон «грязная / чистая» соблюдается?'
+      ] },
+      { name: 'Чек-лист обращения с медицинскими отходами', items: [
+        'Ёмкости класса Б промаркированы и заполнены не более чем на 3/4?',
+        'Одноразовые пакеты соответствуют классу отходов по цвету?',
+        'Журнал учёта вывоза отходов заполнен за текущий месяц?',
+        'Персонал использует СИЗ при обращении с отходами?',
+        'Место временного хранения закрыто и промаркировано?'
+      ] }
+    ];
+
+    let branchList = ['Объект № 1 · Головная клиника'];
+    try {
+      const rb = window.localStorage.getItem(this.tkey('k785_branches_'));
+      if (rb) {
+        const arr = JSON.parse(rb) || [];
+        if (arr.length) branchList = arr.map((b, i) => 'Объект № ' + (i + 1) + ' · ' + String(b.name).split(' · ')[0]);
+      }
+    } catch (err) { /* хранилище недоступно */ }
+    const curBranch = branchList.indexOf(st.branch) >= 0 ? st.branch : branchList[0];
+    const owners = ['Сидорова В. В.', 'Петрова В. В.', 'Сидорова А. А.'];
+    const plannedDates = ['12.08.2026', '19.08.2026', '27.08.2026', '03.09.2026'];
+    const objects = ['Процедурный кабинет № 2', 'Стерилизационная', 'Все кабинеты'];
+    // проверки строятся из плана кабинета; если плана нет — из каталога чек-листов
+    const byName = {};
+    base.forEach(c => { byName[c.name] = (c.items || []).filter(Boolean); });
+    const mainTab = st.mainTab || 'audit';
+    // формы по оборудованию: позиция клиники × регулярные формы её типа
+    const eqData = this.equipData();
+    // сводный отчёт: эталонный состав методиста + файлы, загруженные клиникой
+    const sumRows = (function (self) {
+      // разбираем строки хранилища только при изменении: разбор на каждом рендере
+      // блокировал основной поток
+      let mRaw = '', fRaw = '';
+      try {
+        mRaw = window.localStorage.getItem('k785_summary_master') || '';
+        fRaw = window.localStorage.getItem(self.tkey('k785_summary_')) || '';
+      } catch (err) { mRaw = ''; fRaw = ''; }
+      if (self._sumRaw !== mRaw + '|' + fRaw) {
+        self._sumRaw = mRaw + '|' + fRaw;
+        try { self._sumMaster = mRaw ? (JSON.parse(mRaw) || []) : []; } catch (err) { self._sumMaster = []; }
+        try { self._sumFiles = fRaw ? (JSON.parse(fRaw) || []) : []; } catch (err) { self._sumFiles = []; }
+      }
+      let master = self._sumMaster || [];
+      const files = self._sumFiles || [];
+      if (!master.length) master = (self.adminState().summaryMaster || []);
+      // третий запасной источник — тот же сид, что в кабинете и у оператора.
+      // ссылку держим стабильной, иначе новый литерал гонит повторную отрисовку
+      if (!master.length) {
+        if (!self._sumSeedFallback) {
+          self._sumSeedFallback = [
+            { name: 'Сводный отчёт по системе качества за год', note: 'итоги проверок, нарушений и корректирующих действий', req: true },
+            { name: 'Аналитическая справка по результатам аудитов', note: 'динамика по направлениям 785н и филиалам', req: true },
+            { name: 'Отчёт для врачебной комиссии и руководителя', note: 'выводы и решения по итогам года', req: false }
+          ];
+        }
+        master = self._sumSeedFallback;
+      }
+      return master.map((m, i) => {
+        const f = files[i] || {};
+        const has = !!f.file;
+        return {
+          num: 'СО-' + String(i + 1).padStart(2, '0'),
+          name: f.name || m.name || 'документ отчёта',
+          note: m.note || '',
+          hasNote: !!m.note,
+          req: m.req,
+          reqLabel: m.req === false ? 'по желанию' : 'обязательный',
+          reqColor: m.req === false ? '#61736f' : '#a8342a',
+          reqBg: m.req === false ? '#eef1f1' : '#f8e9e7',
+          file: f.file || '',
+          hasFile: has,
+          state: has ? 'загружен ' + (f.date || '') : 'не загружен',
+          stateColor: has ? '#0d5c55' : '#8a5b0f',
+          stateBg: has ? '#e8f2f0' : '#fdf8ef',
+          open: () => self.say(has
+            ? '«' + f.file + '» · ' + (f.name || m.name) + ' · загружен ' + (f.date || '')
+            : 'Документ ещё не загружен — это делает клиника в кабинете.')
+        };
+      });
+    })(this);
+    const equipPos = eqData.pos;
+    // отделение позиции задаёт методист в панели оператора: без него аудитор не понимал,
+    // к какому отделению относится позиция, — читаем ключ методиста, не перезаписывая его
+    let equipDepts = {};
+    try { equipDepts = JSON.parse(window.localStorage.getItem(this.tkey('k785_equip_dept_')) || '{}') || {}; } catch (err) { equipDepts = {}; }
+    const equipBranch = st.equipBranch || 'все филиалы';
+    const equipPosView = equipPos.filter(p => equipBranch === 'все филиалы' || (p.branch || '') === equipBranch);
+    const equipForms = [];
+    equipPosView.forEach(p => {
+      const t = eqData.types.filter(x => (x.key || x.num) === p.type)[0];
+      ((t || {}).logs || []).forEach((l, li) => {
+        const id = p.uid + ':' + li;
+        const fill = (eqData.fill || {})[p.uid + '|' + l[0]];
+        const filledNow = (st.equipDone || {})[id] || (fill && fill.date);
+        const last = filledNow ? 'заполнен ' + filledNow : (((p.logLast || {})[l[0]]) || 'не заполнялся');
+        equipForms.push({
+          id, posUid: p.uid, posName: p.name,
+          name: l[0], freq: l[1],
+          kind: l[2] === 'чек-лист' ? 'чек-лист' : 'журнал',
+          who: this._ownerOf((p.logWho || {})[l[0]] || p.who, l[0]),
+          last,
+          // своё же заполнение аудитор раньше не мог перечитать: показываем сохранённое
+          fillNote: fill
+            ? [
+              Object.keys(fill.answers || {}).length ? 'ответов: ' + Object.keys(fill.answers).length : '',
+              fill.value ? 'показание: ' + fill.value : '',
+              fill.note ? 'примечание: ' + fill.note : '',
+              fill.source ? 'источник: ' + fill.source : ''
+            ].filter(Boolean).join(' · ')
+            : '',
+          // раньше форма, заполненная однажды, считалась закрытой навсегда: периодичность
+          // не учитывалась, и ежедневный журнал больше никогда не попадал в список к заполнению
+          dueNow: this.formDue(l[1], filledNow || ((p.logLast || {})[l[0]]))
+        });
+      });
+    });
+    const planRows = (st.plan || []).filter(p => p && p.dir);
+    // проверки из каталога, которых нет в плане — обход не должен становиться тупиком
+    const source = planRows.length
+      // подставлять чужой чек-лист нельзя: если привязки нет, проверка блокируется до назначения
+      ? planRows.map(p => {
+        // перечень чек-листов унифицирован оператором: выбранный чек-лист определяется
+        // строго по наименованию в каталоге. Подбор «по весу слов» убран — он мог дать
+        // не тот чек-лист, что выбрала клиника или назначил оператор
+        const nrm = (s) => String(s || '').toLowerCase().replace(/[«»"']/g, '')
+          .replace(/^\d+\s*·\s*/, '').replace(/\s+/g, ' ').trim();
+        const chosen = String(p.check || '').trim();
+        let bound = null, boundName = '';
+        if (chosen) {
+          if (byName[chosen]) { bound = byName[chosen]; boundName = chosen; }
+          else {
+            // то же наименование с иным регистром, кавычками или номером блока в префиксе
+            const hit = Object.keys(byName).filter(n => nrm(n) === nrm(chosen))[0];
+            if (hit) { bound = byName[hit]; boundName = hit; }
+          }
+        }
+        return {
+          name: boundName || p.check || p.dir,
+          items: bound || [],
+          noCheck: !bound,
+          noCheckNote: chosen
+            ? 'чек-лист «' + chosen + '» нет в каталоге оператора — опубликуйте его или выберите из перечня'
+            : 'чек-лист не выбран — выберите его из перечня оператора в годовом цикле',
+          // строки годового цикла приходят без даты (там только месяц) — подставляем срок,
+          // иначе результат уходил в кабинет и к оператору с пустой датой и выпадал из всех периодов
+          planId: p.id, planDate: p.date || p.due || '', object: p.object,
+          // вид проверки в тех же цветах, что в кабинете клиники и панели оператора
+          kind: p.kind || 'плановая',
+          kindColor: ({ 'плановая': '#0d5c55', 'внеплановая': '#8a5b0f', 'целевая': '#1d4f7c' })[p.kind || 'плановая'] || '#3d5a56',
+          kindBg: ({ 'плановая': '#e8f2f0', 'внеплановая': '#fdf3e2', 'целевая': '#e8eff7' })[p.kind || 'плановая'] || '#eef1f1',
+          // ответственный: назначение клиники/оператора по этой проверке плюс должность
+          // из каталога сотрудников клиники; раньше должность терялась в телефоне
+          owner: this._ownerOf(p.who, boundName || p.check || p.dir),
+          // филиал приходит из плана: система качества строится по каждому отдельно
+          branch: p.branch || '',
+          // срок, основание и состав документов результата приходят из плана кабинета
+          due: p.due || '', reason: p.reason || '',
+          planDocs: (p.docs || []).map(d => (Array.isArray(d) ? d[0] : d)).filter(Boolean),
+          dir: p.dir, fromPlan: true
+        };
+      })
+      : base.map((c, i) => ({
+        name: c.name, items: (c.items || []).filter(Boolean), planId: '', noCheck: false, noCheckNote: '',
+        planDate: plannedDates[i % plannedDates.length],
+        object: objects[i % objects.length],
+        kind: 'плановая', kindColor: '#0d5c55', kindBg: '#e8f2f0',
+        owner: owners[i % owners.length], dir: c.name, fromPlan: false
+      }));
+    // если план целиком заблокирован, добавляем проверки из каталога, чтобы обход был возможен
+    if (planRows.length && !source.some(s => !s.noCheck)) {
+      base.forEach((c, i) => {
+        const list = (c.items || []).filter(Boolean);
+        if (!list.length) return;
+        source.push({
+          name: c.name, items: list, planId: '', noCheck: false, noCheckNote: '',
+          planDate: plannedDates[i % plannedDates.length],
+          object: objects[i % objects.length] + ' · из каталога, вне плана',
+          owner: owners[i % owners.length], dir: c.name, fromPlan: false
+        });
+      });
+    }
+    const walks = source.map((c, i) => {
+      const id = 'w' + i;
+      const list = (c.items || []).filter(Boolean);
+      const ans = st.answers[id] || {};
+      const answered = Object.keys(ans).length;
+      const total = list.length || 1;
+      const finished = !!st.done[id];
+      const bad = Object.keys(ans).filter(k => ans[k] === 'bad').length;
+      const pct = Math.round(answered / total * 100);
+      return {
+        id, name: c.name, items: list, object: c.object, branch: c.branch || '',
+        kind: c.kind || 'плановая', kindColor: c.kindColor || '#0d5c55', kindBg: c.kindBg || '#e8f2f0',
+        planId: c.planId, dir: c.dir, fromPlan: c.fromPlan,
+        due: c.due || '', reason: c.reason || '', planDocs: c.planDocs || [],
+        noCheck: !!c.noCheck, noCheckNote: c.noCheckNote, canStart: !c.noCheck,
+        answered, total, bad, finished, pct,
+        status: finished ? (bad ? 'закрыта · ' + bad + ' нар.' : 'закрыта') : (answered ? 'в работе' : 'не начата'),
+        badgeBg: finished ? (bad ? '#f8e9e7' : '#e8f2f0') : (answered ? '#fbf1e0' : '#eef1f1'),
+        badgeColor: finished ? (bad ? '#a8342a' : '#0d5c55') : (answered ? '#8a5b0f' : '#3d5a56'),
+        accent: finished ? (bad ? '#c8564a' : '#157f76') : (answered ? '#d8a13f' : '#cfd8d7'),
+        border: finished ? '#dde3e2' : (answered ? '#ecd7ab' : '#dde3e2'),
+        progress: answered + '/' + total,
+        planDate: c.planDate,
+        sortKey: String(c.planDate).split('.').reverse().join(''),
+        owner: c.owner
+      };
+    }).sort((a, b) => a.sortKey.localeCompare(b.sortKey))
+      .map((w, i) => {
+        // сквозной номер проверки в плане + номер её чек-листа из каталога оператора
+        const no = 'П-' + String(i + 1).padStart(2, '0');
+        const ci = base.map(c => c.name).indexOf(w.name);
+        return Object.assign({}, w, {
+          no, name: no + ' · ' + w.name,
+          checkNo: ci >= 0 ? 'ЧЛ-' + String(ci + 1).padStart(2, '0') : ''
+        });
+      })
+      .filter(w => {
+        const q = (st.search || '').trim().toLowerCase();
+        return !q || w.name.toLowerCase().indexOf(q) >= 0 || String(w.object).toLowerCase().indexOf(q) >= 0 || String(w.owner).toLowerCase().indexOf(q) >= 0;
+      });
+
+    const archiveAll = (st.archive && st.archive.length) ? st.archive : [
+      { id: 'w0', year: '2025', date: '18.09.2025', rev: 3, answered: 6, total: 6, bad: 2, badItems: [1, 4], who: 'Сидорова В. В.' },
+      { id: 'w0', year: '2024', date: '22.08.2024', rev: 2, answered: 6, total: 6, bad: 1, badItems: [0], who: 'Петрова В. В.' },
+      { id: 'w1', year: '2025', date: '11.10.2025', rev: 2, answered: 5, total: 5, bad: 0, badItems: [], who: 'Сидорова В. В.' },
+      { id: 'w2', year: '2025', date: '05.07.2025', rev: 1, answered: 4, total: 4, bad: 3, badItems: [0, 1, 3], who: 'Сидорова А. А.' }
+    ];
+
+    // готовые данные держим для публикации, но публикуем только по действию аудитора
+    this._walksForPub = walks;
+    const cur = walks.filter(w => w.id === st.active && !w.noCheck)[0] || walks.filter(w => !w.noCheck)[0] || walks[0]
+      || { id: '_none', no: '№ —', name: 'Проверок не найдено', object: '—', items: [], answered: 0, total: 0, bad: 0, pct: 0, finished: false };
+    const curAns = (st.answers[cur.id] || {});
+    const curBad = Object.keys(curAns).filter(k => curAns[k] === 'bad').length;
+    const curAnswered = Object.keys(curAns).length;
+    const allAnswered = curAnswered >= cur.items.length && cur.items.length > 0;
+
+    const setAns = (qi, v) => {
+      this.setState(s => {
+        const forWalk = Object.assign({}, s.answers[cur.id] || {}, { [qi]: v });
+        const q = Object.assign({}, s.answers, { [cur.id]: forWalk });
+        const queued = s.online ? s.queue : s.queue.concat([{ walk: cur.id, q: qi, v }]);
+        return { answers: q, queue: queued };
+      }, () => this.publishNow());
+      if (!st.online) this.say('Офлайн: ответ сохранён на телефоне, отправим при появлении сети.');
+    };
+
+    const items = cur.items.map((text, qi) => {
+      const a = curAns[qi];
+      // снимок стал объектом {name, src}; строка — формат до передачи файла
+      const ph = (st.photos[cur.id] || {})[qi];
+      const photoName = ph ? (typeof ph === 'string' ? ph : ph.name) : '';
+      const photoSrc = ph && typeof ph === 'object' ? (ph.src || '') : '';
+      const photo = photoName;
+      return {
+        num: (cur.checkNo ? cur.checkNo + '.' : '') + String(qi + 1).padStart(2, '0'), text,
+        isBad: a === 'bad',
+        border: a === 'bad' ? '#f0d9d5' : (a === 'ok' ? '#cfe3e0' : '#e3e8e8'),
+        okBg: a === 'ok' ? '#157f76' : '#ffffff', okColor: a === 'ok' ? '#ffffff' : '#3d5a56', okBorder: a === 'ok' ? '#157f76' : '#dde3e2',
+        badBg: a === 'bad' ? '#c8564a' : '#ffffff', badColor: a === 'bad' ? '#ffffff' : '#3d5a56', badBorder: a === 'bad' ? '#c8564a' : '#dde3e2',
+        comment: (st.comments[cur.id] || {})[qi] || '',
+        photoLabel: photo ? '📷 ' + String(photo).slice(0, 14) : '📷 Фото',
+        photoSrc, hasPhotoSrc: !!photoSrc,
+        // картинку собираем здесь: динамический src в атрибуте шаблона на плейсхолдерном
+        // проходе уходил в сеть как строка «{{ q.photoSrc }}» и давал 404 при каждой загрузке
+        photoImg: photoSrc ? React.createElement('img', {
+          src: photoSrc, alt: 'фотофиксация',
+          style: { width: 54, height: 54, objectFit: 'cover', borderRadius: 7, flexShrink: 0 }
+        }) : null,
+        photoBg: photo ? '#e8f2f0' : '#eef1f1',
+        photoColor: photo ? '#0d5c55' : '#10201f',
+        ok: () => setAns(qi, 'ok'),
+        bad: () => setAns(qi, 'bad'),
+        setComment: (e) => {
+          const v = e.target.value;
+          this.setState(s => ({ comments: Object.assign({}, s.comments, { [cur.id]: Object.assign({}, s.comments[cur.id] || {}, { [qi]: v }) }) }), () => this.publishNow());
+        },
+        addPhoto: (e) => {
+          const f = e.target.files && e.target.files[0];
+          if (!f) return;
+          // храним сам снимок, а не только имя файла: иначе в кабинете и у оператора
+          // видна подпись к доказательству, которого у них нет
+          this.shrinkImage(f, (src, kb) => {
+            this.setState(s => ({
+              photos: Object.assign({}, s.photos, {
+                [cur.id]: Object.assign({}, s.photos[cur.id] || {}, { [qi]: { name: f.name, src: src } })
+              })
+            }), () => this.publishNow());
+            this.say('Снимок прикреплён к пункту ' + (qi + 1) + (kb ? ' · ' + kb + ' КБ' : ''));
+          });
+        },
+        openPhoto: () => { if (photoSrc) this.setState({ lightbox: { src: photoSrc, name: photoName } }); },
+        voice: () => this.say('Голосовой ввод: расшифровка попадёт в описание нарушения.')
+      };
+    });
+
+    const badTotal = walks.reduce((a, w) => a + w.bad, 0);
+
+    return {
+      userName: 'Сидорова В. В. · гл. медсестра · ' + this.clinicName(),
+      sumTitle: 'Сводный отчёт',
+      // дата в шапке — тот же источник, что штампует заполнения и результаты обходов
+      todayLabel: this.today(),
+      planSrc: planRows.length ? 'план кабинета · ' + planRows.length : 'план не назначен',
+      planSrcColor: planRows.length ? '#0d5c55' : '#8a5b0f',
+      planSrcBg: planRows.length ? '#e8f2f0' : '#fdf8ef',
+      // стартовый экран — меню разделов: новые разделы добавляются в этот список
+      isMenu: mainTab === 'menu',
+      isSummaryTab: mainTab === 'summary',
+      sumRows,
+      sumNote: 'состав задаёт методист · файлы формирует и загружает клиника',
+      // пустой раздел не должен выглядеть сломанным
+      noSumRows: sumRows.length === 0,
+      noSumNote: 'Эталон сводного отчёта методистом пока не опубликован — состав появится здесь после публикации.',
+      // sc-if не умеет отрицание: для ветви «внутри раздела» нужно отдельное значение
+      isSection: mainTab !== 'menu',
+      menuTitle: 'Разделы',
+      menuNote: 'Выберите раздел работы',
+      menuItems: [
+        {
+          k: 'audit', n: 'Аудиты', d: 'обходы по плану проверок, чек-листы и результаты',
+          cnt: walks.length, cntLabel: walks.length ? 'проверок: ' + walks.length : 'нет проверок',
+          hot: walks.filter(w => w.status !== 'done').length
+        },
+        {
+          k: 'equip', n: 'Оборудование', d: 'журналы и чек-листы по позициям оборудования',
+          cnt: equipForms.length, cntLabel: equipForms.length ? 'форм: ' + equipForms.length : 'нет форм',
+          hot: equipForms.filter(f => f.dueNow).length
+        },
+        {
+          k: 'summary', n: 'Сводный отчёт', d: 'итоговые документы клиники: состав от методиста',
+          cnt: sumRows.length,
+          cntLabel: sumRows.length ? 'загружено ' + sumRows.filter(r => r.hasFile).length + ' из ' + sumRows.length : 'состав не задан',
+          hot: sumRows.filter(r => !r.hasFile && r.req !== false).length
+        }
+      ].map((x, i) => ({
+        num: String(i + 1).padStart(2, '0'),
+        name: x.n, note: x.d, cntLabel: x.cntLabel,
+        hot: x.hot, hasHot: x.hot > 0,
+        hotLabel: x.hot ? 'к работе: ' + x.hot : '',
+        go: () => this.setState({ mainTab: x.k, screen: 'list' })
+      })),
+      backToMenu: () => this.setState({ mainTab: 'menu', screen: 'list', equipForm: null, equipDraft: null }),
+      isAuditTab: mainTab === 'audit',
+      isEquipTab: mainTab === 'equip',
+      equipTitle: 'Оборудование',
+      equipNote: equipForms.length
+        ? 'Чек-листы и журналы по позициям. Периодичность и ответственный заданы в кабинете клиники.'
+        : 'Реестр оборудования в кабинете клиники пока пуст — формы появятся после добавления позиций.',
+      equipStats: [
+        { name: 'позиций', val: String(equipPosView.length), color: '#10201f' },
+        { name: 'форм', val: String(equipForms.length), color: '#10201f' },
+        { name: 'к заполнению', val: String(equipForms.filter(f => f.dueNow).length), color: '#c8564a' },
+        { name: 'заполнено', val: String(equipForms.filter(f => !f.dueNow).length), color: '#157f76' }
+      ],
+      // состав оборудования различается по филиалам — выбираем нужный объект
+      equipBranchChips: ['все филиалы'].concat(equipPos.map(p => p.branch || '').filter((b, i, a) => b && a.indexOf(b) === i))
+        .map(b => ({
+          name: b,
+          bg: equipBranch === b ? '#10201f' : '#ffffff',
+          color: equipBranch === b ? '#ffffff' : '#10201f',
+          border: equipBranch === b ? '#10201f' : '#dde3e2',
+          go: () => this.setState({ equipBranch: b })
+        })),
+      equipCards: equipPosView.map((p, pi) => ({
+        num: 'ОБ-' + String(pi + 1).padStart(2, '0'),
+        name: p.name || 'без названия',
+        meta: (p.room || 'кабинет не указан') + ' · зав. № ' + (p.serial || '—')
+          + ' · ' + (equipDepts[p.uid] || 'отделение не задано'),
+        status: p.status || 'в работе',
+        statusColor: (p.status || 'в работе') === 'в работе' ? '#0d5c55' : '#8a5b0f',
+        statusBg: (p.status || 'в работе') === 'в работе' ? '#e8f2f0' : '#fdf3e2',
+        forms: equipForms.filter(f => f.posUid === p.uid).map(f => ({
+          name: f.name, freq: f.freq, kind: f.kind,
+          kindColor: f.kind === 'чек-лист' ? '#8a5b0f' : '#1d4f7c',
+          kindBg: f.kind === 'чек-лист' ? '#fdf3e2' : '#e8eff7',
+          who: f.who,
+          last: f.last,
+          fillNote: f.fillNote, hasFillNote: !!f.fillNote,
+          dueLabel: f.dueNow ? 'нужно заполнить · ' + (f.freq || 'периодичность не задана') : 'заполнено · ' + (f.freq || 'без периодичности'),
+          dueColor: f.dueNow ? '#a8342a' : '#0d5c55',
+          dueBg: f.dueNow ? '#f8e9e7' : '#e8f2f0',
+          fillLabel: f.dueNow ? 'Заполнить' : 'Открыть',
+          fill: () => this.openEquipForm(f, (eqData.fill || {})[f.posUid + '|' + f.name])
+        }))
+      })),
+      equipFormOpen: !!st.equipForm,
+      equipFormTitle: (st.equipForm || {}).name || '',
+      equipFormMeta: (function (f) { return f ? (f.posName || '') + ' · ' + (f.freq || '') : ''; })(st.equipForm),
+      equipFormKind: (st.equipForm || {}).kind || '',
+      equipFormKindColor: (st.equipForm || {}).kind === 'чек-лист' ? '#8a5b0f' : '#1d4f7c',
+      equipFormKindBg: (st.equipForm || {}).kind === 'чек-лист' ? '#fdf3e2' : '#e8eff7',
+      equipFormIsCheck: (st.equipForm || {}).kind === 'чек-лист',
+      equipFormIsJournal: !!st.equipForm && (st.equipForm || {}).kind !== 'чек-лист',
+      equipFormDate: this.today(),
+      equipFormWho: ((st.equipDraft || {}).who) || 'не назначен',
+      equipFormValue: ((st.equipDraft || {}).value) || '',
+      setEquipFormValue: (e) => { const v = e.target.value; this.setState(s => ({ equipDraft: Object.assign({}, s.equipDraft, { value: v }) })); },
+      equipFormNote: ((st.equipDraft || {}).note) || '',
+      setEquipFormNote: (e) => { const v = e.target.value; this.setState(s => ({ equipDraft: Object.assign({}, s.equipDraft, { note: v }) })); },
+      equipFormItems: (function (self, f) {
+        if (!f || f.kind !== 'чек-лист') return [];
+        const ans = (st.equipDraft || {}).answers || {};
+        return self.equipFormItems(f).map((text, i) => ({
+          num: String(i + 1).padStart(2, '0'), text,
+          yesBg: ans[i] === 'да' ? '#157f76' : '#ffffff',
+          yesColor: ans[i] === 'да' ? '#ffffff' : '#3d5a56',
+          noBg: ans[i] === 'нет' ? '#a8342a' : '#ffffff',
+          noColor: ans[i] === 'нет' ? '#ffffff' : '#3d5a56',
+          naBg: ans[i] === 'н/п' ? '#61736f' : '#ffffff',
+          naColor: ans[i] === 'н/п' ? '#ffffff' : '#3d5a56',
+          setYes: () => self.setEquipAnswer(i, 'да'),
+          setNo: () => self.setEquipAnswer(i, 'нет'),
+          setNa: () => self.setEquipAnswer(i, 'н/п')
+        }));
+      })(this, st.equipForm),
+      closeEquipForm: () => this.setState({ equipForm: null, equipDraft: null }),
+      saveEquipForm: () => this.fillEquipForm(this.state.equipForm),
+      isList: st.screen === 'list', isWalk: st.screen === 'walk', isDone: st.screen === 'done',
+      toast: st.toast,
+      hasConfirm: !!st.confirm,
+      confirmMsg: (st.confirm || {}).msg || '',
+      confirmNo: () => this.setState({ confirm: null }),
+      confirmYes: () => {
+        const c = st.confirm;
+        this.setState({ confirm: null });
+        if (c && c.fn) c.fn();
+        if (c) this.saved(c.okMsg);
+      },
+
+      netLabel: st.online ? 'онлайн' : 'офлайн',
+      netBg: st.online ? '#1b3230' : '#4a2b26',
+      netColor: st.online ? '#4fb3a7' : '#f0b8b0',
+      netDot: st.online ? '#4fb3a7' : '#e08a7d',
+      toggleNet: () => {
+        const next = !st.online;
+        this.setState({ online: next });
+        this.say(next ? 'Сеть есть — можно отправить накопленные ответы.' : 'Режим офлайн: ответы сохраняются на телефоне.');
+      },
+
+      hasQueue: st.queue.length > 0,
+      queueNote: 'Не отправлено: ' + st.queue.length + ' ответ(ов)',
+      queueAction: st.online ? 'Отправить →' : 'ждём сеть',
+      syncNow: () => {
+        if (!st.online) { this.say('Нет сети. Данные не потеряются — отправим автоматически.'); return; }
+        this.setState({ queue: [] });
+        this.say('Отправлено ' + st.queue.length + ' ответ(ов). Журнал ВКК обновлён.');
+      },
+
+      branch: curBranch,
+      branchOptions: branchList,
+      setBranch: (e) => { const v = e.target.value; this.setState({ branch: v, toast: 'Объект: ' + v }); },
+      search: st.search || '',
+      searchOpen: !!st.searchOpen,
+      toggleSearch: () => this.setState(s => ({ searchOpen: !s.searchOpen })),
+      yearsOpen: !!st.yearsOpen,
+      yearLabel: st.archYear && st.archYear !== 'все годы' ? st.archYear : String(new Date().getFullYear()),
+      toggleYears: () => this.setState(s => ({ yearsOpen: !s.yearsOpen })),
+      nowClock: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+      supportCall: () => this.say('Техподдержка: +7 495 000-00-00 · звонок методисту платформы.'),
+      supportChat: () => this.say('Сообщение в поддержку отправлено — ответим в течение рабочего дня.'),
+      setSearch: (e) => { const v = e.target.value; this.setState({ search: v }); },
+      yearTabs: ['все годы'].concat([...new Set(archiveAll.map(a => a.year))].sort((a, b) => b.localeCompare(a))).map(y => ({
+        name: y, go: () => this.setState({ archYear: y }),
+        bg: (st.archYear || 'все годы') === y ? '#10201f' : '#ffffff',
+        color: (st.archYear || 'все годы') === y ? '#ffffff' : '#10201f',
+        border: (st.archYear || 'все годы') === y ? '#10201f' : '#dde3e2'
+      })),
+      viewTabs: [{ k: 'active', n: 'Текущие · ' + walks.length }, { k: 'archive', n: 'Архив · ' + archiveAll.length }].map(x => ({
+        name: x.n, go: () => this.setState({ view: x.k }),
+        bg: (st.view || 'active') === x.k ? '#10201f' : '#ffffff',
+        color: (st.view || 'active') === x.k ? '#ffffff' : '#10201f',
+        border: (st.view || 'active') === x.k ? '#10201f' : '#dde3e2'
+      })),
+      isArchiveView: (st.view || 'active') === 'archive',
+      isActiveView: (st.view || 'active') !== 'archive',
+      archiveList: archiveAll.filter(a => {
+        const y = st.archYear || 'все годы';
+        if (y !== 'все годы' && a.year !== y) return false;
+        const q = (st.search || '').trim().toLowerCase();
+        if (!q) return true;
+        const w0 = walks.filter(x => x.id === a.id)[0];
+        return String(w0 ? w0.name : '').toLowerCase().indexOf(q) >= 0 || String(a.who).toLowerCase().indexOf(q) >= 0;
+      }).slice().sort((a, b) => {
+        const key = (x) => x.date.split('.').reverse().join('');
+        return key(b).localeCompare(key(a));
+      }).map(a => {
+        const w = walks.filter(x => x.id === a.id)[0];
+        return {
+          name: (w ? w.name : 'Чек-лист'), year: a.year, date: a.date, rev: 'ред. ' + a.rev, who: a.who,
+          res: a.bad ? a.bad + ' нар.' : 'без нарушений',
+          resColor: a.bad ? '#a8342a' : '#2f7a4f',
+          resBg: a.bad ? '#f8e9e7' : '#e8f2f0'
+        };
+      }),
+      stats: [
+        { name: 'запланированные', val: String(walks.filter(w => !w.finished).length), color: '#10201f' },
+        { name: 'завершённые', val: String(walks.filter(w => w.finished).length), color: '#2f7a4f' },
+        { name: 'без нарушений', val: String(walks.filter(w => w.finished && !w.bad).length), color: '#2f7a4f' },
+        { name: 'нарушений', val: String(badTotal), color: badTotal ? '#a8342a' : '#2f7a4f' }
+      ],
+      // филиал выбирается так же, как в разделе оборудования: у объектов свой состав проверок
+      walkBranchChips: ['все филиалы'].concat(walks.map(w => w.branch || '').filter((b, i, a) => b && a.indexOf(b) === i))
+        .map(b => ({
+          name: b,
+          go: () => this.setState({ walkBranch: b }),
+          bg: (st.walkBranch || 'все филиалы') === b ? '#10201f' : '#ffffff',
+          color: (st.walkBranch || 'все филиалы') === b ? '#ffffff' : '#10201f',
+          border: (st.walkBranch || 'все филиалы') === b ? '#10201f' : '#dde3e2'
+        })),
+      lightboxOpen: !!st.lightbox,
+      lightboxImg: st.lightbox && st.lightbox.src ? React.createElement('img', {
+        src: st.lightbox.src, alt: 'фотофиксация',
+        style: { maxWidth: '100%', maxHeight: '74vh', borderRadius: 10, objectFit: 'contain' }
+      }) : null,
+      lightboxName: (st.lightbox || {}).name || '',
+      closeLightbox: () => this.setState({ lightbox: null }),
+      hasWalkBranches: walks.some(w => w.branch),
+      // один переключатель вместо ряда чипов: на телефоне список филиалов занимал
+      // до трёх строк над содержимым раздела. Живёт в строке с «Разделы»
+      hasBranchPick: mainTab === 'equip'
+        ? equipPos.some(p => p.branch)
+        : walks.some(w => w.branch),
+      branchPickLabel: mainTab === 'equip' ? 'Филиал' : 'Объект',
+      branchPickName: mainTab === 'equip'
+        ? (st.equipBranch || 'все филиалы')
+        : (st.walkBranch || 'все филиалы'),
+      nextBranch: () => {
+        const isEq = mainTab === 'equip';
+        const list = ['все филиалы'].concat((isEq ? equipPos : walks)
+          .map(x => x.branch || '').filter((b, i, a) => b && a.indexOf(b) === i));
+        const cur = isEq ? (st.equipBranch || 'все филиалы') : (st.walkBranch || 'все филиалы');
+        const next = list[(Math.max(0, list.indexOf(cur)) + 1) % list.length];
+        this.setState(isEq
+          ? { equipBranch: next, toast: 'Филиал: ' + next }
+          : { walkBranch: next, toast: 'Объект: ' + next });
+      },
+      walks: walks.filter(w => (st.walkBranch || 'все филиалы') === 'все филиалы' || (w.branch || '') === st.walkBranch).map(w => {
+        const ov = (st.walkStatus || {})[w.id];
+        const statusText = ov || w.status;
+        const finished = statusText === 'завершена' || w.pct >= 100;
+        const bad = w.bad;
+        return Object.assign({}, w, {
+          pct: w.pct + '%',
+          status: statusText,
+          finished,
+          // срок, основание и требуемые документы из плана кабинета — раньше приходили и терялись
+          dueNote: w.due ? 'срок ' + w.due : '',
+          hasDue: !!w.due,
+          dueColor: finished ? '#0d5c55' : '#a8342a',
+          dueBg: finished ? '#e8f2f0' : '#f8e9e7',
+          reasonNote: w.reason ? 'основание: ' + w.reason : '',
+          hasReason: !!w.reason,
+          planDocsNote: (w.planDocs || []).length ? 'по плану требуются: ' + w.planDocs.join(', ') : '',
+          hasPlanDocs: (w.planDocs || []).length > 0,
+          startLabel: w.noCheck ? 'Нельзя начать' : finished ? 'Открыть' : (w.pct > 0 ? 'Продолжить' : 'Начать'),
+          startBg: w.noCheck ? '#eef1f1' : '#157f76',
+          startColor: w.noCheck ? '#a9b6b4' : '#ffffff',
+          startCursor: w.noCheck ? 'default' : 'pointer',
+          docsOpen: st.openDocs === w.id,
+          docsBg: st.openDocs === w.id ? '#e8f2f0' : '#ffffff',
+          docsBorder: st.openDocs === w.id ? '#157f76' : '#dde3e2',
+          docsColor: st.openDocs === w.id ? '#0d5c55' : '#10201f',
+          docs: resultDocNames.map(nm => {
+            const isCapa = nm.indexOf('CAPA') >= 0;
+            const isVk = nm.indexOf('ВК') >= 0 && nm.indexOf('журнал') < 0;
+            const note = finished
+              ? (isCapa
+                ? (bad ? 'создан · ' + bad + ' меропр.' + (capaDue ? ' · срок ' + capaDue : '') : 'не требуется')
+                : (isVk ? (bad ? 'черновик готов' : 'не требуется') : 'сформирован'))
+              : 'после завершения';
+            const owners = String(docAsg[nm] || '').split(' + ').filter(Boolean);
+            return {
+              name: nm, note,
+              open: () => this.setState({ viewDoc: { name: nm, no: w.no, object: w.object, edit: false } }),
+              edit: () => this.setState({ viewDoc: { name: nm, no: w.no, object: w.object, edit: true } }),
+              addPick: 'не назначен',
+              owners: owners.map(who => ({
+                name: who,
+                remove: () => this.ask('Снять «' + who + '» с «' + nm + '»?', () => writeDocAsg(nm, owners.filter(x => x !== who).join(' + ')), 'ответственный снят')
+              })),
+              addOwner: (e) => {
+                const v = e.target.value;
+                if (v === 'не назначен' || owners.indexOf(v) >= 0) return;
+                writeDocAsg(nm, owners.concat([v]).join(' + '));
+                this.saved(v + ' назначен ответственным по «' + nm + '»');
+              },
+              mark: finished ? '✓' : '·',
+              bg: finished ? (isCapa && bad ? '#d8a13f' : '#157f76') : '#eef1f1',
+              color: finished ? (isCapa && bad ? '#241a05' : '#ffffff') : '#61736f',
+              remove: () => this.ask('Убрать «' + nm + '» из состава документов результата?', () => {
+                const next = resultDocNames.filter(x => x !== nm);
+                try { this.put('k785_result_docs_' + clinicKey, JSON.stringify(next)); } catch (err) { /* хранилище недоступно */ }
+                this.setState({ resultDocs: next });
+              }, 'документ убран')
+            };
+          }),
+          addDoc: () => {
+            const nm = 'Новый документ результата';
+            const next = resultDocNames.concat([nm]);
+            try { this.put('k785_result_docs_' + clinicKey, JSON.stringify(next)); } catch (err) { /* хранилище недоступно */ }
+            this.setState({ resultDocs: next });
+            this.say('Документ добавлен в состав результатов — виден в кабинете клиники и у оператора.');
+          },
+          cardOpen: (st.openCard || {})[w.id] !== false,
+          cardLabel: (st.openCard || {})[w.id] !== false ? 'свернуть ▾' : 'развернуть ▸',
+          toggleCard: () => this.setState(s => ({ openCard: Object.assign({}, s.openCard, { [w.id]: (s.openCard || {})[w.id] === false }) })),
+          runNo: (archiveAll.filter(a => a.id === w.id).length + 1) + '-й год · ред. ' + (archiveAll.filter(a => a.id === w.id).reduce((m, a) => Math.max(m, a.rev), 0) + 1),
+          archiveOpen: st.openArchive === w.id,
+          archiveLabel: st.openArchive === w.id ? '▾ Архив периодов' : '▸ Архив периодов · ' + archiveAll.filter(a => a.id === w.id).length,
+          toggleArchive: () => this.setState(s => ({ openArchive: s.openArchive === w.id ? null : w.id })),
+          archiveRows: archiveAll.filter(a => a.id === w.id).map((a, ai) => {
+            const picked = (st.compareWith || {})[w.id] === a.year;
+            const dBad = w.bad - a.bad;
+            return {
+              year: a.year, date: a.date, rev: 'ред. ' + a.rev, who: a.who,
+              res: a.bad ? a.bad + ' нар.' : 'без нарушений',
+              resColor: a.bad ? '#a8342a' : '#2f7a4f',
+              picked,
+              cmpLabel: picked ? 'скрыть сравнение' : 'сравнить с текущим',
+              cmpBg: picked ? '#e8f2f0' : '#ffffff',
+              cmpColor: picked ? '#0d5c55' : '#157f76',
+              diff: picked
+                ? 'Текущий: ' + w.answered + '/' + w.total + ' · ' + w.bad + ' нар.  ·  ' + a.year + ': ' + a.answered + '/' + a.total + ' · ' + a.bad + ' нар.  ·  ' + (dBad > 0 ? 'нарушений больше на ' + dBad : dBad < 0 ? 'нарушений меньше на ' + Math.abs(dBad) : 'без изменений')
+                : '',
+              hasBadList: picked && (w.bad > 0 || a.bad > 0),
+              badRows: picked
+                ? (w.items || []).map((q, qi) => ({ q: q, cur: (st.answers[w.id] || {})[qi] === 'bad', old: (a.badItems || []).indexOf(qi) >= 0 }))
+                    .filter(r => r.cur || r.old)
+                    .map(r => ({
+                      name: String(r.q).length > 64 ? String(r.q).slice(0, 62) + '…' : String(r.q),
+                      curMark: r.cur ? 'нарушение' : 'в норме',
+                      curColor: r.cur ? '#a8342a' : '#2f7a4f',
+                      oldMark: r.old ? 'было нарушение' : 'было в норме',
+                      oldColor: r.old ? '#a8342a' : '#2f7a4f'
+                    }))
+                : [],
+              toggle: () => this.setState(s => ({ compareWith: Object.assign({}, s.compareWith, { [w.id]: picked ? '' : a.year }) }))
+            };
+          }),
+          open: () => {
+            if (w.noCheck) { this.say('Проверку нельзя начать: ' + w.noCheckNote + '.'); return; }
+            this.setState({ screen: 'walk', active: w.id });
+          },
+          viewResult: () => this.setState({ screen: 'walk', active: w.id, toast: 'Результаты «' + w.name + '»: ответы и комментарии по пунктам.' }),
+          toggleDocs: () => this.setState(s => ({ openDocs: s.openDocs === w.id ? null : w.id })),
+          edit: () => this.setState({ screen: 'walk', active: w.id, toast: 'Редактирование чек-листа «' + w.name + '»: правьте ответы и комментарии.' }),
+          cycleStatus: () => {
+            const opts = ['запланирована', 'в работе', 'завершена'];
+            const next = opts[(opts.indexOf(statusText) + 1) % opts.length];
+            this.setState(s => ({ walkStatus: Object.assign({}, s.walkStatus, { [w.id]: next }), toast: 'Статус «' + w.name + '» → ' + next }), () => this.publishNow());
+          }
+        });
+      }),
+      noWalks: walks.filter(w => (st.walkBranch || 'все филиалы') === 'все филиалы' || (w.branch || '') === st.walkBranch).length === 0,
+
+      walkName: cur.name, walkObject: cur.object,
+      walkProgress: curAnswered + '/' + cur.items.length,
+      walkPct: Math.round(curAnswered / (cur.items.length || 1) * 100) + '%',
+      items,
+      hasViolations: curBad > 0,
+      violationNote: 'Найдено нарушений: ' + curBad + '. При завершении система создаст акт, запись в журнале ВКК и план CAPA.',
+      finishBg: allAnswered ? '#157f76' : '#9fc9c4',
+      finishLabel: allAnswered ? 'Завершить проверку' : 'Отметьте все пункты (' + curAnswered + '/' + cur.items.length + ')',
+      finish: () => {
+        // обход проводит тот, кому это разрешено ролью: наблюдатель фиксировать
+        // результаты проверки не может — акт подписывается его именем
+        if (this.platform && !this.platform.can('walk:run')) {
+          this.platform.deny('walk:run', 'Проведение обхода');
+          this.say('Недостаточно прав: проводить обход могут «Ответственный за ВКК», «Медсестра / исполнитель» и «Аудитор». Вы вошли как «'
+            + this.platform.roleName() + '».');
+          return;
+        }
+        if (!allAnswered) { this.say('Остались неотмеченные пункты — прокрутите список вверх.'); return; }
+        this.setState(s => ({
+          done: Object.assign({}, s.done, { [cur.id]: true }),
+          screen: 'done',
+          lastResult: { name: cur.name, bad: curBad, total: cur.items.length }
+        }), () => this.publishNow());
+      },
+      backToList: () => this.setState({ screen: 'list' }),
+
+      doneSummary: st.lastResult
+        ? (st.lastResult.bad
+          ? 'Проверено ' + st.lastResult.total + ' пунктов, выявлено нарушений: ' + st.lastResult.bad + '. Документы сформированы автоматически.'
+          : 'Проверено ' + st.lastResult.total + ' пунктов, нарушений не выявлено. Запись добавлена в журнал учёта ВКК.')
+        : '',
+      peopleOptions: ['не назначен'].concat(peopleList),
+      hasViewDoc: !!st.viewDoc,
+      viewDocName: (st.viewDoc || {}).name || '',
+      viewDocMeta: st.viewDoc ? ('проверка ' + st.viewDoc.no + ' · ' + st.viewDoc.object) : '',
+      viewDocMode: st.viewDoc && st.viewDoc.edit ? 'режим редактирования · правки уйдут в кабинет клиники и оператора' : 'только просмотр и печать · скачивание отключено',
+      viewDocText: st.viewDoc ? ((st.docTexts || {})[st.viewDoc.name] || 'Документ сформирован автоматически по результатам проверки. Реквизиты клиники, дата, объект контроля и ответственные подставлены из профиля.') : '',
+      viewDocEditable: !!(st.viewDoc && st.viewDoc.edit),
+      viewDocReadonly: !!(st.viewDoc && !st.viewDoc.edit),
+      setViewDocText: (e) => { const v = e.target.value; this.setState(s => ({ docTexts: Object.assign({}, s.docTexts, { [s.viewDoc.name]: v }) })); },
+      saveViewDoc: () => { this.setState({ viewDoc: null }); this.say('«' + (st.viewDoc || {}).name + '» сохранён · изменения видны во всех кабинетах.'); },
+      printViewDoc: () => this.say('«' + (st.viewDoc || {}).name + '» отправлен на печать.'),
+      closeViewDoc: () => this.setState({ viewDoc: null }),
+      doneChain: [
+        { name: resultDocNames[0] || 'Акт проверки', note: 'сформирован', mark: '✓', bg: '#157f76', color: '#ffffff' },
+        { name: resultDocNames[1] || 'Запись в журнале ВКК', note: 'добавлена', mark: '✓', bg: '#157f76', color: '#ffffff' },
+        { name: 'План CAPA', note: st.lastResult && st.lastResult.bad ? 'создан · ' + st.lastResult.bad + ' меропр.' : 'не требуется', mark: st.lastResult && st.lastResult.bad ? '✓' : '—', bg: st.lastResult && st.lastResult.bad ? '#157f76' : '#eef1f1', color: st.lastResult && st.lastResult.bad ? '#ffffff' : '#61736f' },
+        { name: 'Протокол ВК', note: st.lastResult && st.lastResult.bad ? 'черновик у начмеда' : 'не требуется', mark: st.lastResult && st.lastResult.bad ? '✓' : '—', bg: st.lastResult && st.lastResult.bad ? '#157f76' : '#eef1f1', color: st.lastResult && st.lastResult.bad ? '#ffffff' : '#61736f' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

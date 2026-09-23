@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com"></link>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous"></link>
+<link href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,400;0,600;0,700;1,400&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet"></link>
+<style>
+  doc-page:not(:defined) { visibility: hidden }
+  h1, h2, h3 { font-family: 'IBM Plex Sans', sans-serif }
+  .callout, .find { break-inside: avoid; orphans: 3; widows: 3 }
+  table { border-collapse: collapse; width: 100% }
+  th { text-align: left }
+  a { color: #157f76 }
+  a:hover { color: #0d5c55 }
+</style>
+<script src="./doc-page.js"></script>
+</helmet>
+
+<doc-page margin="0.8in">
+  <div slot="footer" style="display: flex; align-items: baseline; gap: 10px; padding: 8px 0 0; border-top: 1px solid #dde3e2; font-family: 'IBM Plex Sans', sans-serif; font-size: 9pt; color: #61736f">
+    <span style="font-weight: 600; color: #0d5c55">Контур 785</span>
+    <span>Технический аудит прототипа</span>
+    <span style="margin-left: auto; font-family: 'IBM Plex Mono', monospace">внутренний документ</span>
+  </div>
+
+  <h1 style="font-size: 26pt; font-weight: 700; line-height: 1.15; letter-spacing: -0.5px; margin: 0 0 10px; color: #10201f">Технический аудит «Контур 785»</h1>
+  <p style="font-family: 'IBM Plex Sans', sans-serif; font-size: 11.5pt; line-height: 1.5; color: #3d5a56; margin: 0 0 4px; font-weight: 500">Что проверено, что было сломано, что исправлено и что остаётся сделать за пределами интерфейса.</p>
+
+  <table style="font-family: 'IBM Plex Sans', sans-serif; font-size: 10pt; margin: 20px 0 24px">
+    <tbody>
+      <tr>
+        <td style="padding: 8px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600; width: 24%">Дата</td>
+        <td style="padding: 8px 10px; border-bottom: 1px solid #eef1f1">17 августа 2026 · второй раунд 26 августа 2026</td>
+      </tr>
+      <tr>
+        <td style="padding: 8px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600">Объём</td>
+        <td style="padding: 8px 10px; border-bottom: 1px solid #eef1f1">Панель оператора, Личный кабинет ВКК, Обход — мобильный, слой обмена данными</td>
+      </tr>
+      <tr>
+        <td style="padding: 8px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600">Методика</td>
+        <td style="padding: 8px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Статический анализ разметки и логики; карта контрактов обмена данными между экранами; прогон сквозных сценариев в браузере с проверкой консоли; проверка изоляции арендаторов на подставных данных</td>
+      </tr>
+      <tr>
+        <td style="padding: 8px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600">Найдено и закрыто</td>
+        <td style="padding: 8px 10px; border-bottom: 1px solid #eef1f1">12 дефектов в первом раунде (4 критических) и 22 во втором: 16 разрывов контрактов полей и 6 ошибок арифметики и ключей</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout" style="margin: 0 0 26px; padding: 18px 20px; background: #f2f7f6; border-left: 3px solid #157f76; font-family: 'IBM Plex Sans', sans-serif">
+    <div style="font-size: 10pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: #0d5c55; margin-bottom: 8px">Итог</div>
+    <p style="font-size: 11.5pt; line-height: 1.55; margin: 0 0 8px; color: #10201f">Блокирующих дефектов не осталось. Консоль чистая на всех трёх экранах, разметка сбалансирована, все шаблонные выражения имеют источник, вызовов несуществующих методов нет, висячих ключей обмена нет. Сквозной сценарий «эталон методиста → кабинет клиники → мобильный обход → результаты обратно в кабинет» проходит целиком.</p>
+    <p style="font-size: 11.5pt; line-height: 1.55; margin: 0; color: #10201f">Главное ограничение прототипа — не дефект, а решение: данные живут в локальном хранилище одного браузера. Оно упрётся в потолок раньше, чем любая функциональность.</p>
+  </div>
+
+  <h2 style="font-size: 15pt; font-weight: 700; margin: 30px 0 6px; color: #10201f; letter-spacing: -0.2px">1. Критические дефекты</h2>
+  <p style="font-size: 11.5pt; line-height: 1.65; margin: 0 0 16px">Четыре находки, каждая из которых сама по себе делала продукт непригодным к продаже.</p>
+
+  <div class="find" style="margin: 0 0 14px; padding: 15px 18px; border: 1px solid #dde3e2; border-left: 3px solid #a8342a; border-radius: 3px">
+    <div style="font-family: 'IBM Plex Sans', sans-serif; font-size: 11.5pt; font-weight: 700; color: #10201f; margin-bottom: 6px">Арендатор был вшит в ключи хранения</div>
+    <p style="font-size: 11pt; line-height: 1.55; margin: 0 0 8px; color: #3d5a56">Имя клиники подставлялось литералом в 27 ключей: 24 в кабинете и 3 в обходе. Вторая клиника физически не могла работать — оба экрана всегда читали и писали данные одной организации, включая общее состояние кабинета. Настройки, решения по редакциям и правки реестра были бы общими для всех клиентов.</p>
+    <p style="font-size: 11pt; line-height: 1.55; margin: 0; color: #10201f"><strong>Исправлено:</strong> арендатор определяется один раз — из адреса или последнего выбора, — и подставляется во все ключи, включая состояние кабинета. Прежние данные переносятся под текущего арендатора при первой загрузке. Панель оператора открывает кабинет выбранной клиники, обход подхватывает того же арендатора без адресной строки.</p>
+  </div>
+
+  <div class="find" style="margin: 0 0 14px; padding: 15px 18px; border: 1px solid #dde3e2; border-left: 3px solid #a8342a; border-radius: 3px">
+    <div style="font-family: 'IBM Plex Sans', sans-serif; font-size: 11.5pt; font-weight: 700; color: #10201f; margin-bottom: 6px">Молчаливая потеря сохранения</div>
+    <p style="font-size: 11pt; line-height: 1.55; margin: 0 0 8px; color: #3d5a56">При превышении лимита браузера или отказе записи функция сохранения просто выходила. Пользователь продолжал работать в уверенности, что данные сохранены, и терял их при перезагрузке. Асинхронный отказ показывался подсказкой, исчезающей через несколько секунд.</p>
+    <p style="font-size: 11pt; line-height: 1.55; margin: 0; color: #10201f"><strong>Исправлено:</strong> отказ записи поднимается в шапку постоянной плашкой с причиной и кнопкой немедленной выгрузки; плашка снимается сама при успешной записи. В обеих панелях, включая асинхронный путь.</p>
+  </div>
+
+  <div class="find" style="margin: 0 0 14px; padding: 15px 18px; border: 1px solid #dde3e2; border-left: 3px solid #a8342a; border-radius: 3px">
+    <div style="font-family: 'IBM Plex Sans', sans-serif; font-size: 11.5pt; font-weight: 700; color: #10201f; margin-bottom: 6px">Выгрузка захватывала данные других клиник</div>
+    <p style="font-size: 11pt; line-height: 1.55; margin: 0 0 8px; color: #3d5a56">Принадлежность ключа определялась догадкой по названию. На подставных данных проверено: в архив попадали ключи чужих клиник, чьи названия не содержали ожидаемых признаков, — включая целое состояние чужого кабинета. Восстановление из архива могло откатить общий эталон платформы.</p>
+    <p style="font-size: 11pt; line-height: 1.55; margin: 0; color: #10201f"><strong>Исправлено:</strong> принадлежность проверяется точным совпадением «префикс + имя арендатора» по явному перечню из 24 префиксов. Эталон платформы в архив клиники не входит вовсе — он общий и принадлежит методисту, поэтому откатить его из архива невозможно. Восстановление дополнительно фильтрует файл на входе и объясняет, что пропущено.</p>
+  </div>
+
+  <div class="find" style="margin: 0 0 20px; padding: 15px 18px; border: 1px solid #dde3e2; border-left: 3px solid #a8342a; border-radius: 3px">
+    <div style="font-family: 'IBM Plex Sans', sans-serif; font-size: 11.5pt; font-weight: 700; color: #10201f; margin-bottom: 6px">Идентификаторы записей от текущего времени</div>
+    <p style="font-size: 11pt; line-height: 1.55; margin: 0 0 8px; color: #3d5a56">Одиннадцать мест создавали идентификатор из текущего времени: блок контроля, документ реестра, каталог, группа документов, загрузка файла, проверка, внеплановая проверка, запись плана обхода. Двойное нажатие или работа в двух вкладках давали одинаковый идентификатор, а по нему связываются документы, правки и результаты — две записи молча становились одной.</p>
+    <p style="font-size: 11pt; line-height: 1.55; margin: 0; color: #10201f"><strong>Исправлено:</strong> генератор из трёх частей — время, счётчик в рамках сессии, случайный хвост. Счётчик снимает совпадения при быстрых нажатиях, случайная часть — при параллельной работе. Проверено на 20 000 генераций без коллизий.</p>
+  </div>
+
+  <h2 style="font-size: 15pt; font-weight: 700; margin: 32px 0 6px; color: #10201f; letter-spacing: -0.2px; break-before: page">2. Дефекты целостности данных</h2>
+  <p style="font-size: 11.5pt; line-height: 1.65; margin: 0 0 16px">Класс ошибок, общий для всех: имя документа или проверки служит ключом связи, а связь рвалась молча.</p>
+
+  <table style="font-family: 'IBM Plex Sans', sans-serif; font-size: 10pt; margin: 0 0 22px">
+    <thead>
+      <tr style="background: #f7f9f9">
+        <th style="padding: 9px 10px; border-bottom: 1.5px solid #cfd8d7; font-weight: 700; width: 30%">Что было</th>
+        <th style="padding: 9px 10px; border-bottom: 1.5px solid #cfd8d7; font-weight: 700">Как исправлено</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600; line-height: 1.5">Переименование блока рвало связи</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Случайная правка названия блока до двух букв отвязала самую значимую проверку от её документов, и это выглядело нормально. Переименование теперь тянет за собой проверки цикла, направления графика и комплекты документов; название восстановлено из эталонного каталога по ключу — и в состоянии оператора, и в опубликованной клиникам копии.</td>
+      </tr>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600; line-height: 1.5">Разрыв эталона выглядел нормой</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Проверка без блока в каталоге показывалась как обычная, просто без документов. Теперь и у оператора, и у клиники стоит явная пометка, а методисту автоматически уходит заявка с действием «создать блок» — и отзывается, когда разрыв закрыт.</td>
+      </tr>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600; line-height: 1.5">Дубли и молчаливая потеря записей</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Одноимённая с эталоном проверка отбрасывалась при отображении, но копилась в хранилище — кнопка «добавить» внешне не работала. Дедупликация переведена с имени на идентификатор, одинаковые имена разводятся суффиксом, свободное имя подбирается внутри обновления состояния.</td>
+      </tr>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600; line-height: 1.5">Два владельца одного ключа</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Обход писал заполнения форм в реестр оборудования, которым владеет кабинет, и его публикация их затирала. Владение разведено: обход пишет свой ключ заполнений, кабинет и оператор накладывают его при чтении — по образцу результатов аудитов.</td>
+      </tr>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600; line-height: 1.5">Один блок в двух плитках</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Группы различались по сгенерированному идентификатору, а не по ключу блока, поэтому один блок мог жить дважды с расходящимся составом. Введено единое определение ключа блока, накопившиеся дубли сводятся при загрузке, повторное добавление открывает существующую строку.</td>
+      </tr>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600; line-height: 1.5">Две разные даты на одном экране</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">В шапке обхода стояла фиксированная дата, а заполнения штамповались реальной — расхождение девять дней. Для продукта о доказуемости записей это подрывает доверие к самой записи. Источник даты теперь один; попутно найдены и исправлены четыре таких же литерала в путях записи у оператора.</td>
+      </tr>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600; line-height: 1.5">Разные причины под одной формулировкой</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">«Дата поверки не указана» показывалось и когда тип оборудования не найден в эталоне. Срок CAPA в обходе брался самый жёсткий без указания степени критичности. Обе формулировки разведены по фактическим причинам.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2 style="font-size: 15pt; font-weight: 700; margin: 32px 0 6px; color: #10201f; letter-spacing: -0.2px; break-before: page">3. Второй раунд: контракты полей между экранами</h2>
+  <p style="font-size: 11.5pt; line-height: 1.65; margin: 0 0 16px">Первый раунд проверял, доходит ли запись от экрана к экрану. Второй — доходит ли каждое <em>поле</em> внутри записи и читает ли его принимающая сторона. Проверено 69 полей в 11 каналах обмена между тремя кабинетами; 16 полей передавались и не читались никем. Класс дефекта общий: отправитель пишет добросовестно, получатель поля не знает, интерфейс выглядит исправным.</p>
+
+  <table style="font-family: 'IBM Plex Sans', sans-serif; font-size: 10pt; margin: 0 0 22px">
+    <thead>
+      <tr style="background: #f7f9f9">
+        <th style="padding: 9px 10px; border-bottom: 1.5px solid #cfd8d7; font-weight: 700; width: 30%">Что было</th>
+        <th style="padding: 9px 10px; border-bottom: 1.5px solid #cfd8d7; font-weight: 700">Как исправлено</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600; line-height: 1.5">Аудитор не видел, что от него требуется</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Кабинет передавал в обход срок проверки, основание внеплановой и состав документов результата — обход не читал ни одного из трёх полей. Аудитор шёл на проверку без дедлайна, без причины и без знания, какие документы должен породить обход. Все три выведены в карточку; срок — красной плашкой, пока обход не закрыт.</td>
+      </tr>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600; line-height: 1.5">Словари статусов не сведены</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Обход писал «закрыта» / «нарушения выявлены» / «проводится», кабинет ждал «завершён» и определял завершённость сравнением формулировок. Любая правка текста статуса ломала логику. Введено отдельное поле признака завершения; получатели читают его, а не разбирают строку.</td>
+      </tr>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600; line-height: 1.5">Нарушение без названия проверки и без фото</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Панель оператора подписывала нарушение названием аудита, которого обход не передавал — в реестре стоял технический идентификатор плана. Фотофиксация до методиста не доходила вовсе. Обход передаёт название и способ проведения; оператор выводит подпись фотофиксации и строку «источник · обход закрыт или идёт · пройдено N из M».</td>
+      </tr>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600; line-height: 1.5">Интерфейс обещал то, чего не делал</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">После правки состава документов результата обход показывал подтверждение «виден в кабинете клиники и у оператора». Панель оператора этот канал не читала: до методиста правка не доходила. Оператор читает канал и помечает такие документы «из мобильного обхода».</td>
+      </tr>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600; line-height: 1.5">Заявка без обоснования, приёмка без даты</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Комментарий клиники к заявке на новое отделение и дата фактического решения по редакции документа записывались и нигде не выводились. Оба поля выведены: методист видит обоснование заявки и срок реакции клиники.</td>
+      </tr>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600; line-height: 1.5">Два числа готовности, никем не сверяемые</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Оператор считал готовность клиники из своих демонстрационных данных, кабинет — из подтверждённых подэтапов. Числа расходились на одном и том же экране. Кабинет сохраняет отдельным полем агрегат по всем филиалам — не текущий вид: иначе переключение филиала в шапке молча переписывало бы число в CRM, хотя ни один подэтап не менялся. Плитка «Готовность филиала» остаётся филиальной и показывает клиникальное число рядом. Оператор читает агрегат и при расхождении больше трёх пунктов показывает оба числа.</td>
+      </tr>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600; line-height: 1.5">Гонка трёх экранов за один ключ</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Матрицу ответственных по документам целиком перезаписывали все три экрана из данных своей отрисовки. Назначение, сделанное в одном экране, затирало одновременную правку в другом без предупреждения. Каждый экран перечитывает ключ непосредственно перед записью.</td>
+      </tr>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600; line-height: 1.5">Сигнал и профиль протекали между арендаторами</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Сигнал о новом филиале жил в ключе без арендатора и показывался в карточке любой открытой клиники; резервное чтение профиля, назначений и штата у оператора шло из общего ключа. Сигнал фильтруется по клинике-источнику, резервное чтение переведено на состояние конкретной клиники.</td>
+      </tr>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600; line-height: 1.5">Ответственный терял должность, позиция — отделение</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Обход срезал у ответственного всё после разделителя, оставляя только фамилию, и не читал ключ отделения позиции, который ведёт методист. Ответственный передаётся целиком; отделение выводится в карточке оборудования.</td>
+      </tr>
+      <tr>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; font-weight: 600; line-height: 1.5">Аудитор не мог перечитать своё заполнение</td>
+        <td style="padding: 9px 10px; border-bottom: 1px solid #eef1f1; line-height: 1.5">Ответы, показание журнала и примечание уходили в кабинет, а в обходе после отправки оставалась только дата. Строка формы показывает число сохранённых ответов, показание, примечание и источник заполнения.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2 style="font-size: 15pt; font-weight: 700; margin: 32px 0 6px; color: #10201f; letter-spacing: -0.2px">4. Второй раунд: арифметика сроков и ключи</h2>
+
+  <div class="find" style="margin: 0 0 14px; padding: 15px 18px; border: 1px solid #dde3e2; border-left: 3px solid #a8342a; border-radius: 3px">
+    <div style="font-family: 'IBM Plex Sans', sans-serif; font-size: 11.5pt; font-weight: 700; color: #10201f; margin-bottom: 6px">Периодичность форм не учитывалась вовсе</div>
+    <p style="font-size: 11pt; line-height: 1.55; margin: 0 0 8px; color: #3d5a56">Форма по оборудованию считалась закрытой навсегда после первого заполнения: обход смотрел только на наличие даты, а не на периодичность из эталона. Ежедневный журнал термометрии, заполненный один раз в январе, больше никогда не попадал в список к заполнению — и это в продукте, чья ценность в доказуемости регулярного контроля.</p>
+    <p style="font-size: 11pt; line-height: 1.55; margin: 0; color: #10201f"><strong>Исправлено:</strong> срок считается от периодичности («каждое включение», «2 раза в день», «1 раз в неделю», «1 раз в месяц» и далее) и даты последнего заполнения. Нераспознанная дата трактуется как «нужно заполнить»: ложное «заполнено» опаснее лишнего напоминания. Периодичность выведена в строку формы.</p>
+  </div>
+
+  <div class="find" style="margin: 0 0 14px; padding: 15px 18px; border: 1px solid #dde3e2; border-left: 3px solid #a8342a; border-radius: 3px">
+    <div style="font-family: 'IBM Plex Sans', sans-serif; font-size: 11.5pt; font-weight: 700; color: #10201f; margin-bottom: 6px">Срок поверки считался от фиксированной даты</div>
+    <p style="font-size: 11pt; line-height: 1.55; margin: 0 0 8px; color: #3d5a56">В кабинете и в панели оператора «сегодня» для расчёта срока поверки было вшито литералом 17 августа 2026 — остаток первого раунда, найденный в двух местах из четырёх. Через девять дней после аудита просрочка занижалась на эти девять дней в обоих экранах одинаково, поэтому расхождение не бросалось в глаза. Нераспознанная дата поверки давала срок «до NaN.NaN.NaN» со статусом «в порядке».</p>
+    <p style="font-size: 11pt; line-height: 1.55; margin: 0; color: #10201f"><strong>Исправлено:</strong> обе точки считают от реальной сегодняшней даты с обнулением времени; нераспознанная дата даёт явную формулировку с исходным значением, а не молчаливое «в порядке».</p>
+  </div>
+
+  <div class="find" style="margin: 0 0 20px; padding: 15px 18px; border: 1px solid #dde3e2; border-left: 3px solid #8a5b0f; border-radius: 3px">
+    <div style="font-family: 'IBM Plex Sans', sans-serif; font-size: 11.5pt; font-weight: 700; color: #10201f; margin-bottom: 6px">Ключ филиалов строился от изменяемого названия</div>
+    <p style="font-size: 11pt; line-height: 1.55; margin: 0 0 8px; color: #3d5a56">Добавление филиала записывалось в ключ, собранный из названия организации в профиле, а читали этот ключ все от идентификатора арендатора. Пока клиника не переименовалась, значения совпадали. После правки профиля новый филиал уходил в осиротевший ключ и пропадал у оператора и в обходе — ровно тот класс связи по изменяемому полю, который отмечен в наблюдении по итогам первого раунда.</p>
+    <p style="font-size: 11pt; line-height: 1.55; margin: 0; color: #10201f"><strong>Исправлено:</strong> ключ филиалов и сигнал о новом филиале строятся от идентификатора арендатора. Попутно устранено деление на ноль в проценте загруженных документов и сведены к одной формуле два разных расчёта готовности внутри кабинета.</p>
+  </div>
+
+  <h2 style="font-size: 15pt; font-weight: 700; margin: 32px 0 6px; color: #10201f; letter-spacing: -0.2px">5. Производительность и чистота кода</h2>
+
+  <div class="find" style="margin: 0 0 14px; padding: 15px 18px; border: 1px solid #dde3e2; border-left: 3px solid #8a5b0f; border-radius: 3px">
+    <div style="font-family: 'IBM Plex Sans', sans-serif; font-size: 11.5pt; font-weight: 700; color: #10201f; margin-bottom: 6px">Экраны не успевали отрисоваться</div>
+    <p style="font-size: 11pt; line-height: 1.55; margin: 0 0 8px; color: #3d5a56">Три отдельных проявления с одной природой: работа с хранилищем шла на каждую перерисовку. Полная сериализация состояния при сохранении; разбор данных из хранилища при построении экрана; запись результатов прямо из отрисовки, которая поднимала подписку, а та вызывала новую отрисовку.</p>
+    <p style="font-size: 11pt; line-height: 1.55; margin: 0; color: #10201f"><strong>Исправлено:</strong> сохранение отложено и идёт пачкой; разбор данных кешируется по сырой строке и повторяется только при изменении; запись вынесена из отрисовки; каждый экран отписан от собственных ключей, чтобы своя же запись не гнала перечитывание.</p>
+  </div>
+
+  <div class="find" style="margin: 0 0 20px; padding: 15px 18px; border: 1px solid #dde3e2; border-left: 3px solid #8a5b0f; border-radius: 3px">
+    <div style="font-family: 'IBM Plex Sans', sans-serif; font-size: 11.5pt; font-weight: 700; color: #10201f; margin-bottom: 6px">Мёртвый код</div>
+    <p style="font-size: 11pt; line-height: 1.55; margin: 0; color: #3d5a56">После переработки годового цикла, объединения таблиц и замены плиток на строки осталось 36 неиспользуемых полей и два метода: сетка направлений контроля, отдельные подписи и переключатели удалённых карточек, вспомогательные списки. Удалены с проверкой, что ни одно шаблонное выражение и ни один вызов не потеряли источник.</p>
+  </div>
+
+  <h2 style="font-size: 15pt; font-weight: 700; margin: 32px 0 6px; color: #10201f; letter-spacing: -0.2px">6. Проверено и признано корректным</h2>
+  <ul style="font-size: 11.5pt; line-height: 1.6; padding-left: 22px; margin: 0 0 22px">
+    <li style="margin-bottom: 8px"><strong>Слой обмена данными:</strong> версионирование записей, обнаружение конфликта вместо молчаливого затирания, идемпотентность операций, транзакции, оповещение между вкладками с запасным механизмом.</li>
+    <li style="margin-bottom: 8px"><strong>Контракты обмена:</strong> 49 ключей записи против 51 ключа чтения, висячих ключей нет. Заявки «вне каталога», выдачи и подарки документов замкнуты в обе стороны.</li>
+    <li style="margin-bottom: 8px"><strong>Права:</strong> публикация эталона проходит проверку роли до диалога подтверждения; запись в эталонные ключи из кабинета клиники запрещена в единой точке записи.</li>
+    <li><strong>Сквозной цикл:</strong> эталон методиста доходит до кабинета, план проверок попадает в обход с датой, видом, объектом и чек-листом, результаты и заполнения возвращаются обратно к оператору.</li>
+  </ul>
+
+  <h2 style="font-size: 15pt; font-weight: 700; margin: 32px 0 6px; color: #10201f; letter-spacing: -0.2px">7. Что остаётся сделать</h2>
+  <p style="font-size: 11.5pt; line-height: 1.65; margin: 0 0 16px">Пять задач, которые нельзя закрыть внутри интерфейса. Порядок — по отношению «риск для продукта к стоимости». Привязка к горизонтам — в документе «План развития продукта», раздел 6.</p>
+
+  <div class="callout" style="margin: 0 0 16px; padding: 18px 20px; background: #fdf5f4; border-left: 3px solid #a8342a; font-family: 'IBM Plex Sans', sans-serif">
+    <div style="font-size: 10pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: #a8342a; margin-bottom: 8px">Первое по важности</div>
+    <p style="font-size: 11.5pt; line-height: 1.55; margin: 0; color: #10201f"><strong>Серверное хранение вместо браузера.</strong> Сегодня всё живёт в локальном хранилище одного браузера: нет доступа с другого устройства, нет резервных копий, лимит около 5 МБ, при его достижении работа встаёт. Это упирается в потолок раньше любой функциональности — сеть на 15 объектов с годовой историей редакций туда не поместится. Слой обмена данными уже изолирует чтение и запись, поэтому замена реализации не затронет экраны.</p>
+  </div>
+
+  <ol style="font-size: 11.5pt; line-height: 1.6; padding-left: 22px; margin: 0 0 20px" start="2">
+    <li style="margin-bottom: 10px"><strong>Серверная проверка прав.</strong> Вход по учётной записи сделан: роль приходит из сеанса, у методиста, менеджера и руководителя продаж отдельные кабинеты, у исполнителя клиники — свой, с входом по ИНН и рабочему телефону и видимостью только своих назначений; регистрация сотрудника работает только после подтверждения администратором. Осталось повторить матрицу прав на API: в браузере она защищает от ошибки и бытового злоупотребления, но не от прямого запроса.</li>
+    <li style="margin-bottom: 10px"><strong>Журнал действий — подпись записи.</strong> Сам журнал сделан: автор, дата, охват, «было → стало», отказы в правах и массовые операции одной записью, только на добавление. В браузере он доказателен ровно настолько, насколько доверяют хранилищу, — нужны подпись записи и защита от правки в обход интерфейса.</li>
+    <li style="margin-bottom: 10px"><strong>Изоляция арендаторов на уровне доступа.</strong> Ключи разделены, но любой код в браузере видит данные всех арендаторов. До переноса на сервер это ограничивает продажу сетям и партнёрам white-label.</li>
+    <li><strong>Телеметрия внедрения.</strong> Метрики воронки заданы демонстрационными числами. Пока они не считаются по фактическим событиям, нельзя отслеживать предиктор оттока — готовность ниже 40% через 30 дней.</li>
+  </ol>
+
+  <div class="callout" style="margin: 24px 0 0; padding: 18px 20px; background: #f2f7f6; border-left: 3px solid #157f76; font-family: 'IBM Plex Sans', sans-serif">
+    <div style="font-size: 10pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: #0d5c55; margin-bottom: 8px">Наблюдение по итогам аудита</div>
+    <p style="font-size: 11.5pt; line-height: 1.55; margin: 0 0 8px; color: #10201f">Почти все дефекты целостности имеют одну причину: сущности связываются по названию, а название — изменяемое поле, которое пользователь правит руками. Каждая такая связь рвётся молча. В целевой архитектуре связь должна идти по идентификатору, выданному при создании, а название оставаться подписью для человека.</p>
+    <p style="font-size: 11.5pt; line-height: 1.55; margin: 0; color: #10201f">Второй раунд добавил к этому вторую причину, столь же системную: контракт между экранами нигде не описан. Отправитель добросовестно передаёт поле, получатель о нём не знает, и ни один экран не сообщает о разрыве — интерфейс выглядит исправным. Пока контракт не описан явно и не проверяется, каждая новая функция будет добавлять такие разрывы быстрее, чем аудит их находит. Карта полей («Сопоставление кабинета и обхода») — рабочая замена этой проверки, а не её решение.</p>
+  </div>
+
+  <div class="callout" style="margin: 16px 0 0; padding: 18px 20px; background: #f2f7f6; border-left: 3px solid #157f76; font-family: 'IBM Plex Sans', sans-serif">
+    <div style="font-size: 10pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: #0d5c55; margin-bottom: 8px">Сделано по итогам наблюдения</div>
+    <p style="font-size: 11.5pt; line-height: 1.55; margin: 0; color: #10201f">Сквозным идентификатором арендатора стал <strong>ИНН</strong>. Все ключи хранения во всех трёх экранах строятся как «префикс + ИНН»; название организации осталось подписью для человека и берётся из реестра клиник, который ведёт оператор. Переименование клиники больше не рвёт ни одной связи. Кабинет при первом открытии переносит накопленные данные со старых ключей на ключи по ИНН; в панели оператора добавлен поиск по ИНН и ОГРН, ИНН выведен в строке каталога и в карточке клиники.</p>
+  </div>
+</doc-page>
+</x-dc>
+</body>
+</html>

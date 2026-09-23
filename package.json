@@ -1,0 +1,32 @@
+{
+  "name": "kontur785",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Контур 785 — SaaS для внутреннего контроля качества и безопасности медицинской деятельности (Приказ Минздрава №785н)",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace apps/api & npm run dev --workspace apps/web",
+    "build": "npm run build --workspace packages/shared && npm run prisma:generate && npm run build --workspace apps/api && npm run build --workspace apps/web",
+    "test": "npm run test --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "prisma:generate": "npm run prisma:generate --workspace apps/api",
+    "prisma:migrate": "npm run prisma:migrate --workspace apps/api"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "allowScripts": {
+    "@prisma/client@5.22.0": true,
+    "@prisma/engines@5.22.0": true,
+    "esbuild@0.21.5": true,
+    "esbuild@0.28.2": true,
+    "prisma@5.22.0": true
+  }
+}
