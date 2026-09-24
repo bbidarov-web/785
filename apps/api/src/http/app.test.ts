@@ -126,6 +126,35 @@ describe('HTTP: /api/auth и защита эндпоинтов правами', 
     expect(updated?.role).toBe('platform_admin');
   });
 
+  it('КРИТИЧНО: повышение роли клиники до платформенной (или наоборот) отклоняется даже при подтверждении вторым администратором', async () => {
+    const admin1 = await container.auth.register({ inn: '7726345678', login: 'admin3', password: 'platform2026', password2: 'platform2026', fio: 'Admin Three', side: 'operator', role: 'platform_admin' });
+    const admin2 = await container.auth.register({ inn: '7726345678', login: 'admin4', password: 'platform2026', password2: 'platform2026', fio: 'Admin Four', side: 'operator', role: 'platform_admin' });
+    if (!admin1.ok || !admin2.ok) throw new Error('setup failed');
+    await repos.accounts.update(admin1.account.id, { pending: false });
+    await repos.accounts.update(admin2.account.id, { pending: false });
+    const clinicTarget = await container.auth.register({ inn: '7712345671', login: 'clinicvictim', password: 'admin2026aa', password2: 'admin2026aa', fio: 'X', side: 'clinic', role: 'clinic_admin' });
+    if (!clinicTarget.ok) throw new Error('setup failed');
+
+    async function loginAs(login: string) {
+      const res = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { inn: '7726345678', login, password: 'platform2026' } });
+      return extractCookie(res.headers['set-cookie'], 'k785_session')!;
+    }
+    const cookie1 = await loginAs('admin3');
+    const cookie2 = await loginAs('admin4');
+
+    const reqRes = await app.inject({
+      method: 'POST', url: '/api/admin/role-elevation/request', cookies: { k785_session: cookie1 },
+      payload: { accountId: clinicTarget.account.id, newRole: 'platform_admin' },
+    });
+    expect(reqRes.statusCode).toBe(200);
+    const requestId = reqRes.json().request.id;
+
+    const confirm = await app.inject({ method: 'POST', url: `/api/second-hand/${requestId}/confirm`, cookies: { k785_session: cookie2 } });
+    expect(confirm.statusCode).toBe(500); // apply() бросает — сторона не совпадает с ролью, обобщённый обработчик отдаёт 500, роль не меняется
+    const stillClinicAdmin = await repos.accounts.findById(clinicTarget.account.id);
+    expect(stillClinicAdmin?.role).toBe('clinic_admin');
+  });
+
   it('мобильный обход: список → ответ на пункт → завершение, полный HTTP-цикл', async () => {
     await repos.channels.set('platform', null, 'checklists', [
       { name: 'Чек-лист аудита стерилизационной', items: ['Режимы стерилизации соблюдаются?', 'Индикаторы вклеены?'] },
@@ -440,6 +469,32 @@ describe('HTTP: /api/auth и защита эндпоинтов правами', 
     const finalConfirm = await app.inject({ method: 'POST', url: `/api/second-hand/${requestId}/confirm`, cookies: { k785_session: headCookie } });
     expect(finalConfirm.statusCode).toBe(200);
     expect(finalConfirm.json().ok).toBe(true);
+  });
+
+  it('КРИТИЧНО: крупную оплату не может подтвердить ДРУГОЙ менеджер по продажам — нужен second:money (руководитель/администратор)', async () => {
+    const manager1 = await container.auth.register({ inn: '7726345678', login: 'manager3', password: 'manager2026', password2: 'manager2026', fio: 'Гусев Р. А.', side: 'operator', role: 'sales_manager' });
+    const manager2 = await container.auth.register({ inn: '7726345678', login: 'manager4', password: 'manager2026', password2: 'manager2026', fio: 'Петров П. П.', side: 'operator', role: 'sales_manager' });
+    if (!manager1.ok || !manager2.ok) throw new Error('setup failed');
+    await repos.accounts.update(manager1.account.id, { pending: false });
+    await repos.accounts.update(manager2.account.id, { pending: false });
+    await container.auth.register({ inn: '7712345671', login: 'clinicadmin3', password: 'admin2026aa', password2: 'admin2026aa', fio: 'X', side: 'clinic', role: 'clinic_admin' });
+    await repos.channels.set('platform', null, 'stage_docs', [{ code: 9, name: 'Дорогой этап', price: 150000, blocks: [] }], { updatedBy: null });
+
+    async function loginAs(login: string, password: string) {
+      const res = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { inn: '7726345678', login, password } });
+      return extractCookie(res.headers['set-cookie'], 'k785_session')!;
+    }
+    const clinicLogin = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { inn: '7712345671', login: 'clinicadmin3', password: 'admin2026aa' } });
+    const clinicCookie = extractCookie(clinicLogin.headers['set-cookie'], 'k785_session')!;
+    await app.inject({ method: 'POST', url: '/api/clinic/stages/9/request-payment', cookies: { k785_session: clinicCookie } });
+
+    const manager1Cookie = await loginAs('manager3', 'manager2026');
+    const confirmAttempt = await app.inject({ method: 'POST', url: '/api/panel/stage-payments/7712345671/9/confirm', cookies: { k785_session: manager1Cookie } });
+    const requestId = confirmAttempt.json().secondHandRequest.id;
+
+    const manager2Cookie = await loginAs('manager4', 'manager2026');
+    const collusion = await app.inject({ method: 'POST', url: `/api/second-hand/${requestId}/confirm`, cookies: { k785_session: manager2Cookie } });
+    expect(collusion.statusCode).toBe(403); // sales_manager не держит second:money — раньше проходило по money:write
   });
 
   it('годовой цикл → оборудование → сводный отчёт → самообследование → дашборд, полный HTTP-цикл', async () => {

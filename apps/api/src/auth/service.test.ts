@@ -35,6 +35,43 @@ describe('AuthService', () => {
     expect(login.ok).toBe(false);
   });
 
+  it('КРИТИЧНО: side=clinic с role=platform_admin отклоняется — саморегистрация не создаёт активного сотрудника платформы', async () => {
+    const r = await auth.register({
+      inn: '7712345671', login: 'fake_admin', password: 'medplus2026', password2: 'medplus2026',
+      fio: 'X', side: 'clinic', role: 'platform_admin',
+    });
+    expect(r.ok).toBe(false);
+    const login = await auth.login('7712345671', 'fake_admin', 'medplus2026', {});
+    expect(login.ok).toBe(false); // учётной записи не существует вовсе
+  });
+
+  it('side=clinic с любой другой платформенной ролью (methodist/sales_manager/sales_head) тоже отклоняется', async () => {
+    for (const role of ['methodist', 'sales_manager', 'sales_head'] as const) {
+      const r = await auth.register({
+        inn: '7712345671', login: 'x_' + role, password: 'medplus2026', password2: 'medplus2026',
+        fio: 'X', side: 'clinic', role,
+      });
+      expect(r.ok).toBe(false);
+    }
+  });
+
+  it('side=operator с клинической ролью (vkk_lead и т.п.) отклоняется', async () => {
+    const r = await auth.register({
+      inn: '7726345678', login: 'confused', password: 'metodist2026', password2: 'metodist2026',
+      fio: 'X', side: 'operator', role: 'vkk_lead',
+    });
+    expect(r.ok).toBe(false);
+  });
+
+  it('side=clinic с клинической ролью, отличной от clinic_admin (vkk_lead/nurse/auditor), проходит', async () => {
+    const r = await auth.register({
+      inn: '7712345671', login: 'vkk1', password: 'vkk2026lead', password2: 'vkk2026lead',
+      fio: 'Иванова М. А.', side: 'clinic', role: 'vkk_lead',
+    });
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.account.role).toBe('vkk_lead');
+  });
+
   it('отклоняет регистрацию с несовпадающими паролями', async () => {
     const r = await auth.register({ inn: '7712345671', login: 'x', password: 'aaaaaaaa1', password2: 'bbbbbbbb1', fio: 'x', side: 'clinic' });
     expect(r.ok).toBe(false);

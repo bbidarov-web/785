@@ -35,4 +35,16 @@ export class PrismaSecondHandRepo implements SecondHandRepo {
     });
     return { ...row, payload: row.payload as Record<string, unknown> };
   }
+
+  async setStatusIfPending(id: string, status: SecondHandStatus, confirmedById: string | null): Promise<SecondHandRequest | null> {
+    // updateMany с условием status='pending' в WHERE — Postgres берёт блокировку строки,
+    // конкурирующий вызов увидит уже изменённый статус и получит count=0 (compare-and-swap).
+    const res = await this.prisma.secondHandRequest.updateMany({
+      where: { id, status: 'pending' },
+      data: { status, confirmedById, confirmedAt: status === 'confirmed' || status === 'rejected' ? new Date() : null },
+    });
+    if (res.count === 0) return null;
+    const row = await this.prisma.secondHandRequest.findUnique({ where: { id } });
+    return row ? { ...row, payload: row.payload as Record<string, unknown> } : null;
+  }
 }

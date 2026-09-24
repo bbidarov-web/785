@@ -86,8 +86,9 @@ export class BulkOperationService {
   private async previewRows(def: BulkActionDef, tenantInns: string[]): Promise<{ rows: BulkPreviewRow[]; nameByInn: Map<string, string> }> {
     const tenants = await this.repos.tenants.listAll();
     const nameByInn = new Map(tenants.map((t) => [t.inn, t.name]));
-    const rows: BulkPreviewRow[] = [];
-    for (const inn of tenantInns) {
+    // Проверки независимы по клинике — параллелим, а не ждём каждую по
+    // очереди (было бы N последовательных round-trip на предпросмотр пачки).
+    const rows = await Promise.all(tenantInns.map(async (inn) => {
       const name = nameByInn.get(inn) ?? inn;
       let result: BulkCheckResult;
       try {
@@ -95,8 +96,8 @@ export class BulkOperationService {
       } catch {
         result = { ok: false, why: 'ошибка проверки' };
       }
-      rows.push({ inn, name, ok: !!result.ok, why: result.why ?? '', preview: result.preview ?? '' });
-    }
+      return { inn, name, ok: !!result.ok, why: result.why ?? '', preview: result.preview ?? '' };
+    }));
     return { rows, nameByInn };
   }
 

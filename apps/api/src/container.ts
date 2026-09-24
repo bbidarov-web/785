@@ -1,5 +1,5 @@
 import type { PrismaClient } from '@prisma/client';
-import { isRole, type Permission, type SecondHandAction } from '@kontur785/shared';
+import { isRole, isPlatformRole, isClinicRole, type Permission, type SecondHandAction } from '@kontur785/shared';
 import type { Repos } from './domain/ports.js';
 import { SystemClock } from './infra/memory/systemClock.js';
 import { ConsoleNotifier } from './infra/memory/notifier.js';
@@ -155,11 +155,21 @@ export function buildContainerFromRepos(repos: Repos) {
         const accountId = String(payload.accountId);
         const newRole = String(payload.newRole);
         if (!isRole(newRole)) throw new Error('Неизвестная роль в запросе');
+        const target = await repos.accounts.findById(accountId);
+        if (!target) throw new Error('Учётная запись не найдена');
+        // Роль обязана соответствовать стороне учётной записи — иначе повышение
+        // сделало бы сотрудника клиники платформенным (или наоборот), минуя
+        // регистрацию и подрывая изоляцию арендатора (см. AuthService.register).
+        if (target.side === 'clinic' && !isClinicRole(newRole)) throw new Error('Эта роль не предназначена для клиники');
+        if (target.side === 'platform' && !isPlatformRole(newRole)) throw new Error('Эта роль не предназначена для сотрудника платформы');
         return repos.accounts.update(accountId, { role: newRole });
       },
     },
     'money:confirm': {
-      confirmPermission: 'money:write',
+      // SERVER.md §4: подтверждение оплаты от SECOND_SUM ₽ — сотрудник со
+      // вторым правом (руководитель продаж/администратор), не просто любой
+      // держатель money:write (иначе два менеджера подтвердили бы друг другу).
+      confirmPermission: 'second:money',
       apply: payment.applyFromSecondHand,
     },
     'standard:publish': {

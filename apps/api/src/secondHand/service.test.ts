@@ -48,4 +48,31 @@ describe('SecondHandService — вторая рука (SERVER.md §4)', () => {
     const confirm = await svc.confirm(req.id, 'acc_3', async () => null);
     expect(confirm.ok).toBe(false);
   });
+
+  it('гонка: два одновременных подтверждения одного запроса — эффект применяется РОВНО ОДИН раз (TOCTOU)', async () => {
+    const req = await svc.request('money:confirm', { amount: 150000 }, null, 'acc_1');
+    let applyCalls = 0;
+    const apply = async () => { applyCalls++; return 'applied'; };
+    // оба вызова стартуют до того, как первый успеет записать статус — имитация гонки:
+    // обычный `findById` в памяти всё равно асинхронный (микротаска), поэтому оба
+    // успевают пройти проверку status==='pending' до setStatusIfPending
+    const [r1, r2] = await Promise.all([
+      svc.confirm(req.id, 'acc_2', apply),
+      svc.confirm(req.id, 'acc_3', apply),
+    ]);
+    const results = [r1, r2];
+    expect(results.filter((r) => r.ok)).toHaveLength(1);
+    expect(results.filter((r) => !r.ok)).toHaveLength(1);
+    expect(applyCalls).toBe(1); // не 2 — это и есть защита от двойного применения
+  });
+
+  it('если apply() падает после атомарного подтверждения — запрос остаётся confirmed, ошибка не проглатывается', async () => {
+    const req = await svc.request('tariff:delete', {}, null, 'acc_1');
+    const apply = async () => { throw new Error('не удалось сохранить'); };
+    await expect(svc.confirm(req.id, 'acc_2', apply)).rejects.toThrow('не удалось сохранить');
+    const after = await svc.get(req.id);
+    expect(after?.status).toBe('confirmed');
+    const log = await repos.auditLog.list({});
+    expect(log.some((l) => l.action === 'second-hand:confirm-apply-failed')).toBe(true);
+  });
 });

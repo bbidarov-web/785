@@ -55,6 +55,15 @@ export interface SecondHandRepo {
   findById(id: string): Promise<SecondHandRequest | null>;
   listPending(): Promise<SecondHandRequest[]>;
   setStatus(id: string, status: SecondHandStatus, confirmedById: string | null): Promise<SecondHandRequest>;
+  /**
+   * Атомарный переход pending → status: применяет запись, только если текущий
+   * статус ещё `pending` (compare-and-swap на уровне БД), иначе — `null`.
+   * Без этого два одновременных подтверждения одного запроса могли бы оба
+   * пройти проверку `status === 'pending'` и применить эффект дважды
+   * (TOCTOU) — на Prisma-адаптере это `updateMany` с условием в `WHERE`,
+   * а не read-then-write.
+   */
+  setStatusIfPending(id: string, status: SecondHandStatus, confirmedById: string | null): Promise<SecondHandRequest | null>;
 }
 
 export interface DocumentGrantRepo {

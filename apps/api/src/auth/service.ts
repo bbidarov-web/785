@@ -1,4 +1,4 @@
-import { normInn, normPhone, passwordIssues, validInn, innChecksum, isRole, type Role } from '@kontur785/shared';
+import { normInn, normPhone, passwordIssues, validInn, innChecksum, isRole, isClinicRole, isPlatformRole, type Role } from '@kontur785/shared';
 import { OTP_TTL_MS, RESET_TTL_MS, SESSION_TTL_MS } from '@kontur785/shared';
 import type { Repos } from '../domain/ports.js';
 import type { Account, Session } from '../domain/types.js';
@@ -39,7 +39,14 @@ export class AuthService {
       return { ok: false, error: 'Такой логин на этом ИНН уже зарегистрирован' };
     }
     const side: 'platform' | 'clinic' = input.side === 'operator' ? 'platform' : 'clinic';
+    if (input.role && !isRole(input.role)) return { ok: false, error: 'Неизвестная роль' };
     const role: Role = input.role && isRole(input.role) ? input.role : side === 'platform' ? 'methodist' : 'clinic_admin';
+    // Роль обязана соответствовать стороне регистрации — иначе саморегистрация
+    // с side=clinic и произвольной role=platform_admin создала бы АКТИВНУЮ
+    // учётную запись с правами всей платформы: для side=clinic заявка никогда
+    // не уходит в pending (см. ниже), в отличие от side=platform.
+    if (side === 'clinic' && !isClinicRole(role)) return { ok: false, error: 'Эта роль не предназначена для клиники' };
+    if (side === 'platform' && !isPlatformRole(role)) return { ok: false, error: 'Эта роль не предназначена для сотрудника платформы' };
     const passwordHash = await hashPassword(input.password);
     // сотрудник платформы не получает доступ по самой регистрации — иначе любой,
     // кто знает ИНН компании, заведёт себе учётную запись с доступом к данным клиник
@@ -84,6 +91,11 @@ export class AuthService {
   async approveAccount(id: string, role: Role, byAccountId: string): Promise<Result<{ account: Account }>> {
     const acc = await this.repos.accounts.findById(id);
     if (!acc) return { ok: false, error: 'Заявка не найдена' };
+    // Заявки в pending всегда со стороны платформы (side=clinic никогда не
+    // ждёт подтверждения) — но роль всё равно проверяем на всякий случай,
+    // тем же правилом, что и саморегистрация (см. register выше).
+    if (acc.side === 'platform' && !isPlatformRole(role)) return { ok: false, error: 'Эта роль не предназначена для сотрудника платформы' };
+    if (acc.side === 'clinic' && !isClinicRole(role)) return { ok: false, error: 'Эта роль не предназначена для клиники' };
     const updated = await this.repos.accounts.update(id, {
       pending: false,
       role,

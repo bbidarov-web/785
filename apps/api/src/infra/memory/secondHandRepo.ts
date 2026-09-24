@@ -35,4 +35,13 @@ export class InMemorySecondHandRepo implements SecondHandRepo {
     row.confirmedAt = status === 'confirmed' || status === 'rejected' ? this.clock.now() : null;
     return row;
   }
+
+  async setStatusIfPending(id: string, status: SecondHandStatus, confirmedById: string | null): Promise<SecondHandRequest | null> {
+    const row = this.rows.find((r) => r.id === id);
+    if (!row || row.status !== 'pending') return null;
+    row.status = status;
+    row.confirmedById = confirmedById;
+    row.confirmedAt = status === 'confirmed' || status === 'rejected' ? this.clock.now() : null;
+    return row;
+  }
 }

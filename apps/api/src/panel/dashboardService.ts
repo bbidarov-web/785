@@ -190,7 +190,13 @@ export class DashboardService {
     const rolloutDurations: number[] = [];
 
     for (const t of tenants) {
-      const sub = (await this.repos.channels.get<SubscriptionState>('tenant', t.inn, 'subscription', EMPTY_SUBSCRIPTION)).data;
+      // Оба чтения по клинике независимы — запускаем параллельно, а не ждём
+      // подписку перед этапами (было бы 2×N последовательных round-trip).
+      const [subRec, stagePaidRec] = await Promise.all([
+        this.repos.channels.get<SubscriptionState>('tenant', t.inn, 'subscription', EMPTY_SUBSCRIPTION),
+        this.repos.channels.get<Record<number, StagePaymentState>>('tenant', t.inn, 'stage_paid', {}),
+      ]);
+      const sub = subRec.data;
       if (sub.history.length > 0) everSubscribed++;
       if (sub.status === 'active' || sub.status === 'trial') {
         activeCount++;
@@ -202,7 +208,7 @@ export class DashboardService {
       }
       if (sub.status === 'expired' || sub.status === 'cancelled') churnedCount++;
 
-      const stagePaid = (await this.repos.channels.get<Record<number, StagePaymentState>>('tenant', t.inn, 'stage_paid', {})).data;
+      const stagePaid = stagePaidRec.data;
       const entries = Object.values(stagePaid);
       const requested = entries.map((e) => e.requestedAt).filter((s): s is string => !!s).map((s) => parseDate(s).getTime());
       const accepted = entries.map((e) => e.acceptedAt).filter((s): s is string => !!s).map((s) => parseDate(s).getTime());

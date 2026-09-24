@@ -34,7 +34,7 @@ export class SecondHandService {
     if (!req) return { ok: false, error: 'Запрос не найден' };
     if (req.status !== 'pending') return { ok: false, error: 'Запрос уже обработан' };
     if (req.expiresAt.getTime() < this.repos.clock.now().getTime()) {
-      await this.repos.secondHand.setStatus(requestId, 'expired', null);
+      await this.repos.secondHand.setStatusIfPending(requestId, 'expired', null);
       return { ok: false, error: 'Срок подтверждения истёк, оформите запрос заново' };
     }
     // своей же рукой провести нельзя — ядро правила
@@ -50,18 +50,40 @@ export class SecondHandService {
       });
       return { ok: false, error: 'Подтвердить может только другой сотрудник, не автор запроса' };
     }
-    const result = await apply(req.payload, confirmedById);
-    const confirmed = await this.repos.secondHand.setStatus(requestId, 'confirmed', confirmedById);
-    await this.repos.auditLog.append({
-      actorId: confirmedById,
-      actorRole: null,
-      tenantInn: req.tenantInn,
-      action: 'second-hand:confirm',
-      target: requestId,
-      meta: { type: req.type, requestedById: req.requestedById },
-      allowed: true,
-    });
-    return { ok: true, request: confirmed, result };
+    // Атомарный переход pending → confirmed ДО применения эффекта — защита от
+    // гонки: если два запроса подтверждения пришли одновременно, только один
+    // получит непустой результат отсюда, второй увидит "уже обработан" вместо
+    // того, чтобы оба применили эффект (двойная оплата/продление).
+    const confirmed = await this.repos.secondHand.setStatusIfPending(requestId, 'confirmed', confirmedById);
+    if (!confirmed) return { ok: false, error: 'Запрос уже обработан' };
+
+    try {
+      const result = await apply(req.payload, confirmedById);
+      await this.repos.auditLog.append({
+        actorId: confirmedById,
+        actorRole: null,
+        tenantInn: req.tenantInn,
+        action: 'second-hand:confirm',
+        target: requestId,
+        meta: { type: req.type, requestedById: req.requestedById },
+        allowed: true,
+      });
+      return { ok: true, request: confirmed, result };
+    } catch (err) {
+      // Запрос уже помечен подтверждённым (см. комментарий выше) — эффект не применился,
+      // это редкий сбой (после исчерпания внутренних повторов сервиса), а не гонка;
+      // фиксируем отдельной строкой в журнале для ручного разбора, а не молчим.
+      await this.repos.auditLog.append({
+        actorId: confirmedById,
+        actorRole: null,
+        tenantInn: req.tenantInn,
+        action: 'second-hand:confirm-apply-failed',
+        target: requestId,
+        meta: { type: req.type, error: err instanceof Error ? err.message : String(err) },
+        allowed: false,
+      });
+      throw err;
+    }
   }
 
   /** Нужен обобщённому эндпоинту подтверждения — по типу запроса решить, какое право и какой apply нужны. */
@@ -78,7 +100,8 @@ export class SecondHandService {
     const req = await this.repos.secondHand.findById(requestId);
     if (!req) return { ok: false, error: 'Запрос не найден' };
     if (req.status !== 'pending') return { ok: false, error: 'Запрос уже обработан' };
-    const updated = await this.repos.secondHand.setStatus(requestId, 'rejected', byId);
+    const updated = await this.repos.secondHand.setStatusIfPending(requestId, 'rejected', byId);
+    if (!updated) return { ok: false, error: 'Запрос уже обработан' };
     return { ok: true, request: updated };
   }
 }

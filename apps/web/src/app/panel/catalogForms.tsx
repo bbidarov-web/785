@@ -90,7 +90,7 @@ export function StageCatalogForm({ stages, canPublish, onPublish }: { stages: St
                       <input value={doc.name} disabled={!canPublish} onChange={(e) => updateDoc(si, bi, di, { name: e.target.value })} placeholder="Название документа" style={{ ...inputStyle, flex: '1 1 220px' }} />
                       <textarea value={doc.template} disabled={!canPublish} onChange={(e) => updateDoc(si, bi, di, { template: e.target.value })} placeholder="Текст шаблона" style={{ ...inputStyle, flex: '2 1 260px', minHeight: 44, fontFamily: 'inherit' }} />
                       {canPublish && (
-                        <button onClick={() => updateBlock(si, bi, { docs: block.docs.filter((_, m) => m !== di) })} style={outlineBtn}>✕</button>
+                        <button onClick={() => updateBlock(si, bi, { docs: block.docs.filter((_, m) => m !== di) })} style={outlineBtn} aria-label="Удалить документ">✕</button>
                       )}
                     </div>
                   ))}
@@ -202,7 +202,7 @@ export function CycleMasterForm({ cycle, canPublish, onPublish }: { cycle: Cycle
             <div key={i} style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <input value={term.level} disabled={!canPublish} onChange={(e) => updateTerm(i, { level: e.target.value })} placeholder="Степень (например «критическое»)" style={{ ...inputStyle, flex: '1 1 220px' }} />
               <input type="number" value={term.days} disabled={!canPublish} onChange={(e) => updateTerm(i, { days: Number(e.target.value) })} placeholder="Срок, дней" style={{ ...inputStyle, flex: '0 1 140px' }} />
-              {canPublish && <button onClick={() => setDraft((d) => ({ ...d, capaTerms: d.capaTerms.filter((_, j) => j !== i) }))} style={outlineBtn}>✕</button>}
+              {canPublish && <button onClick={() => setDraft((d) => ({ ...d, capaTerms: d.capaTerms.filter((_, j) => j !== i) }))} style={outlineBtn} aria-label="Удалить срок">✕</button>}
             </div>
           ))}
           {canPublish && (
@@ -258,7 +258,7 @@ export function EquipTypesForm({ types, canPublish, onPublish }: { types: EquipT
                   <option value="журнал">журнал</option>
                   <option value="чек-лист">чек-лист</option>
                 </select>
-                {canPublish && <button onClick={() => updateType(ti, { logs: type.logs.filter((_, k) => k !== li) })} style={outlineBtn}>✕</button>}
+                {canPublish && <button onClick={() => updateType(ti, { logs: type.logs.filter((_, k) => k !== li) })} style={outlineBtn} aria-label="Удалить форму">✕</button>}
               </div>
             ))}
             {canPublish && (
