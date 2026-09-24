@@ -3,13 +3,14 @@ import { createMemoryRepos } from '../testUtil/memoryRepos.js';
 import { CapaService } from './capaService.js';
 import type { Account } from '../domain/types.js';
 import type { WalkResultEntry } from '../shared/channelShapes.js';
+import { addDays, todayString } from '../shared/date.js';
 
 const inn = '7712345671';
 
 function makeAccount(role: Account['role'], fio: string): Account {
   return {
     id: 'acc_' + role, inn, login: role, phone: null, email: null, org: null,
-    fio, side: 'clinic', role, pending: false, requestedRole: null,
+    fio, side: 'clinic', role, pending: false, requestedRole: null, branchName: null,
     passwordHash: 'h', twoFactor: false, twoFactorVia: 'sms', blocked: false, mustChange: false,
     createdAt: new Date(), lastLoginAt: null, approvedById: null, approvedAt: null, passwordChangedAt: null,
   };
@@ -114,5 +115,73 @@ describe('CapaService — нарушения и корректирующие м�
   it('тенант-изоляция: находки другой клиники не видны', async () => {
     const otherVkk = { ...vkk, inn: '5001007322' };
     expect(await svc.listOpenFindings(otherVkk)).toEqual([]);
+  });
+
+  describe('срок по степени критичности (capaTerms методиста)', () => {
+    beforeEach(async () => {
+      await repos.channels.set('platform', null, 'cycle_master', {
+        year: 2026, dirs: [], capaTerms: [{ level: 'критическое', days: 3 }, { level: 'среднее', days: 10 }],
+      }, { updatedBy: null });
+    });
+
+    it('степень указана — срок считается от даты создания, а не берётся вручную', async () => {
+      const r = await svc.createFromFinding(vkk, 'p1', 1, { severity: 'критическое' });
+      expect(r.ok).toBe(true);
+      if (r.ok) {
+        expect(r.item.severity).toBe('критическое');
+        expect(r.item.due).toBe(addDays(todayString(), 3));
+      }
+    });
+
+    it('ручной due игнорируется, если указана степень — иначе можно было бы обойти каталог', async () => {
+      const r = await svc.createFromFinding(vkk, 'p1', 1, { severity: 'среднее', due: '01.01.2000' });
+      expect(r.ok).toBe(true);
+      if (r.ok) expect(r.item.due).not.toBe('01.01.2000');
+    });
+
+    it('неизвестная степень отклоняется явной ошибкой, а не произвольным сроком', async () => {
+      const r = await svc.createFromFinding(vkk, 'p1', 1, { severity: 'несуществующая' });
+      expect(r.ok).toBe(false);
+    });
+
+    it('степень не указана — работает как раньше, срок вручную', async () => {
+      const r = await svc.createFromFinding(vkk, 'p1', 1, { due: '15.03.2026' });
+      expect(r.ok).toBe(true);
+      if (r.ok) { expect(r.item.due).toBe('15.03.2026'); expect(r.item.severity).toBeNull(); }
+    });
+  });
+
+  describe('проверка эффективности мероприятия', () => {
+    it('эффективно — мероприятие остаётся выполненным, отметка сохраняется', async () => {
+      const created = await svc.createFromFinding(vkk, 'p1', 1, { who: 'Петрова В. В.' });
+      if (!created.ok) throw new Error('setup');
+      await svc.updateStatus(nurse, created.item.id, 'done');
+      const r = await svc.checkEffectiveness(vkk, created.item.id, true, 'Повторно не выявлено');
+      expect(r.ok).toBe(true);
+      if (r.ok) { expect(r.item.status).toBe('done'); expect(r.item.effectiveness).toBe('effective'); }
+    });
+
+    it('неэффективно — мероприятие возвращается в работу, а не просто помечается', async () => {
+      const created = await svc.createFromFinding(vkk, 'p1', 1, { who: 'Петрова В. В.' });
+      if (!created.ok) throw new Error('setup');
+      await svc.updateStatus(nurse, created.item.id, 'done');
+      const r = await svc.checkEffectiveness(vkk, created.item.id, false, 'Нарушение повторилось');
+      expect(r.ok).toBe(true);
+      if (r.ok) { expect(r.item.status).toBe('planned'); expect(r.item.effectiveness).toBe('not_effective'); expect(r.item.closedAt).toBeNull(); }
+    });
+
+    it('нельзя проверить эффективность у ещё не выполненного мероприятия', async () => {
+      const created = await svc.createFromFinding(vkk, 'p1', 1, {});
+      if (!created.ok) throw new Error('setup');
+      const r = await svc.checkEffectiveness(vkk, created.item.id, true, '');
+      expect(r.ok).toBe(false);
+    });
+
+    it('исполнитель (capa:own) не может проверять эффективность — нет capa:write', async () => {
+      const created = await svc.createFromFinding(vkk, 'p1', 1, { who: 'Петрова В. В.' });
+      if (!created.ok) throw new Error('setup');
+      await svc.updateStatus(nurse, created.item.id, 'done');
+      await expect(svc.checkEffectiveness(nurse, created.item.id, true, '')).rejects.toThrow();
+    });
   });
 });

@@ -8,7 +8,7 @@ const inn = '7712345671';
 function makeAccount(role: Account['role']): Account {
   return {
     id: 'acc_' + role, inn, login: role, phone: null, email: null, org: null,
-    fio: 'Иванова М. А.', side: 'clinic', role, pending: false, requestedRole: null,
+    fio: 'Иванова М. А.', side: 'clinic', role, pending: false, requestedRole: null, branchName: null,
     passwordHash: 'h', twoFactor: false, twoFactorVia: 'sms', blocked: false, mustChange: false,
     createdAt: new Date(), lastLoginAt: null, approvedById: null, approvedAt: null, passwordChangedAt: null,
   };
@@ -79,5 +79,30 @@ describe('PlanService — план проверок', () => {
     await svc.create(vkk, { date: '01.03.2026', dir: 'ЧЛ', object: 'X', who: 'Y', kind: 'плановая' });
     const otherVkk = { ...vkk, inn: '5001007322' };
     expect(await svc.list(otherVkk)).toEqual([]);
+  });
+
+  describe('изоляция по филиалу (account.branchName)', () => {
+    it('аудитор без привязки к филиалу видит весь план клиники', async () => {
+      await svc.create(vkk, { date: '01.03.2026', dir: 'A', object: 'X', branch: 'Филиал 1', who: 'Y', kind: 'плановая' });
+      await svc.create(vkk, { date: '01.03.2026', dir: 'B', object: 'X', branch: 'Филиал 2', who: 'Y', kind: 'плановая' });
+      expect(await svc.list(auditor)).toHaveLength(2);
+    });
+
+    it('аудитор, закреплённый за филиалом, видит только свой филиал и записи без филиала', async () => {
+      await svc.create(vkk, { date: '01.03.2026', dir: 'A', object: 'X', branch: 'Филиал 1', who: 'Y', kind: 'плановая' });
+      await svc.create(vkk, { date: '01.03.2026', dir: 'B', object: 'X', branch: 'Филиал 2', who: 'Y', kind: 'плановая' });
+      await svc.create(vkk, { date: '01.03.2026', dir: 'C', object: 'X', who: 'Y', kind: 'плановая' }); // без филиала — видна всем
+      const scoped = { ...auditor, branchName: 'Филиал 1' };
+      const list = await svc.list(scoped);
+      expect(list.map((p) => p.dir).sort()).toEqual(['A', 'C']);
+    });
+
+    it('vkk_lead, закреплённый за филиалом, тоже видит только свой филиал — правило не зависит от роли', async () => {
+      await svc.create(vkk, { date: '01.03.2026', dir: 'A', object: 'X', branch: 'Филиал 1', who: 'Y', kind: 'плановая' });
+      await svc.create(vkk, { date: '01.03.2026', dir: 'B', object: 'X', branch: 'Филиал 2', who: 'Y', kind: 'плановая' });
+      const scopedVkk = { ...vkk, branchName: 'Филиал 2' };
+      const list = await svc.list(scopedVkk);
+      expect(list.map((p) => p.dir)).toEqual(['B']);
+    });
   });
 });

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { isRole } from '@kontur785/shared';
 import { requireAuth } from '../plugins/session.js';
 import { assertPermission, PermissionDeniedError } from '../../rbac/service.js';
+import { toPublicAccount } from '../../auth/service.js';
 
 const approveSchema = z.object({ role: z.string() });
 const elevateRequestSchema = z.object({ accountId: z.string(), newRole: z.string() });
@@ -34,7 +35,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     const ctx = await requireRoleManage(req, reply);
     if (!ctx) return;
     const pending = await app.container.auth.listPending();
-    return reply.send({ ok: true, pending });
+    return reply.send({ ok: true, pending: pending.map(toPublicAccount) });
   });
 
   app.post('/api/admin/accounts/:id/approve', async (req, reply) => {
@@ -53,6 +54,15 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     const { id } = z.object({ id: z.string() }).parse(req.params);
     const r = await app.container.auth.rejectAccount(id, ctx.account.id);
     return reply.code(r.ok ? 200 : 400).send(r);
+  });
+
+  // Проверка целостности журнала действий (audit/chain.ts) — обнаруживает
+  // правку/удаление записи в обход интерфейса, в том числе задним числом.
+  app.get('/api/admin/audit-log/verify', async (req, reply) => {
+    const ctx = await requireRoleManage(req, reply);
+    if (!ctx) return;
+    const result = await app.container.repos.auditLog.verifyChain();
+    return reply.send(result);
   });
 
   // Шаг 1 «второй руки»: запрос на повышение роли уже действующего сотрудника

@@ -6,7 +6,7 @@ import type { Account } from '../domain/types.js';
 function makeAccount(patch: Partial<Account>): Account {
   return {
     id: 'acc_op', inn: '7726345678', login: 'metodist', phone: null, email: null, org: null,
-    fio: 'Николаева Е. В.', side: 'platform', role: 'methodist', pending: false, requestedRole: null,
+    fio: 'Николаева Е. В.', side: 'platform', role: 'methodist', pending: false, requestedRole: null, branchName: null,
     passwordHash: 'h', twoFactor: false, twoFactorVia: 'sms', blocked: false, mustChange: false,
     createdAt: new Date(), lastLoginAt: null, approvedById: null, approvedAt: null, passwordChangedAt: null,
     ...patch,

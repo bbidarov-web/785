@@ -3,12 +3,12 @@ import { createMemoryRepos } from '../testUtil/memoryRepos.js';
 import { WorkQueueService } from './workQueueService.js';
 import { addDays, todayString } from '../shared/date.js';
 import type { Account } from '../domain/types.js';
-import type { StagePaymentState, SubscriptionState } from '../shared/channelShapes.js';
+import type { QueueDigestSettings, StagePaymentState, SubscriptionState } from '../shared/channelShapes.js';
 
 function makeAccount(role: Account['role'], id: string): Account {
   return {
     id, inn: '7726345678', login: id, phone: null, email: null, org: null,
-    fio: 'Оператор', side: 'platform', role, pending: false, requestedRole: null,
+    fio: 'Оператор', side: 'platform', role, pending: false, requestedRole: null, branchName: null,
     passwordHash: 'h', twoFactor: false, twoFactorVia: 'sms', blocked: false, mustChange: false,
     createdAt: new Date(), lastLoginAt: null, approvedById: null, approvedAt: null, passwordChangedAt: null,
   };
@@ -119,5 +119,43 @@ describe('WorkQueueService — очередь работы', () => {
     expect(r.settings.lastSentAt).toBe(todayString());
     expect(repos.notifier.sentDigests).toHaveLength(1);
     expect(repos.notifier.sentDigests[0]?.to).toBe('ops@standart-kachestva.ru');
+  });
+
+  describe('runScheduledDigest — автоматическая отправка планировщиком (scheduler.ts)', () => {
+    it('без настроенного получателя ничего не отправляет', async () => {
+      const r = await svc.runScheduledDigest();
+      expect(r).toEqual({ sent: false, taskCount: 0 });
+      expect(repos.notifier.sentDigests).toHaveLength(0);
+    });
+
+    it('с получателем отправляет сводку сама, без вошедшего пользователя', async () => {
+      await svc.saveDigestSettings(methodist, { recipientEmail: 'ops@standart-kachestva.ru', schedule: 'каждое утро, 09:00' });
+      const r = await svc.runScheduledDigest();
+      expect(r.sent).toBe(true);
+      expect(r.taskCount).toBeGreaterThan(0);
+      expect(repos.notifier.sentDigests).toHaveLength(1);
+    });
+
+    it('не отправляет повторно в тот же день — идемпотентно на несколько тиков планировщика', async () => {
+      await svc.saveDigestSettings(methodist, { recipientEmail: 'ops@standart-kachestva.ru', schedule: 'каждое утро, 09:00' });
+      await svc.runScheduledDigest();
+      const second = await svc.runScheduledDigest();
+      expect(second).toEqual({ sent: false, taskCount: 0 });
+      expect(repos.notifier.sentDigests).toHaveLength(1);
+    });
+
+    it('на следующий день отправляет снова', async () => {
+      await svc.saveDigestSettings(methodist, { recipientEmail: 'ops@standart-kachestva.ru', schedule: 'каждое утро, 09:00' });
+      await svc.runScheduledDigest();
+      // "переносим" отметку последней отправки на вчера — todayString() всегда
+      // реальное системное время, поэтому имитируем следующий день так же,
+      // как это уже делает тест «закрыть» выше — правкой сохранённой даты.
+      const rec = await repos.channels.get<QueueDigestSettings>('platform', null, 'queue_digest_settings', { recipientEmail: '', schedule: '', lastSentAt: null });
+      const patched = { ...rec.data, lastSentAt: addDays(todayString(), -1) };
+      await repos.channels.set('platform', null, 'queue_digest_settings', patched, { expectedVersion: rec.version, updatedBy: null });
+      const next = await svc.runScheduledDigest();
+      expect(next.sent).toBe(true);
+      expect(repos.notifier.sentDigests).toHaveLength(2);
+    });
   });
 });

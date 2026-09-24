@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { can } from '@kontur785/shared';
 import type { Repos } from '../domain/ports.js';
 import type { Account } from '../domain/types.js';
-import { assertPermission, PermissionDeniedError } from '../rbac/service.js';
+import { assertPermission, PermissionDeniedError, visibleToBranch } from '../rbac/service.js';
 import { assignees, isMine } from '../shared/assignment.js';
 import type { EquipmentFill, EquipmentPosition, EquipmentType } from '../shared/channelShapes.js';
 
@@ -59,7 +59,8 @@ export class EquipmentService {
 
   async listPositions(account: Account): Promise<EquipmentPosition[]> {
     await assertPermission(this.repos.auditLog, account, 'doc:read', 'equipment:list', null, account.inn);
-    return (await this.repos.channels.get<EquipmentPosition[]>('tenant', account.inn, 'equip_pos', [])).data;
+    const positions = (await this.repos.channels.get<EquipmentPosition[]>('tenant', account.inn, 'equip_pos', [])).data;
+    return positions.filter((p) => visibleToBranch(account, p.branch));
   }
 
   async getTypes(): Promise<EquipmentType[]> {
@@ -103,6 +104,7 @@ export class EquipmentService {
     const now = this.repos.clock.now();
     const out: EquipmentFormView[] = [];
     for (const p of positions.data) {
+      if (!visibleToBranch(account, p.branch)) continue;
       const type = typeByKey.get(p.type ?? '');
       for (const log of type?.logs ?? []) {
         const who = (p.logWho ?? {})[log.name] ?? '';

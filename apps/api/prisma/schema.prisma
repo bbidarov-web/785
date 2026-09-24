@@ -63,6 +63,8 @@ model Account {
   role             Role
   pending          Boolean       @default(false)
   requestedRole    Role?
+  /// Ограничивает видимость плана проверок и оборудования СВОИМ филиалом (Branch.name) — null значит без ограничения.
+  branchName       String?
   passwordHash     String
   twoFactor        Boolean       @default(false)
   twoFactorVia     TwoFactorVia  @default(sms)
@@ -130,7 +132,10 @@ model OtpCode {
 /// миграцией (см. `prisma/migrations/.../append_only_audit_log.sql`) и правами роли БД.
 model AuditLogEntry {
   id         String   @id @default(cuid())
-  at         DateTime @default(now())
+  /// Монотонный номер в цепочке хешей — назначается приложением под advisory-локом
+  /// (не autoincrement: значение нужно ДО INSERT, чтобы посчитать hash для этой же строки).
+  seq        Int      @unique
+  at         DateTime
   actorId    String?
   actorRole  Role?
   tenantInn  String?
@@ -138,6 +143,10 @@ model AuditLogEntry {
   target     String?
   meta       Json?
   allowed    Boolean
+  /// HMAC предыдущей записи цепочки — null только у самой первой записи (audit/chain.ts).
+  prevHash   String?
+  /// HMAC-SHA256(AUDIT_LOG_SECRET, prevHash + канонический вид этой записи).
+  hash       String
 
   tenant Tenant? @relation(fields: [tenantInn], references: [inn], onDelete: SetNull)
 

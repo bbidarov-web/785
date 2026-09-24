@@ -107,10 +107,16 @@ export interface CapaItem {
   comment: string;
   who: string; // ответственный за устранение
   due: string; // ДД.ММ.ГГГГ, может быть пустым — задаётся позже
+  /** Степень критичности из каталога методиста (`CycleMaster.capaTerms[].level`) — null, если не указана (срок тогда задаётся вручную). */
+  severity: string | null;
   status: 'planned' | 'done';
   createdAt: string;
   createdBy: string;
   closedAt: string | null;
+  /** Формальная проверка эффективности мероприятия (README «Нарушения и CAPA») — отдельно от статуса "выполнено": исполнитель устранил, а проверяющий подтверждает, что нарушение не повторяется. */
+  effectiveness: 'not_checked' | 'effective' | 'not_effective';
+  effectivenessComment: string;
+  effectivenessAt: string | null;
 }
 
 /**

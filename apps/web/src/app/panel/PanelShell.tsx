@@ -8,7 +8,7 @@ import {
 } from './catalogForms';
 import {
   TariffsForm, SubscriptionsPanel, BulkOperationsPanel, ClientCatalogTab,
-  type TariffDraft, type SubscriptionRow, type SubscriptionSummary, type BulkPreviewRow, type BulkReport,
+  type TariffDraft, type SubscriptionRow, type SubscriptionSummary, type BulkPreviewRow, type BulkReport, type BulkJob,
   type FinancialSummary, type PortfolioSummary, type RichClientRow,
 } from './salesForms';
 import { WorkQueueTab, type QueueTask, type DigestSettings } from './queueForms';
@@ -88,6 +88,12 @@ export function PlatformPanelShell({ allowedRoles, heading }: { allowedRoles: st
   const [subscriptions, setSubscriptions] = useState<SubscriptionRow[]>([]);
   const [subscriptionSummary, setSubscriptionSummary] = useState<SubscriptionSummary | null>(null);
   const [bulkReports, setBulkReports] = useState<BulkReport[]>([]);
+  const [bulkJob, setBulkJob] = useState<BulkJob | null>(null);
+
+  const refreshBulkJob = useCallback(async (jobId: string) => {
+    const r = await api.get<{ ok: true; job: BulkJob } | { ok: false; error: string }>(`/api/panel/bulk/jobs/${jobId}`);
+    if (r.ok) setBulkJob(r.job);
+  }, []);
   const [financials, setFinancials] = useState<FinancialSummary | null>(null);
   const [portfolio, setPortfolio] = useState<PortfolioSummary | null>(null);
   const [periodDays, setPeriodDays] = useState(30);
@@ -358,6 +364,7 @@ export function PlatformPanelShell({ allowedRoles, heading }: { allowedRoles: st
 
         {tab === 'bulk' && (
           <BulkOperationsPanel clients={clients} canMoney={canManageMoney} canMethodology={canManageMethodology} reports={bulkReports}
+            activeJob={bulkJob} onRefreshJob={() => bulkJob && refreshBulkJob(bulkJob.id)}
             onPrepare={async (action, inns) => {
               const r = await api.post<{ ok: true; label: string; undoable: boolean; rows: BulkPreviewRow[] } | { ok: false; error: string }>(`/api/panel/bulk/${action}/prepare`, { tenantInns: inns });
               if (!r.ok) { say(r.error); return null; }
@@ -443,9 +450,15 @@ export function PlatformPanelShell({ allowedRoles, heading }: { allowedRoles: st
         {tab === 'secondhand' && (
           <SecondHandTab items={secondHand}
             onConfirm={async (id) => {
-              const r = await api.post<{ ok: true } | { ok: false; error: string }>(`/api/second-hand/${id}/confirm`, {});
+              const r = await api.post<{ ok: true; result?: { jobId?: string } } | { ok: false; error: string }>(`/api/second-hand/${id}/confirm`, {});
               if (!r.ok) { say(r.error); return; }
-              await loadAll(); say('Операция подтверждена');
+              if (r.result?.jobId) {
+                await refreshBulkJob(r.result.jobId);
+                say('Подтверждено — пачка применяется в фоне, статус смотрите во вкладке «Массовые операции»');
+              } else {
+                say('Операция подтверждена');
+              }
+              await loadAll();
             }}
             onReject={async (id) => {
               const r = await api.post<{ ok: true } | { ok: false; error: string }>(`/api/second-hand/${id}/reject`, {});

@@ -233,17 +233,29 @@ export interface BulkReport {
   undoneAt: string | null;
 }
 
+/** Пачка больше 20 клиник после подтверждения второй рукой применяется в фоне — панель опрашивает прогресс. */
+export interface BulkJob {
+  id: string;
+  actionKey: string;
+  status: 'running' | 'done' | 'failed';
+  total: number;
+  doneCount: number;
+  reportId: string | null;
+  error: string | null;
+}
+
 const BULK_ACTION_OPTIONS = [
   { key: 'subscription-extend', label: 'Продлить подписку (+30 дней)', group: 'money' as const },
   { key: 'subscription-remind', label: 'Напомнить об оплате', group: 'money' as const },
   { key: 'cycle-bulk-apply', label: 'Применить годовой цикл эталона', group: 'standard' as const },
 ];
 
-export function BulkOperationsPanel({ clients, canMoney, canMethodology, reports, onPrepare, onCommit, onUndo }: {
-  clients: BulkClient[]; canMoney: boolean; canMethodology: boolean; reports: BulkReport[];
+export function BulkOperationsPanel({ clients, canMoney, canMethodology, reports, activeJob, onPrepare, onCommit, onUndo, onRefreshJob }: {
+  clients: BulkClient[]; canMoney: boolean; canMethodology: boolean; reports: BulkReport[]; activeJob: BulkJob | null;
   onPrepare: (action: string, inns: string[]) => Promise<{ label: string; undoable: boolean; rows: BulkPreviewRow[] } | null>;
   onCommit: (action: string, inns: string[]) => void;
   onUndo: (reportId: string) => void;
+  onRefreshJob: () => void;
 }) {
   const [action, setAction] = useState(BULK_ACTION_OPTIONS[0]!.key);
   const [picked, setPicked] = useState<Record<string, boolean>>({});
@@ -258,6 +270,16 @@ export function BulkOperationsPanel({ clients, canMoney, canMethodology, reports
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {activeJob && (
+        <div style={cardStyle}>
+          <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 6 }}>Фоновая пачка: {activeJob.status === 'running' ? 'выполняется' : activeJob.status === 'done' ? 'завершена' : 'ошибка'}</div>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 }}>
+            обработано {activeJob.doneCount} из {activeJob.total}{activeJob.error ? ` · ${activeJob.error}` : ''}
+          </div>
+          {activeJob.status === 'running' && <button onClick={onRefreshJob} style={{ ...outlineBtn, marginTop: 8 }}>Обновить статус</button>}
+        </div>
+      )}
+
       <div style={cardStyle}>
         <div style={{ fontSize: 13.5, fontWeight: 800, marginBottom: 10 }}>Массовая операция по отмеченным клиникам</div>
         <select value={action} onChange={(e) => { setAction(e.target.value); setPreview(null); }} style={{ ...inputStyle, marginBottom: 10 }}>

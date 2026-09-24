@@ -1,7 +1,10 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { isRole } from '@kontur785/shared';
 import { requireAuth } from '../plugins/session.js';
 import { PermissionDeniedError } from '../../rbac/service.js';
+import { toPublicAccount } from '../../auth/service.js';
+import { renderDocx, renderPdf } from '../../documents/render.js';
 
 const staffSchema = z.object({ fio: z.string().min(1), pos: z.string().default('') });
 const assignSchema = z.object({ who: z.string() });
@@ -15,8 +18,9 @@ const planInputSchema = z.object({
   check: z.string().optional(),
 });
 const planPatchSchema = planInputSchema.partial();
-const capaCreateSchema = z.object({ planId: z.string(), itemIndex: z.number().int().min(0), due: z.string().optional(), who: z.string().optional() });
+const capaCreateSchema = z.object({ planId: z.string(), itemIndex: z.number().int().min(0), due: z.string().optional(), who: z.string().optional(), severity: z.string().optional() });
 const capaStatusSchema = z.object({ status: z.enum(['planned', 'done']) });
+const capaEffectivenessSchema = z.object({ effective: z.boolean(), comment: z.string().optional() });
 
 /**
  * Личный кабинет ВКК — первая часть (README «Сотрудники и матрица
@@ -56,6 +60,49 @@ export async function clinicRoutes(app: FastifyInstance): Promise<void> {
     if (!ctx) return;
     const { fio } = z.object({ fio: z.string() }).parse(req.params);
     const r = await guarded(() => app.container.staff.remove(ctx.account, decodeURIComponent(fio)), reply);
+    if (r === undefined) return;
+    return reply.code(r.ok ? 200 : 400).send(r);
+  });
+
+  // Заявки на доступ к клинике (README «Доступы и роли») — закрывает саморегистрацию
+  // незнакомца в чужую клинику по публичному ИНН (auth/service.ts register()):
+  // заявка появляется здесь, только администратор клиники может её подтвердить/отклонить.
+  app.get('/api/clinic/accounts/pending', async (req, reply) => {
+    const ctx = requireAuth(req, reply);
+    if (!ctx) return;
+    const pending = await guarded(() => app.container.auth.listPendingForClinic(ctx.account), reply);
+    if (pending === undefined) return;
+    return reply.send({ ok: true, pending: pending.map(toPublicAccount) });
+  });
+
+  app.post('/api/clinic/accounts/:id/approve', async (req, reply) => {
+    const ctx = requireAuth(req, reply);
+    if (!ctx) return;
+    const { id } = z.object({ id: z.string() }).parse(req.params);
+    const { role, branchName } = z.object({ role: z.string(), branchName: z.string().optional() }).parse(req.body);
+    if (!isRole(role)) return reply.code(400).send({ ok: false, error: 'Неизвестная роль' });
+    const r = await guarded(() => app.container.auth.approveClinicAccount(ctx.account, id, role, branchName), reply);
+    if (r === undefined) return;
+    return reply.code(r.ok ? 200 : 400).send(r);
+  });
+
+  app.post('/api/clinic/accounts/:id/reject', async (req, reply) => {
+    const ctx = requireAuth(req, reply);
+    if (!ctx) return;
+    const { id } = z.object({ id: z.string() }).parse(req.params);
+    const r = await guarded(() => app.container.auth.rejectClinicAccount(ctx.account, id), reply);
+    if (r === undefined) return;
+    return reply.code(r.ok ? 200 : 400).send(r);
+  });
+
+  // Закрепление уже активного сотрудника за филиалом (README «Объекты как первый класс») —
+  // ограничивает видимость плана и оборудования; null снимает ограничение.
+  app.put('/api/clinic/accounts/:id/branch', async (req, reply) => {
+    const ctx = requireAuth(req, reply);
+    if (!ctx) return;
+    const { id } = z.object({ id: z.string() }).parse(req.params);
+    const { branchName } = z.object({ branchName: z.string().nullable() }).parse(req.body);
+    const r = await guarded(() => app.container.auth.setAccountBranch(ctx.account, id, branchName), reply);
     if (r === undefined) return;
     return reply.code(r.ok ? 200 : 400).send(r);
   });
@@ -134,7 +181,7 @@ export async function clinicRoutes(app: FastifyInstance): Promise<void> {
     const ctx = requireAuth(req, reply);
     if (!ctx) return;
     const body = capaCreateSchema.parse(req.body);
-    const r = await guarded(() => app.container.capa.createFromFinding(ctx.account, body.planId, body.itemIndex, { due: body.due, who: body.who }), reply);
+    const r = await guarded(() => app.container.capa.createFromFinding(ctx.account, body.planId, body.itemIndex, { due: body.due, who: body.who, severity: body.severity }), reply);
     if (r === undefined) return;
     return reply.code(r.ok ? 200 : 400).send(r);
   });
@@ -145,6 +192,16 @@ export async function clinicRoutes(app: FastifyInstance): Promise<void> {
     const { id } = z.object({ id: z.string() }).parse(req.params);
     const { status } = capaStatusSchema.parse(req.body);
     const r = await guarded(() => app.container.capa.updateStatus(ctx.account, id, status), reply);
+    if (r === undefined) return;
+    return reply.code(r.ok ? 200 : 400).send(r);
+  });
+
+  app.put('/api/clinic/capa/:id/effectiveness', async (req, reply) => {
+    const ctx = requireAuth(req, reply);
+    if (!ctx) return;
+    const { id } = z.object({ id: z.string() }).parse(req.params);
+    const { effective, comment } = capaEffectivenessSchema.parse(req.body);
+    const r = await guarded(() => app.container.capa.checkEffectiveness(ctx.account, id, effective, comment ?? ''), reply);
     if (r === undefined) return;
     return reply.code(r.ok ? 200 : 400).send(r);
   });
@@ -182,5 +239,37 @@ export async function clinicRoutes(app: FastifyInstance): Promise<void> {
     const r = await guarded(() => app.container.stage.getDocumentContent(ctx.account, decodeURIComponent(name)), reply);
     if (r === undefined) return;
     return reply.code(r.ok ? 200 : 400).send(r);
+  });
+
+  // Тот же контент, что «/content», но упакованный в файл (README «Файлы и
+  // электронная подпись») — те же проверки выдачи/оплаты, просто другой формат ответа.
+  app.get('/api/clinic/documents/:name/docx', async (req, reply) => {
+    const ctx = requireAuth(req, reply);
+    if (!ctx) return;
+    const { name: rawName } = z.object({ name: z.string() }).parse(req.params);
+    const name = decodeURIComponent(rawName);
+    const r = await guarded(() => app.container.stage.getDocumentContent(ctx.account, name), reply);
+    if (r === undefined) return;
+    if (!r.ok) return reply.code(400).send(r);
+    const buf = await renderDocx(name, r.content);
+    return reply
+      .header('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+      .header('Content-Disposition', `attachment; filename="${encodeURIComponent(name)}.docx"`)
+      .send(buf);
+  });
+
+  app.get('/api/clinic/documents/:name/pdf', async (req, reply) => {
+    const ctx = requireAuth(req, reply);
+    if (!ctx) return;
+    const { name: rawName } = z.object({ name: z.string() }).parse(req.params);
+    const name = decodeURIComponent(rawName);
+    const r = await guarded(() => app.container.stage.getDocumentContent(ctx.account, name), reply);
+    if (r === undefined) return;
+    if (!r.ok) return reply.code(400).send(r);
+    const buf = await renderPdf(name, r.content);
+    return reply
+      .header('Content-Type', 'application/pdf')
+      .header('Content-Disposition', `attachment; filename="${encodeURIComponent(name)}.pdf"`)
+      .send(buf);
   });
 }

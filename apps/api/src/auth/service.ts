@@ -2,9 +2,28 @@ import { normInn, normPhone, passwordIssues, validInn, innChecksum, isRole, isCl
 import { OTP_TTL_MS, RESET_TTL_MS, SESSION_TTL_MS } from '@kontur785/shared';
 import type { Repos } from '../domain/ports.js';
 import type { Account, Session } from '../domain/types.js';
+import { assertPermission, assertTenantScope } from '../rbac/service.js';
 import { generateOtp, hashCode, hashPassword, verifyCode, verifyPassword } from './hash.js';
 
 export type Result<T> = { ok: true } & T | { ok: false; error: string };
+
+export interface PublicAccount {
+  id: string;
+  login: string;
+  fio: string;
+  phone: string | null;
+  email: string | null;
+  side: Account['side'];
+  role: Role;
+  requestedRole: Role | null;
+  branchName: string | null;
+  createdAt: Date;
+}
+
+/** Проекция Account без passwordHash и прочих внутренних полей — единственное, что можно отдавать в ответ HTTP (CLAUDE.md: не логировать/не светить секреты). */
+export function toPublicAccount(a: Account): PublicAccount {
+  return { id: a.id, login: a.login, fio: a.fio, phone: a.phone, email: a.email, side: a.side, role: a.role, requestedRole: a.requestedRole, branchName: a.branchName, createdAt: a.createdAt };
+}
 
 export interface RegisterInput {
   inn: string;
@@ -44,13 +63,18 @@ export class AuthService {
     // Роль обязана соответствовать стороне регистрации — иначе саморегистрация
     // с side=clinic и произвольной role=platform_admin создала бы АКТИВНУЮ
     // учётную запись с правами всей платформы: для side=clinic заявка никогда
-    // не уходит в pending (см. ниже), в отличие от side=platform.
+    // не уходит в pending по этой причине (см. ниже — по другой причине уходит).
     if (side === 'clinic' && !isClinicRole(role)) return { ok: false, error: 'Эта роль не предназначена для клиники' };
     if (side === 'platform' && !isPlatformRole(role)) return { ok: false, error: 'Эта роль не предназначена для сотрудника платформы' };
     const passwordHash = await hashPassword(input.password);
-    // сотрудник платформы не получает доступ по самой регистрации — иначе любой,
-    // кто знает ИНН компании, заведёт себе учётную запись с доступом к данным клиник
-    const pending = side === 'platform';
+    // ИНН организации — публичные данные (ЕГРЮЛ/ФНС). Если клиника с этим ИНН
+    // уже существует, саморегистрация не может дать НЕЗНАКОМЦУ немедленный
+    // доступ к её данным просто потому, что он знает её ИНН — заявка ждёт
+    // подтверждения администратором ЭТОЙ клиники (approveClinicAccount ниже),
+    // как и заявка сотрудника платформы ждёt администратора платформы. Только
+    // первая регистрация на НОВЫЙ ИНН заводит клинику и пускает сразу.
+    const existingTenant = side === 'clinic' ? await this.repos.tenants.findByInn(inn) : null;
+    const pending = side === 'platform' || !!existingTenant;
     const account = await this.repos.accounts.create({
       inn,
       login,
@@ -61,18 +85,20 @@ export class AuthService {
       phone: input.phone ? normPhone(input.phone) : null,
       email: input.email?.trim() || null,
       side,
-      role: pending ? role : (input.side === 'operator' ? role : role),
+      role,
       pending,
       requestedRole: pending ? role : null,
+      branchName: null, // назначается администратором клиники отдельно (approveClinicAccount/setAccountBranch)
       passwordHash,
       twoFactor: false,
       twoFactorVia: 'sms',
       blocked: false,
       mustChange: false,
     });
-    // арендатор — клиника (SERVER.md §2); сотрудник платформы тенантом не является,
-    // для него запись в tenants не заводится
-    if (side === 'clinic') {
+    // арендатор — клиника (SERVER.md §2); заводим её только на первой регистрации
+    // (иначе саморегистрация в чужую клинику переписала бы её название в реестре);
+    // сотрудник платформы тенантом не является, для него запись в tenants не заводится
+    if (side === 'clinic' && !existingTenant) {
       await this.repos.tenants.upsert(inn, account.org || `ИНН ${inn}`);
     }
     return {
@@ -130,6 +156,83 @@ export class AuthService {
     return { ok: true };
   }
 
+  /** Заявки на доступ к СВОЕЙ клинике (README «Доступы и роли») — видит только администратор клиники (`staff:manage`). */
+  async listPendingForClinic(account: Account): Promise<Account[]> {
+    await assertPermission(this.repos.auditLog, account, 'staff:manage', 'account:list-pending', null, account.inn);
+    const rows = await this.repos.accounts.listByInn(account.inn);
+    return rows.filter((a) => a.pending);
+  }
+
+  /**
+   * Подтверждение самостоятельной регистрации сотрудника СВОЕЙ клиники —
+   * закрывает саморегистрацию незнакомца в чужую клинику по публичному ИНН
+   * (register() выше): заявка существует, но активирует её только администратор
+   * ТОЙ ЖЕ клиники, а не автор заявки и не администратор другой клиники.
+   */
+  async approveClinicAccount(account: Account, id: string, role: Role, branchName?: string | null): Promise<Result<{ account: Account }>> {
+    await assertPermission(this.repos.auditLog, account, 'staff:manage', 'account:approve', id, account.inn);
+    const acc = await this.repos.accounts.findById(id);
+    if (!acc) return { ok: false, error: 'Заявка не найдена' };
+    if (acc.side !== 'clinic') return { ok: false, error: 'Заявка относится к сотруднику платформы' };
+    assertTenantScope(account, acc.inn); // не позволяет подтвердить заявку ЧУЖОЙ клиники
+    if (!isClinicRole(role)) return { ok: false, error: 'Эта роль не предназначена для клиники' };
+    const updated = await this.repos.accounts.update(id, {
+      pending: false,
+      role,
+      branchName: branchName?.trim() || null,
+      approvedById: account.id,
+      approvedAt: this.repos.clock.now(),
+    });
+    await this.repos.auditLog.append({
+      actorId: account.id,
+      actorRole: account.role,
+      tenantInn: account.inn,
+      action: 'account:approve',
+      target: id,
+      meta: { role, branchName: updated.branchName },
+      allowed: true,
+    });
+    return { ok: true, account: updated };
+  }
+
+  /**
+   * Закрепление сотрудника ЗА филиалом (README «Объекты как первый класс») —
+   * ограничивает его видимость плана и оборудования этим филиалом
+   * (rbac/service.ts, visibleToBranch). `branchName: null` снимает ограничение.
+   */
+  async setAccountBranch(account: Account, id: string, branchName: string | null): Promise<Result<{ account: Account }>> {
+    await assertPermission(this.repos.auditLog, account, 'staff:manage', 'account:set-branch', id, account.inn);
+    const acc = await this.repos.accounts.findById(id);
+    if (!acc) return { ok: false, error: 'Учётная запись не найдена' };
+    if (acc.side !== 'clinic') return { ok: false, error: 'Учётная запись относится к сотруднику платформы' };
+    assertTenantScope(account, acc.inn);
+    const updated = await this.repos.accounts.update(id, { branchName: branchName?.trim() || null });
+    await this.repos.auditLog.append({
+      actorId: account.id, actorRole: account.role, tenantInn: account.inn,
+      action: 'account:set-branch', target: id, meta: { branchName: updated.branchName }, allowed: true,
+    });
+    return { ok: true, account: updated };
+  }
+
+  async rejectClinicAccount(account: Account, id: string): Promise<Result<Record<string, unknown>>> {
+    await assertPermission(this.repos.auditLog, account, 'staff:manage', 'account:reject', id, account.inn);
+    const acc = await this.repos.accounts.findById(id);
+    if (!acc) return { ok: false, error: 'Заявка не найдена' };
+    if (acc.side !== 'clinic') return { ok: false, error: 'Заявка относится к сотруднику платформы' };
+    assertTenantScope(account, acc.inn);
+    await this.repos.accounts.delete(id);
+    await this.repos.auditLog.append({
+      actorId: account.id,
+      actorRole: account.role,
+      tenantInn: account.inn,
+      action: 'account:reject',
+      target: id,
+      meta: null,
+      allowed: true,
+    });
+    return { ok: true };
+  }
+
   private async openSession(acc: Account, meta: { userAgent?: string | null; ip?: string | null }): Promise<Session> {
     await this.repos.accounts.update(acc.id, { lastLoginAt: this.repos.clock.now() });
     return this.repos.sessions.create(acc.id, SESSION_TTL_MS, meta);
@@ -149,7 +252,10 @@ export class AuthService {
       return { ok: false, error: 'Неверный ИНН, логин или пароль' };
     }
     if (acc.blocked) return { ok: false, error: 'Доступ приостановлен. Обратитесь к администратору платформы.' };
-    if (acc.pending) return { ok: false, error: 'Заявка на доступ отправлена и ждёт подтверждения администратора платформы.' };
+    if (acc.pending) {
+      const who = acc.side === 'platform' ? 'администратора платформы' : 'администратора клиники';
+      return { ok: false, error: `Заявка на доступ отправлена и ждёт подтверждения ${who}.` };
+    }
     if (acc.twoFactor) {
       const code = generateOtp();
       const codeHash = await hashCode(code);

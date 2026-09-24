@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requireAuth } from '../plugins/session.js';
 import { PermissionDeniedError } from '../../rbac/service.js';
+import { renderPdf } from '../../documents/render.js';
 
 const branchNameSchema = z.object({ name: z.string().min(1) });
 const cyclePatchSchema = z.object({
@@ -70,6 +71,26 @@ export async function clinicExtraRoutes(app: FastifyInstance): Promise<void> {
     const inventory = await guarded(() => app.container.inventory.getInventory(ctx.account), reply);
     if (inventory === undefined) return;
     return reply.send({ ok: true, ...inventory });
+  });
+
+  // Печать описи (README «Файлы и электронная подпись» → «печать описи документов») —
+  // тот же контрольный лист, что и JSON-версия выше, в файле для инспектора.
+  app.get('/api/clinic/documents/inventory/pdf', async (req, reply) => {
+    const ctx = requireAuth(req, reply);
+    if (!ctx) return;
+    const inventory = await guarded(() => app.container.inventory.getInventory(ctx.account), reply);
+    if (inventory === undefined) return;
+    const lines = inventory.rows.map((r) => `[${r.filled ? 'x' : ' '}] ${r.zone} · ${r.name}${r.filledAt ? ` — ${r.filledLabel} ${r.filledAt}` : r.required ? ' — не заполнено' : ''}`);
+    const body = [
+      `Заполнено: ${inventory.summary.filled} из ${inventory.summary.total}`,
+      '',
+      ...lines,
+    ].join('\n');
+    const buf = await renderPdf(`Опись документов · ИНН ${ctx.account.inn}`, body);
+    return reply
+      .header('Content-Type', 'application/pdf')
+      .header('Content-Disposition', `attachment; filename="opis-${ctx.account.inn}.pdf"`)
+      .send(buf);
   });
 
   // --- Филиалы ---

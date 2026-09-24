@@ -69,6 +69,10 @@ export class WorkQueueService {
 
   async list(account: Account): Promise<QueueTaskView[]> {
     await assertPermission(this.repos.auditLog, account, 'clinic:read', 'work-queue:list', null, null);
+    return this.computeTasks();
+  }
+
+  private async computeTasks(): Promise<QueueTaskView[]> {
     const [tenants, stateMap] = await Promise.all([this.repos.tenants.listAll(), this.getStateMap()]);
     const tasks: QueueTaskView[] = [];
 
@@ -161,7 +165,29 @@ export class WorkQueueService {
     return { ok: false, error: 'Не удалось сохранить — слишком много параллельных правок, повторите' };
   }
 
-  /** «Отправить дайджест сейчас» — реальный email/смс-шлюз не подключён (README «Что дальше»), пишет через `Notifier.sendDigest`. */
+  /**
+   * Автоматическая отправка по расписанию (scheduler.ts, README «Что дальше» →
+   * закрыто) — без Account (вызывает планировщик, не вошедший пользователь) и
+   * без повторной отправки в тот же день, даже если тик планировщика чаще суток.
+   */
+  async runScheduledDigest(): Promise<{ sent: boolean; taskCount: number }> {
+    const settings = (await this.repos.channels.get<QueueDigestSettings>('platform', null, DIGEST_KEY, EMPTY_DIGEST)).data;
+    if (!settings.recipientEmail.trim() || settings.lastSentAt === todayString()) return { sent: false, taskCount: 0 };
+    const tasks = await this.computeTasks();
+    const open = tasks.filter((t) => t.state === 'new' || t.state === 'in_progress');
+    const body = open.length ? open.map((t) => `· ${t.title} — ${t.tenantName} (${t.detail})`).join('\n') : 'Открытых задач нет.';
+    await this.repos.notifier.sendDigest(settings.recipientEmail, `Контур 785 — сводка очереди работы (${open.length})`, body);
+    await this.repos.auditLog.append({ actorId: null, actorRole: null, tenantInn: null, action: 'work-queue:digest-auto', target: null, meta: { taskCount: open.length }, allowed: true });
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const rec = await this.repos.channels.get<QueueDigestSettings>('platform', null, DIGEST_KEY, EMPTY_DIGEST);
+      const next: QueueDigestSettings = { ...rec.data, lastSentAt: todayString() };
+      const res = await this.repos.channels.set('platform', null, DIGEST_KEY, next, { expectedVersion: rec.version, updatedBy: null });
+      if (res.ok) return { sent: true, taskCount: open.length };
+    }
+    return { sent: true, taskCount: open.length }; // отправлено; отметка не сохранилась — следующий тик отправит снова, не страшно
+  }
+
+  /** «Отправить дайджест сейчас» — пишет через `Notifier.sendDigest` (реальная доставка — infra/providers/httpNotifier.ts). */
   async sendDigestNow(account: Account): Promise<QueueResult<{ settings: QueueDigestSettings; taskCount: number }>> {
     const settings = await this.getDigestSettings(account);
     if (!settings.recipientEmail.trim()) return { ok: false, error: 'Укажите получателя сводки' };

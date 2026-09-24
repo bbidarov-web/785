@@ -7,7 +7,7 @@ import type { Account } from '../domain/types.js';
 function makeAccount(role: Account['role'], id?: string): Account {
   return {
     id: id ?? 'acc_' + role, inn: '7726345678', login: role, phone: null, email: null, org: null,
-    fio: 'Николаева Е. В.', side: 'platform', role, pending: false, requestedRole: null,
+    fio: 'Николаева Е. В.', side: 'platform', role, pending: false, requestedRole: null, branchName: null,
     passwordHash: 'h', twoFactor: false, twoFactorVia: 'sms', blocked: false, mustChange: false,
     createdAt: new Date(), lastLoginAt: null, approvedById: null, approvedAt: null, passwordChangedAt: null,
   };

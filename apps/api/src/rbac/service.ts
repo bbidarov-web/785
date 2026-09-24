@@ -44,3 +44,17 @@ export function assertTenantScope(account: Account, requestedInn: string): void 
     throw new PermissionDeniedError('tenant:scope');
   }
 }
+
+/**
+ * Изоляция по филиалу внутри одной клиники (README «Объекты как первый
+ * класс»): сотрудник, закреплённый за конкретным филиалом (`account.branchName`),
+ * не видит план и оборудование ДРУГИХ филиалов. `account.branchName === null` —
+ * без ограничения (по умолчанию у всех, пока администратор клиники явно не
+ * закрепил сотрудника за филиалом). Запись без указанного филиала (`itemBranch`
+ * пусто) видна всем — это ещё не разнесено по филиалам, а не «чужой» филиал.
+ */
+export function visibleToBranch(account: Account, itemBranch: string | null | undefined): boolean {
+  if (!account.branchName) return true;
+  if (!itemBranch) return true;
+  return itemBranch === account.branchName;
+}

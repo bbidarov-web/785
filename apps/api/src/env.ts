@@ -5,10 +5,13 @@ const schema = z.object({
   PORT: z.coerce.number().int().positive().default(4000),
   DATABASE_URL: z.string().min(1, 'DATABASE_URL обязателен (см. .env.example)'),
   COOKIE_SECRET: z.string().min(32, 'COOKIE_SECRET должен быть не короче 32 символов — сгенерируйте: openssl rand -hex 32'),
+  AUDIT_LOG_SECRET: z.string().min(32, 'AUDIT_LOG_SECRET должен быть не короче 32 символов — сгенерируйте: openssl rand -hex 32'),
   CORS_ORIGIN: z.string().default('http://localhost:3000'),
-  // SERVER.md §7 "до запуска решить": провайдеры смс/почты. Пусто = ConsoleNotifier (только dev).
+  // SERVER.md §7 "до запуска решить": провайдеры смс/почты (SMS.ru / Resend — infra/providers/httpNotifier.ts).
+  // Пусто = ConsoleNotifier (только dev) вместо реальной отправки.
   SMS_PROVIDER_API_KEY: z.string().optional(),
   EMAIL_PROVIDER_API_KEY: z.string().optional(),
+  EMAIL_FROM: z.string().default('Контур 785 <noreply@standart-kachestva.ru>'),
 });
 
 export type Env = z.infer<typeof schema>;

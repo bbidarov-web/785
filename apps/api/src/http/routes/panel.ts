@@ -300,6 +300,18 @@ export async function panelRoutes(app: FastifyInstance): Promise<void> {
     return reply.code(r.ok ? 200 : 400).send(r);
   });
 
+  // Пачка больше SECOND_BULK клиник после подтверждения второй рукой применяется
+  // в фоне (README «Что дальше» → закрыто) — панель опрашивает прогресс здесь.
+  app.get('/api/panel/bulk/jobs/:id', async (req, reply) => {
+    const ctx = requireAuth(req, reply);
+    if (!ctx) return;
+    const { id } = z.object({ id: z.string() }).parse(req.params);
+    const job = await guarded(() => app.container.bulk.getJob(ctx.account, id), reply);
+    if (job === undefined) return;
+    if (!job) return reply.code(404).send({ ok: false, error: 'Задача не найдена' });
+    return reply.send({ ok: true, job });
+  });
+
   app.get('/api/panel/bulk/reports', async (req, reply) => {
     const ctx = requireAuth(req, reply);
     if (!ctx) return;

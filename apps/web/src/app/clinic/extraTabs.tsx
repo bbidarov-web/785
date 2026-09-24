@@ -95,9 +95,10 @@ export function InventoryTab({ rows, summary }: { rows: InventoryRow[]; summary:
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={cardStyle}>
         <div style={{ fontSize: 13.5, fontWeight: 800, marginBottom: 4 }}>Опись документов · контрольный лист</div>
-        <div style={{ fontSize: 11.5, color: 'var(--text-muted)', fontWeight: 600 }}>
+        <div style={{ fontSize: 11.5, color: 'var(--text-muted)', fontWeight: 600, marginBottom: 10 }}>
           документов: {summary.total} · заполнено: {summary.filled} · не заполнено: {summary.notFilled}
         </div>
+        <button onClick={() => window.open('/api/clinic/documents/inventory/pdf', '_blank')} style={outlineBtn}>Печать описи (.pdf)</button>
       </div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Поиск по названию или разделу" style={{ ...inputStyle, flex: '1 1 260px' }} />

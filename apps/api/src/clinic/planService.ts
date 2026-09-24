@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Repos } from '../domain/ports.js';
 import type { Account } from '../domain/types.js';
-import { assertPermission } from '../rbac/service.js';
+import { assertPermission, visibleToBranch } from '../rbac/service.js';
 import type { AuditPlanItem } from '../shared/channelShapes.js';
 
 export type PlanResult<T> = { ok: true } & T | { ok: false; error: string };
@@ -32,7 +32,8 @@ export class PlanService {
 
   async list(account: Account): Promise<AuditPlanItem[]> {
     await assertPermission(this.repos.auditLog, account, 'plan:read', 'plan:list', null, account.inn);
-    return (await this.repos.channels.get<AuditPlanItem[]>('tenant', account.inn, 'audit_plan', [])).data;
+    const items = (await this.repos.channels.get<AuditPlanItem[]>('tenant', account.inn, 'audit_plan', [])).data;
+    return items.filter((p) => visibleToBranch(account, p.branch));
   }
 
   async create(account: Account, input: PlanInput): Promise<PlanResult<{ item: AuditPlanItem }>> {

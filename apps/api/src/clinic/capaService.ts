@@ -3,7 +3,8 @@ import { can } from '@kontur785/shared';
 import type { Repos } from '../domain/ports.js';
 import type { Account } from '../domain/types.js';
 import { assertPermission, PermissionDeniedError } from '../rbac/service.js';
-import type { CapaItem, WalkResultEntry } from '../shared/channelShapes.js';
+import type { CapaItem, CycleMaster, WalkResultEntry } from '../shared/channelShapes.js';
+import { addDays } from '../shared/date.js';
 
 export type CapaResult<T> = { ok: true } & T | { ok: false; error: string };
 
@@ -55,7 +56,23 @@ export class CapaService {
     return out;
   }
 
-  async createFromFinding(account: Account, planId: string, itemIndex: number, opts: { due?: string; who?: string }): Promise<CapaResult<{ item: CapaItem }>> {
+  /**
+   * Срок устранения по степени критичности (README «Нарушения и CAPA»,
+   * каталог методиста `CycleMaster.capaTerms`). Степень необязательна — без
+   * неё срок задаётся вручную, как раньше; если степень указана, но не
+   * найдена в текущем опубликованном каталоге, это ошибка, а не молчаливый
+   * произвольный срок (CLAUDE.md: не подставлять правдоподобное вместо
+   * честного отказа).
+   */
+  private async resolveDue(opts: { due?: string; severity?: string }): Promise<CapaResult<{ due: string }>> {
+    if (!opts.severity) return { ok: true, due: opts.due?.trim() || '' };
+    const master = (await this.repos.channels.get<CycleMaster | null>('platform', null, 'cycle_master', null)).data;
+    const term = master?.capaTerms.find((t) => t.level === opts.severity);
+    if (!term) return { ok: false, error: 'Неизвестная степень критичности — уточните каталог у методиста' };
+    return { ok: true, due: addDays(today(), term.days) };
+  }
+
+  async createFromFinding(account: Account, planId: string, itemIndex: number, opts: { due?: string; who?: string; severity?: string }): Promise<CapaResult<{ item: CapaItem }>> {
     await assertPermission(this.repos.auditLog, account, 'capa:write', 'capa:create', planId, account.inn);
     const resultsRec = await this.repos.channels.get<Record<string, WalkResultEntry>>('tenant', account.inn, 'walk_results', {});
     const entry = resultsRec.data[planId];
@@ -63,6 +80,8 @@ export class CapaService {
     const found = entry.items[itemIndex];
     if (!found) return { ok: false, error: 'Пункт проверки не найден' };
     if (found.answer !== 'bad') return { ok: false, error: 'Мероприятие заводится только по нарушению' };
+    const dueResult = await this.resolveDue(opts);
+    if (!dueResult.ok) return dueResult;
 
     for (let attempt = 0; attempt < 5; attempt++) {
       const rec = await this.repos.channels.get<CapaItem[]>('tenant', account.inn, 'capa', []);
@@ -79,11 +98,15 @@ export class CapaService {
         findingText: found.text,
         comment: found.comment,
         who: opts.who?.trim() || entry.who || 'не назначен',
-        due: opts.due || '',
+        due: dueResult.due,
+        severity: opts.severity ?? null,
         status: 'planned',
         createdAt: today(),
         createdBy: account.id,
         closedAt: null,
+        effectiveness: 'not_checked',
+        effectivenessComment: '',
+        effectivenessAt: null,
       };
       const next = rec.data.concat([item]);
       const res = await this.repos.channels.set('tenant', account.inn, 'capa', next, { expectedVersion: rec.version, updatedBy: account.id });
@@ -118,10 +141,14 @@ export class CapaService {
         comment,
         who: 'не назначен',
         due: '',
+        severity: null,
         status: 'planned',
         createdAt: today(),
         createdBy: account.id,
         closedAt: null,
+        effectiveness: 'not_checked',
+        effectivenessComment: '',
+        effectivenessAt: null,
       };
       const next = rec.data.concat([item]);
       const res = await this.repos.channels.set('tenant', account.inn, 'capa', next, { expectedVersion: rec.version, updatedBy: account.id });
@@ -154,6 +181,32 @@ export class CapaService {
         throw new PermissionDeniedError('capa:own');
       }
       const updated: CapaItem = { ...current, status, closedAt: status === 'done' ? today() : null };
+      const next = rec.data.slice();
+      next[idx] = updated;
+      const res = await this.repos.channels.set('tenant', account.inn, 'capa', next, { expectedVersion: rec.version, updatedBy: account.id });
+      if (res.ok) return { ok: true, item: updated };
+    }
+    return { ok: false, error: 'Не удалось сохранить — слишком много параллельных правок, повторите' };
+  }
+
+  /**
+   * Формальная проверка эффективности (README «Нарушения и CAPA») — отдельно
+   * от «выполнено»: исполнитель устраняет нарушение, а подтверждает, что оно
+   * не повторилось, тот, кто держит `capa:write` (не сам исполнитель — это
+   * тот же принцип разделения ролей, что и в аудите: не проверяешь сам себя).
+   * Неэффективное мероприятие возвращается в работу, а не просто помечается.
+   */
+  async checkEffectiveness(account: Account, id: string, effective: boolean, comment: string): Promise<CapaResult<{ item: CapaItem }>> {
+    await assertPermission(this.repos.auditLog, account, 'capa:write', 'capa:check-effectiveness', id, account.inn);
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const rec = await this.repos.channels.get<CapaItem[]>('tenant', account.inn, 'capa', []);
+      const idx = rec.data.findIndex((c) => c.id === id);
+      if (idx === -1) return { ok: false, error: 'Мероприятие не найдено' };
+      const current = rec.data[idx]!;
+      if (current.status !== 'done') return { ok: false, error: 'Проверять эффективность можно только у выполненного мероприятия' };
+      const updated: CapaItem = effective
+        ? { ...current, effectiveness: 'effective', effectivenessComment: comment.trim(), effectivenessAt: today() }
+        : { ...current, effectiveness: 'not_effective', effectivenessComment: comment.trim(), effectivenessAt: today(), status: 'planned', closedAt: null };
       const next = rec.data.slice();
       next[idx] = updated;
       const res = await this.repos.channels.set('tenant', account.inn, 'capa', next, { expectedVersion: rec.version, updatedBy: account.id });

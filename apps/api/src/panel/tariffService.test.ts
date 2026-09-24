@@ -8,7 +8,7 @@ import type { TariffDef } from '../shared/channelShapes.js';
 function makeAccount(role: Account['role'], id: string): Account {
   return {
     id, inn: '7726345678', login: id, phone: null, email: null, org: null,
-    fio: 'Гусев Р. А.', side: 'platform', role, pending: false, requestedRole: null,
+    fio: 'Гусев Р. А.', side: 'platform', role, pending: false, requestedRole: null, branchName: null,
     passwordHash: 'h', twoFactor: false, twoFactorVia: 'sms', blocked: false, mustChange: false,
     createdAt: new Date(), lastLoginAt: null, approvedById: null, approvedAt: null, passwordChangedAt: null,
   };

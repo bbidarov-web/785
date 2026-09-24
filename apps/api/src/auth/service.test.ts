@@ -72,6 +72,136 @@ describe('AuthService', () => {
     if (r.ok) expect(r.account.role).toBe('vkk_lead');
   });
 
+  it('КРИТИЧНО: саморегистрация НЕЗНАКОМЦА на ИНН уже существующей клиники уходит в заявку, а не пускает сразу', async () => {
+    const first = await auth.register({
+      inn: '7712345671', login: 'clinicadmin', password: 'admin2026aa', password2: 'admin2026aa',
+      fio: 'Смирнов А. П.', side: 'clinic', role: 'clinic_admin',
+    });
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    expect(first.pending).toBe(false); // первая регистрация на НОВЫЙ ИНН заводит клинику и пускает сразу
+
+    const stranger = await auth.register({
+      inn: '7712345671', login: 'stranger', password: 'stranger2026', password2: 'stranger2026',
+      fio: 'Чужой Человек', side: 'clinic', role: 'clinic_admin', // знает только публичный ИНН клиники
+    });
+    expect(stranger.ok).toBe(true);
+    if (!stranger.ok) return;
+    expect(stranger.pending).toBe(true); // не активна сама по себе
+
+    const login = await auth.login('7712345671', 'stranger', 'stranger2026', {});
+    expect(login.ok).toBe(false);
+    if (!login.ok) expect(login.error).toContain('администратора клиники');
+  });
+
+  it('администратор клиники подтверждает заявку СВОЕГО сотрудника — тот получает доступ с назначенной ролью', async () => {
+    const admin = await auth.register({
+      inn: '7712345671', login: 'clinicadmin', password: 'admin2026aa', password2: 'admin2026aa',
+      fio: 'Смирнов А. П.', side: 'clinic', role: 'clinic_admin',
+    });
+    const applicant = await auth.register({
+      inn: '7712345671', login: 'ivanova', password: 'vkk2026lead', password2: 'vkk2026lead',
+      fio: 'Иванова М. А.', side: 'clinic', role: 'vkk_lead',
+    });
+    if (!admin.ok || !applicant.ok) throw new Error('setup failed');
+    expect(applicant.pending).toBe(true);
+
+    const pendingList = await auth.listPendingForClinic(admin.account);
+    expect(pendingList.map((a) => a.id)).toEqual([applicant.account.id]);
+
+    const approved = await auth.approveClinicAccount(admin.account, applicant.account.id, 'vkk_lead');
+    expect(approved.ok).toBe(true);
+    if (approved.ok) expect(approved.account.pending).toBe(false);
+
+    const login = await auth.login('7712345671', 'ivanova', 'vkk2026lead', {});
+    expect(login.ok).toBe(true);
+  });
+
+  it('КРИТИЧНО: администратор клиники А не может подтвердить или отклонить заявку клиники Б', async () => {
+    const adminA = await auth.register({
+      inn: '7712345671', login: 'adminA', password: 'admin2026aa', password2: 'admin2026aa',
+      fio: 'A', side: 'clinic', role: 'clinic_admin',
+    });
+    await auth.register({
+      inn: '5001007322', login: 'adminB', password: 'admin2026bb', password2: 'admin2026bb',
+      fio: 'B', side: 'clinic', role: 'clinic_admin',
+    });
+    const applicantB = await auth.register({
+      inn: '5001007322', login: 'staffB', password: 'staffB2026', password2: 'staffB2026',
+      fio: 'C', side: 'clinic', role: 'nurse',
+    });
+    if (!adminA.ok || !applicantB.ok) throw new Error('setup failed');
+
+    // assertTenantScope бросает (как и везде в приложении — обобщённый обработчик HTTP превращает это в 403/500)
+    await expect(auth.approveClinicAccount(adminA.account, applicantB.account.id, 'nurse')).rejects.toThrow('tenant:scope');
+    await expect(auth.rejectClinicAccount(adminA.account, applicantB.account.id)).rejects.toThrow('tenant:scope');
+
+    // заявка чужой клиники осталась нетронутой
+    const stillPending = await auth.listPendingForClinic(adminA.account);
+    expect(stillPending).toEqual([]);
+  });
+
+  it('администратор клиники может закрепить сотрудника за филиалом при подтверждении заявки', async () => {
+    const admin = await auth.register({
+      inn: '7712345671', login: 'clinicadmin', password: 'admin2026aa', password2: 'admin2026aa',
+      fio: 'Смирнов А. П.', side: 'clinic', role: 'clinic_admin',
+    });
+    const applicant = await auth.register({
+      inn: '7712345671', login: 'auditor1', password: 'auditor2026', password2: 'auditor2026',
+      fio: 'Козлов Д. Н.', side: 'clinic', role: 'auditor',
+    });
+    if (!admin.ok || !applicant.ok) throw new Error('setup failed');
+    const approved = await auth.approveClinicAccount(admin.account, applicant.account.id, 'auditor', 'Филиал 1');
+    expect(approved.ok).toBe(true);
+    if (approved.ok) expect(approved.account.branchName).toBe('Филиал 1');
+  });
+
+  it('администратор клиники закрепляет и снимает филиал у уже активного сотрудника', async () => {
+    const admin = await auth.register({
+      inn: '7712345671', login: 'clinicadmin', password: 'admin2026aa', password2: 'admin2026aa',
+      fio: 'Смирнов А. П.', side: 'clinic', role: 'clinic_admin',
+    });
+    if (!admin.ok) throw new Error('setup failed');
+
+    const setBranch = await auth.setAccountBranch(admin.account, admin.account.id, 'Филиал 1');
+    expect(setBranch.ok).toBe(true);
+    if (setBranch.ok) expect(setBranch.account.branchName).toBe('Филиал 1');
+
+    const cleared = await auth.setAccountBranch(admin.account, admin.account.id, null);
+    expect(cleared.ok).toBe(true);
+    if (cleared.ok) expect(cleared.account.branchName).toBeNull();
+  });
+
+  it('КРИТИЧНО: администратор клиники А не может закрепить филиал сотруднику клиники Б', async () => {
+    const adminA = await auth.register({
+      inn: '7712345671', login: 'adminA', password: 'admin2026aa', password2: 'admin2026aa',
+      fio: 'A', side: 'clinic', role: 'clinic_admin',
+    });
+    const adminB = await auth.register({
+      inn: '5001007322', login: 'adminB', password: 'admin2026bb', password2: 'admin2026bb',
+      fio: 'B', side: 'clinic', role: 'clinic_admin',
+    });
+    if (!adminA.ok || !adminB.ok) throw new Error('setup failed');
+    await expect(auth.setAccountBranch(adminA.account, adminB.account.id, 'Филиал 1')).rejects.toThrow('tenant:scope');
+  });
+
+  it('администратор клиники отклоняет заявку — учётная запись удаляется и вход становится невозможен', async () => {
+    const admin = await auth.register({
+      inn: '7712345671', login: 'clinicadmin', password: 'admin2026aa', password2: 'admin2026aa',
+      fio: 'Смирнов А. П.', side: 'clinic', role: 'clinic_admin',
+    });
+    const applicant = await auth.register({
+      inn: '7712345671', login: 'ghost', password: 'ghost2026aa', password2: 'ghost2026aa',
+      fio: 'X', side: 'clinic', role: 'observer',
+    });
+    if (!admin.ok || !applicant.ok) throw new Error('setup failed');
+
+    const rejected = await auth.rejectClinicAccount(admin.account, applicant.account.id);
+    expect(rejected.ok).toBe(true);
+    const login = await auth.login('7712345671', 'ghost', 'ghost2026aa', {});
+    expect(login.ok).toBe(false);
+  });
+
   it('отклоняет регистрацию с несовпадающими паролями', async () => {
     const r = await auth.register({ inn: '7712345671', login: 'x', password: 'aaaaaaaa1', password2: 'bbbbbbbb1', fio: 'x', side: 'clinic' });
     expect(r.ok).toBe(false);

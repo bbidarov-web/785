@@ -10,7 +10,7 @@ const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCA
 function makeAccount(role: Account['role']): Account {
   return {
     id: 'acc_' + role, inn, login: role, phone: null, email: null, org: null,
-    fio: 'Смирнов А. П.', side: 'clinic', role, pending: false, requestedRole: null,
+    fio: 'Смирнов А. П.', side: 'clinic', role, pending: false, requestedRole: null, branchName: null,
     passwordHash: 'h', twoFactor: false, twoFactorVia: 'sms', blocked: false, mustChange: false,
     createdAt: new Date(), lastLoginAt: null, approvedById: null, approvedAt: null, passwordChangedAt: null,
   };

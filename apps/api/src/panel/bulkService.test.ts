@@ -1,13 +1,23 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createMemoryRepos } from '../testUtil/memoryRepos.js';
-import { BulkOperationService, type BulkActionDef } from './bulkService.js';
+import { BulkOperationService, type BulkActionDef, type BulkJob } from './bulkService.js';
 import { SecondHandService } from '../secondHand/service.js';
 import type { Account } from '../domain/types.js';
+
+/** Фоновая пачка (applyFromSecondHand) заводит задачу и возвращается сразу — тест ждёт её завершения через getJob. */
+async function waitForJob(svc: BulkOperationService, account: Account, jobId: string): Promise<BulkJob> {
+  for (let i = 0; i < 100; i++) {
+    const job = await svc.getJob(account, jobId);
+    if (job && job.status !== 'running') return job;
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  throw new Error('Фоновая задача не завершилась вовремя');
+}
 
 function makeAccount(role: Account['role'], id: string): Account {
   return {
     id, inn: '7726345678', login: id, phone: null, email: null, org: null,
-    fio: 'Гусев Р. А.', side: 'platform', role, pending: false, requestedRole: null,
+    fio: 'Гусев Р. А.', side: 'platform', role, pending: false, requestedRole: null, branchName: null,
     passwordHash: 'h', twoFactor: false, twoFactorVia: 'sms', blocked: false, mustChange: false,
     createdAt: new Date(), lastLoginAt: null, approvedById: null, approvedAt: null, passwordChangedAt: null,
   };
@@ -93,6 +103,17 @@ describe('BulkOperationService — массовые операции по кат
 
     const confirmed = await secondHand.confirm(r.secondHandRequest!.id, head.id, svc.applyFromSecondHand);
     expect(confirmed.ok).toBe(true);
+    if (!confirmed.ok) return;
+    // подтверждение возвращается сразу с jobId, не дожидаясь применения ко всем клиникам (фоновая задача)
+    const jobId = confirmed.result.jobId;
+    expect(jobId).toBeTruthy();
+
+    const job = await waitForJob(svc, manager, jobId);
+    expect(job.status).toBe('done');
+    expect(job.total).toBe(21);
+    expect(job.doneCount).toBe(21);
+    expect(job.reportId).toBeTruthy();
+
     const noteAfter = await repos.channels.get('tenant', 'bulk-0', 'note', null);
     expect(noteAfter.data).toMatchObject({ text: 'изменено' });
   });

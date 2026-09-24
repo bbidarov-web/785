@@ -8,7 +8,7 @@ const inn = '7712345671';
 function makeNurse(fio: string): Account {
   return {
     id: 'acc_' + fio, inn, login: fio.toLowerCase(), phone: '+79160000000', email: null, org: 'ООО «Медицина Плюс»',
-    fio, side: 'clinic', role: 'nurse', pending: false, requestedRole: null,
+    fio, side: 'clinic', role: 'nurse', pending: false, requestedRole: null, branchName: null,
     passwordHash: 'h', twoFactor: false, twoFactorVia: 'sms', blocked: false, mustChange: false,
     createdAt: new Date(), lastLoginAt: null, approvedById: null, approvedAt: null, passwordChangedAt: null,
   };

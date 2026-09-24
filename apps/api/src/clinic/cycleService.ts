@@ -1,7 +1,7 @@
 import type { Repos } from '../domain/ports.js';
 import type { Account } from '../domain/types.js';
 import { assertPermission } from '../rbac/service.js';
-import type { AuditPlanItem, CycleLive, CycleLiveDirection, CycleMaster } from '../shared/channelShapes.js';
+import type { AuditPlanItem, CapaTerm, CycleLive, CycleLiveDirection, CycleMaster } from '../shared/channelShapes.js';
 
 export type CycleResult<T> = { ok: true } & T | { ok: false; error: string };
 
@@ -48,7 +48,7 @@ export class CycleService {
     return (await this.repos.channels.get<CycleLive>('tenant', account.inn, 'cycle_live', { year: new Date().getFullYear(), dirs: [] })).data;
   }
 
-  async getMergedView(account: Account): Promise<CycleResult<{ year: number; dirs: MergedCycleDirection[] }>> {
+  async getMergedView(account: Account): Promise<CycleResult<{ year: number; dirs: MergedCycleDirection[]; capaTerms: CapaTerm[] }>> {
     await assertPermission(this.repos.auditLog, account, 'plan:read', 'cycle:view', null, account.inn);
     const master = await this.getMaster();
     if (!master) return { ok: false, error: 'Годовой цикл ещё не опубликован методистом' };
@@ -65,7 +65,7 @@ export class CycleService {
         who: l?.who ?? '',
       };
     });
-    return { ok: true, year: master.year, dirs };
+    return { ok: true, year: master.year, dirs, capaTerms: master.capaTerms };
   }
 
   async customizeDirection(account: Account, name: string, patch: Partial<Omit<CycleLiveDirection, 'name'>>): Promise<CycleResult<{ direction: CycleLiveDirection }>> {

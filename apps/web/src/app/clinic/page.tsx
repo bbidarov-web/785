@@ -27,6 +27,24 @@ interface StaffMember {
   pos: string;
 }
 
+interface PendingAccount {
+  id: string;
+  login: string;
+  fio: string;
+  phone: string | null;
+  email: string | null;
+  requestedRole: string | null;
+  createdAt: string;
+}
+
+const CLINIC_ROLE_OPTIONS: { value: string; label: string }[] = [
+  { value: 'clinic_admin', label: 'Администратор клиники' },
+  { value: 'vkk_lead', label: 'Ответственный за ВКК' },
+  { value: 'nurse', label: 'Медсестра / исполнитель' },
+  { value: 'auditor', label: 'Аудитор' },
+  { value: 'observer', label: 'Наблюдатель' },
+];
+
 interface PlanItem {
   id: string;
   name?: string;
@@ -87,9 +105,18 @@ interface CapaItem {
   comment: string;
   who: string;
   due: string;
+  severity: string | null;
   status: 'planned' | 'done';
   createdAt: string;
   closedAt: string | null;
+  effectiveness: 'not_checked' | 'effective' | 'not_effective';
+  effectivenessComment: string;
+  effectivenessAt: string | null;
+}
+
+interface CapaTerm {
+  level: string;
+  days: number;
 }
 
 type Tab = 'stages' | 'staff' | 'plan' | 'findings' | 'capa' | 'profile' | 'inventory' | 'branches' | 'cycle' | 'equipment' | 'summary' | 'selfaudit';
@@ -116,10 +143,12 @@ export default function ClinicCabinetPage() {
 
   const [stages, setStages] = useState<StageView[]>([]);
   const [staff, setStaff] = useState<StaffMember[]>([]);
+  const [pendingAccounts, setPendingAccounts] = useState<PendingAccount[]>([]);
   const [assignments, setAssignments] = useState<Record<string, string>>({});
   const [plan, setPlan] = useState<PlanItem[]>([]);
   const [findings, setFindings] = useState<Finding[]>([]);
   const [capa, setCapa] = useState<CapaItem[]>([]);
+  const [capaTerms, setCapaTerms] = useState<CapaTerm[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [cycleYear, setCycleYear] = useState<number | null>(null);
   const [cycleDirs, setCycleDirs] = useState<CycleDirectionView[]>([]);
@@ -140,15 +169,16 @@ export default function ClinicCabinetPage() {
   }, []);
 
   const loadAll = useCallback(async () => {
-    const [st, s, a, p, f, c, br, cy, eqp, eqt, eqf, sm, sa, chk, pr, inv] = await Promise.all([
+    const [st, s, pend, a, p, f, c, br, cy, eqp, eqt, eqf, sm, sa, chk, pr, inv] = await Promise.all([
       api.get<{ ok: true; stages: StageView[] }>('/api/clinic/stages'),
       api.get<{ ok: true; staff: StaffMember[] }>('/api/clinic/staff'),
+      api.get<{ ok: true; pending: PendingAccount[] } | { ok: false; error: string }>('/api/clinic/accounts/pending'),
       api.get<{ ok: true; assignments: Record<string, string> }>('/api/clinic/assignments'),
       api.get<{ ok: true; plan: PlanItem[] }>('/api/clinic/plan'),
       api.get<{ ok: true; findings: Finding[] }>('/api/clinic/capa/findings'),
       api.get<{ ok: true; items: CapaItem[] }>('/api/clinic/capa'),
       api.get<{ ok: true; branches: Branch[] }>('/api/clinic/branches'),
-      api.get<{ ok: true; year: number; dirs: CycleDirectionView[] } | { ok: false; error: string }>('/api/clinic/cycle'),
+      api.get<{ ok: true; year: number; dirs: CycleDirectionView[]; capaTerms: CapaTerm[] } | { ok: false; error: string }>('/api/clinic/cycle'),
       api.get<{ ok: true; positions: EquipmentPosition[] }>('/api/clinic/equipment/positions'),
       api.get<{ ok: true; types: EquipmentTypeDef[] }>('/api/panel/equip-types'),
       api.get<{ ok: true; forms: EquipmentFormRow[] }>('/api/clinic/equipment/forms'),
@@ -160,12 +190,13 @@ export default function ClinicCabinetPage() {
     ]);
     if (st.ok) setStages(st.stages);
     if (s.ok) setStaff(s.staff);
+    setPendingAccounts(pend.ok ? pend.pending : []); // 403 для ролей без staff:manage — не ошибка, просто нечего показывать
     if (a.ok) setAssignments(a.assignments);
     if (p.ok) setPlan(p.plan);
     if (f.ok) setFindings(f.findings);
     if (c.ok) setCapa(c.items);
     if (br.ok) setBranches(br.branches);
-    if (cy.ok) { setCycleYear(cy.year); setCycleDirs(cy.dirs); } else { setCycleYear(null); setCycleDirs([]); }
+    if (cy.ok) { setCycleYear(cy.year); setCycleDirs(cy.dirs); setCapaTerms(cy.capaTerms); } else { setCycleYear(null); setCycleDirs([]); setCapaTerms([]); }
     if (eqp.ok) setEquipPositions(eqp.positions);
     if (eqt.ok) setEquipTypes(eqt.types);
     if (eqf.ok) setEquipForms(eqf.forms);
@@ -245,7 +276,7 @@ export default function ClinicCabinetPage() {
 
   const tabs: { key: Tab; label: string }[] = [
     { key: 'stages', label: `Этапы и документы · ${stages.length}` },
-    { key: 'staff', label: `Сотрудники · ${staff.length}` },
+    { key: 'staff', label: pendingAccounts.length ? `Сотрудники · ${staff.length} · заявок ${pendingAccounts.length}` : `Сотрудники · ${staff.length}` },
     { key: 'plan', label: `План проверок · ${plan.length}` },
     { key: 'findings', label: `Находки · ${findings.length}` },
     { key: 'capa', label: `CAPA · ${capa.filter((c) => c.status === 'planned').length}` },
@@ -297,6 +328,7 @@ export default function ClinicCabinetPage() {
 
         {tab === 'staff' && (
           <StaffTab staff={staff} assignments={assignments} canManageStaff={canManageStaff} canAssign={canAssign}
+            pendingAccounts={pendingAccounts} branches={branches}
             onAddStaff={async (fio, pos) => {
               const r = await api.post<{ ok: true } | { ok: false; error: string }>('/api/clinic/staff', { fio, pos });
               if (!r.ok) { say(r.error); return; }
@@ -311,6 +343,16 @@ export default function ClinicCabinetPage() {
               const r = await api.put<{ ok: true } | { ok: false; error: string }>('/api/clinic/assignments/' + encodeURIComponent(doc), { who });
               if (!r.ok) { say(r.error); return; }
               await loadAll(); say('Назначение сохранено');
+            }}
+            onApproveAccount={async (id, role, branchName) => {
+              const r = await api.post<{ ok: true } | { ok: false; error: string }>(`/api/clinic/accounts/${id}/approve`, { role, branchName: branchName || undefined });
+              if (!r.ok) { say(r.error); return; }
+              await loadAll(); say('Заявка подтверждена, сотрудник может войти');
+            }}
+            onRejectAccount={async (id) => {
+              const r = await api.post<{ ok: true } | { ok: false; error: string }>(`/api/clinic/accounts/${id}/reject`, {});
+              if (!r.ok) { say(r.error); return; }
+              await loadAll(); say('Заявка отклонена');
             }}
           />
         )}
@@ -331,9 +373,9 @@ export default function ClinicCabinetPage() {
         )}
 
         {tab === 'findings' && (
-          <FindingsTab findings={findings} canCreateCapa={canCreateCapa}
-            onPlan={async (f, who, due) => {
-              const r = await api.post<{ ok: true } | { ok: false; error: string }>('/api/clinic/capa', { planId: f.planId, itemIndex: f.itemIndex, who, due });
+          <FindingsTab findings={findings} canCreateCapa={canCreateCapa} capaTerms={capaTerms}
+            onPlan={async (f, who, due, severity) => {
+              const r = await api.post<{ ok: true } | { ok: false; error: string }>('/api/clinic/capa', { planId: f.planId, itemIndex: f.itemIndex, who, due, severity: severity || undefined });
               if (!r.ok) { say(r.error); return; }
               await loadAll(); say('Мероприятие добавлено в реестр корректирующих');
             }}
@@ -341,7 +383,7 @@ export default function ClinicCabinetPage() {
         )}
 
         {tab === 'capa' && (
-          <CapaTab items={capa} myFio={session.fio}
+          <CapaTab items={capa} myFio={session.fio} canCheckEffectiveness={canCreateCapa}
             onClose={async (id) => {
               const r = await api.put<{ ok: true } | { ok: false; error: string }>('/api/clinic/capa/' + id + '/status', { status: 'done' });
               if (!r.ok) { say(r.error); return; }
@@ -351,6 +393,11 @@ export default function ClinicCabinetPage() {
               const r = await api.put<{ ok: true } | { ok: false; error: string }>('/api/clinic/capa/' + id + '/status', { status: 'planned' });
               if (!r.ok) { say(r.error); return; }
               await loadAll(); say('Мероприятие возвращено в работу');
+            }}
+            onCheckEffectiveness={async (id, effective, comment) => {
+              const r = await api.put<{ ok: true } | { ok: false; error: string }>('/api/clinic/capa/' + id + '/effectiveness', { effective, comment });
+              if (!r.ok) { say(r.error); return; }
+              await loadAll(); say(effective ? 'Эффективность подтверждена' : 'Мероприятие возвращено в работу — нарушение повторилось');
             }}
           />
         )}
@@ -462,7 +509,11 @@ export default function ClinicCabinetPage() {
           <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 14, padding: 22, maxWidth: 560, width: '100%', maxHeight: '80vh', overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div style={{ fontSize: 14, fontWeight: 800 }}>{docView.name}</div>
             <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'var(--font-mono)', fontSize: 12, lineHeight: 1.6, background: 'var(--bg-app)', borderRadius: 9, padding: 14 }}>{docView.content}</pre>
-            <button onClick={() => setDocView(null)} style={{ ...outlineBtn, alignSelf: 'flex-start' }}>Закрыть</button>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button onClick={() => window.open(`/api/clinic/documents/${encodeURIComponent(docView.name)}/docx`, '_blank')} style={outlineBtn}>Скачать .docx</button>
+              <button onClick={() => window.open(`/api/clinic/documents/${encodeURIComponent(docView.name)}/pdf`, '_blank')} style={outlineBtn}>Скачать .pdf</button>
+              <button onClick={() => setDocView(null)} style={{ ...outlineBtn, marginLeft: 'auto' }}>Закрыть</button>
+            </div>
           </div>
         </div>
       )}
@@ -544,17 +595,51 @@ function StagesTab({ stages, canOrder, onOrder, onAcceptOffer, onOpen }: {
   );
 }
 
-function StaffTab({ staff, assignments, canManageStaff, canAssign, onAddStaff, onRemoveStaff, onAssign }: {
+function StaffTab({ staff, assignments, canManageStaff, canAssign, pendingAccounts, branches, onAddStaff, onRemoveStaff, onAssign, onApproveAccount, onRejectAccount }: {
   staff: StaffMember[]; assignments: Record<string, string>; canManageStaff: boolean; canAssign: boolean;
+  pendingAccounts: PendingAccount[]; branches: Branch[];
   onAddStaff: (fio: string, pos: string) => void; onRemoveStaff: (fio: string) => void; onAssign: (doc: string, who: string) => void;
+  onApproveAccount: (id: string, role: string, branchName: string) => void; onRejectAccount: (id: string) => void;
 }) {
   const [fio, setFio] = useState('');
   const [pos, setPos] = useState('');
   const [docName, setDocName] = useState('');
   const [docWho, setDocWho] = useState('');
+  const [roleByRequest, setRoleByRequest] = useState<Record<string, string>>({});
+  const [branchByRequest, setBranchByRequest] = useState<Record<string, string>>({});
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {canManageStaff && pendingAccounts.length > 0 && (
+        <div style={{ ...cardStyle, borderColor: 'var(--error-border)' }}>
+          <div style={{ fontSize: 13.5, fontWeight: 800, marginBottom: 4 }}>Заявки на доступ к клинике</div>
+          <div style={{ fontSize: 11.5, color: 'var(--text-muted)', fontWeight: 600, marginBottom: 10 }}>
+            Кто-то зарегистрировался на ИНН вашей клиники. Подтвердите заявку, только если действительно знаете этого человека — ИНН клиники не секрет.
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {pendingAccounts.map((p) => (
+              <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '8px 0', borderBottom: '1px solid var(--border-3)' }}>
+                <div>
+                  <div style={{ fontSize: 12.5, fontWeight: 700 }}>{p.fio || p.login}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>логин «{p.login}»{p.phone ? ` · ${p.phone}` : ''}{p.email ? ` · ${p.email}` : ''}</div>
+                </div>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <select value={roleByRequest[p.id] ?? p.requestedRole ?? 'observer'} onChange={(e) => setRoleByRequest((m) => ({ ...m, [p.id]: e.target.value }))} style={{ ...inputStyle, width: 'auto' }}>
+                    {CLINIC_ROLE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                  <select value={branchByRequest[p.id] ?? ''} onChange={(e) => setBranchByRequest((m) => ({ ...m, [p.id]: e.target.value }))} style={{ ...inputStyle, width: 'auto' }}>
+                    <option value="">все филиалы</option>
+                    {branches.map((b) => <option key={b.id} value={b.name}>{b.name}</option>)}
+                  </select>
+                  <button onClick={() => onApproveAccount(p.id, roleByRequest[p.id] ?? p.requestedRole ?? 'observer', branchByRequest[p.id] ?? '')} style={primaryBtn}>Подтвердить</button>
+                  <button onClick={() => onRejectAccount(p.id)} style={outlineBtn}>Отклонить</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div style={cardStyle}>
         <div style={{ fontSize: 13.5, fontWeight: 800, marginBottom: 10 }}>Штат клиники</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -656,20 +741,21 @@ function PlanTab({ plan, staff, canManagePlan, onCreate, onDelete }: {
   );
 }
 
-function FindingsTab({ findings, canCreateCapa, onPlan }: { findings: Finding[]; canCreateCapa: boolean; onPlan: (f: Finding, who: string, due: string) => void }) {
+function FindingsTab({ findings, canCreateCapa, capaTerms, onPlan }: { findings: Finding[]; canCreateCapa: boolean; capaTerms: CapaTerm[]; onPlan: (f: Finding, who: string, due: string, severity: string) => void }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       {findings.length === 0 && <EmptyState text="Открытых находок нет — все нарушения уже превращены в мероприятия или нарушений не было." />}
       {findings.map((f) => (
-        <FindingRow key={`${f.planId}|${f.itemIndex}`} finding={f} canCreateCapa={canCreateCapa} onPlan={onPlan} />
+        <FindingRow key={`${f.planId}|${f.itemIndex}`} finding={f} canCreateCapa={canCreateCapa} capaTerms={capaTerms} onPlan={onPlan} />
       ))}
     </div>
   );
 }
 
-function FindingRow({ finding, canCreateCapa, onPlan }: { finding: Finding; canCreateCapa: boolean; onPlan: (f: Finding, who: string, due: string) => void }) {
+function FindingRow({ finding, canCreateCapa, capaTerms, onPlan }: { finding: Finding; canCreateCapa: boolean; capaTerms: CapaTerm[]; onPlan: (f: Finding, who: string, due: string, severity: string) => void }) {
   const [who, setWho] = useState('');
   const [due, setDue] = useState('');
+  const [severity, setSeverity] = useState('');
   return (
     <div style={{ ...cardStyle, borderColor: '#f0d9d5', background: '#fdf5f4' }}>
       <div style={{ fontSize: 13, fontWeight: 800, color: '#7c2b22' }}>{finding.auditName}</div>
@@ -679,15 +765,27 @@ function FindingRow({ finding, canCreateCapa, onPlan }: { finding: Finding; canC
       {canCreateCapa && (
         <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
           <input value={who} onChange={(e) => setWho(e.target.value)} placeholder="Ответственный (ФИО)" style={{ ...inputStyle, flex: '1 1 180px' }} />
-          <input type="date" value={due} onChange={(e) => setDue(e.target.value)} style={{ ...inputStyle, flex: '1 1 140px' }} />
-          <button onClick={() => onPlan(finding, who, due)} style={primaryBtn}>Запланировать корректирующие мероприятия</button>
+          {capaTerms.length > 0 ? (
+            <select value={severity} onChange={(e) => setSeverity(e.target.value)} style={{ ...inputStyle, flex: '1 1 180px' }}>
+              <option value="">срок — вручную</option>
+              {capaTerms.map((t) => <option key={t.level} value={t.level}>{t.level} · {t.days} дн.</option>)}
+            </select>
+          ) : (
+            <input type="date" value={due} onChange={(e) => setDue(e.target.value)} style={{ ...inputStyle, flex: '1 1 140px' }} />
+          )}
+          {capaTerms.length > 0 && !severity && <input type="date" value={due} onChange={(e) => setDue(e.target.value)} style={{ ...inputStyle, flex: '1 1 140px' }} />}
+          <button onClick={() => onPlan(finding, who, due, severity)} style={primaryBtn}>Запланировать корректирующие мероприятия</button>
         </div>
       )}
     </div>
   );
 }
 
-function CapaTab({ items, myFio, onClose, onReopen }: { items: CapaItem[]; myFio: string; onClose: (id: string) => void; onReopen: (id: string) => void }) {
+function CapaTab({ items, myFio, canCheckEffectiveness, onClose, onReopen, onCheckEffectiveness }: {
+  items: CapaItem[]; myFio: string; canCheckEffectiveness: boolean;
+  onClose: (id: string) => void; onReopen: (id: string) => void; onCheckEffectiveness: (id: string, effective: boolean, comment: string) => void;
+}) {
+  const [commentById, setCommentById] = useState<Record<string, string>>({});
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       {items.length === 0 && <EmptyState text="Открытых мероприятий нет. Заведите их в разделе «Находки»." />}
@@ -701,9 +799,25 @@ function CapaTab({ items, myFio, onClose, onReopen }: { items: CapaItem[]; myFio
                 {c.status === 'done' ? `выполнено ${c.closedAt}` : 'запланировано'}
               </span>
             </div>
-            <div style={{ fontSize: 11.5, color: 'var(--text-muted)', fontWeight: 600, marginTop: 4 }}>{c.auditName} · {c.object} · ответственный: {c.who}{c.due ? ` · срок ${c.due}` : ''}</div>
+            <div style={{ fontSize: 11.5, color: 'var(--text-muted)', fontWeight: 600, marginTop: 4 }}>
+              {c.auditName} · {c.object} · ответственный: {c.who}{c.due ? ` · срок ${c.due}` : ''}{c.severity ? ` · степень: ${c.severity}` : ''}
+            </div>
+            {c.status === 'done' && c.effectiveness === 'effective' && (
+              <div style={{ fontSize: 11, color: 'var(--accent-hover)', fontWeight: 700, marginTop: 6 }}>эффективность подтверждена {c.effectivenessAt}{c.effectivenessComment ? ` · ${c.effectivenessComment}` : ''}</div>
+            )}
             {c.status === 'planned' && isMine && <button onClick={() => onClose(c.id)} style={{ ...primaryBtn, marginTop: 10 }}>Отметить выполненным</button>}
-            {c.status === 'done' && <button onClick={() => onReopen(c.id)} style={{ ...outlineBtn, marginTop: 10 }}>Вернуть в работу</button>}
+            {c.status === 'done' && (
+              <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+                <button onClick={() => onReopen(c.id)} style={outlineBtn}>Вернуть в работу</button>
+                {canCheckEffectiveness && c.effectiveness !== 'effective' && (
+                  <>
+                    <input value={commentById[c.id] ?? ''} onChange={(e) => setCommentById((m) => ({ ...m, [c.id]: e.target.value }))} placeholder="Комментарий к проверке" style={{ ...inputStyle, flex: '1 1 180px' }} />
+                    <button onClick={() => onCheckEffectiveness(c.id, true, commentById[c.id] ?? '')} style={primaryBtn}>Эффективно</button>
+                    <button onClick={() => onCheckEffectiveness(c.id, false, commentById[c.id] ?? '')} style={{ ...outlineBtn, borderColor: 'var(--error-border)', color: 'var(--error)' }}>Нарушение повторилось</button>
+                  </>
+                )}
+              </div>
+            )}
           </div>
         );
       })}

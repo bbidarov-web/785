@@ -9,7 +9,7 @@ const inn = '7712345671';
 function makeAccount(role: Account['role'], fio: string): Account {
   return {
     id: 'acc_' + role, inn, login: role, phone: null, email: null, org: null,
-    fio, side: 'clinic', role, pending: false, requestedRole: null,
+    fio, side: 'clinic', role, pending: false, requestedRole: null, branchName: null,
     passwordHash: 'h', twoFactor: false, twoFactorVia: 'sms', blocked: false, mustChange: false,
     createdAt: new Date(), lastLoginAt: null, approvedById: null, approvedAt: null, passwordChangedAt: null,
   };
@@ -103,5 +103,27 @@ describe('EquipmentService — оборудование и журналы', () =
     await svc.upsertPosition(admin, { name: 'Холодильник №1', type: 'fridge' });
     const otherAdmin = { ...admin, inn: '5001007322' };
     expect(await svc.listPositions(otherAdmin)).toEqual([]);
+  });
+
+  describe('изоляция по филиалу (account.branchName)', () => {
+    it('аудитор, закреплённый за филиалом, не видит позиции другого филиала', async () => {
+      await svc.upsertPosition(admin, { name: 'Холодильник №1', branch: 'Филиал 1', type: 'fridge' });
+      await svc.upsertPosition(admin, { name: 'Холодильник №2', branch: 'Филиал 2', type: 'fridge' });
+      const scoped = { ...auditor, branchName: 'Филиал 1' };
+      const list = await svc.listPositions(scoped);
+      expect(list.map((p) => p.name)).toEqual(['Холодильник №1']);
+    });
+
+    it('позиции без указанного филиала видны всем', async () => {
+      await svc.upsertPosition(admin, { name: 'Общий холодильник', type: 'fridge' });
+      const scoped = { ...auditor, branchName: 'Филиал 1' };
+      expect(await svc.listPositions(scoped)).toHaveLength(1);
+    });
+
+    it('listForms тоже скрывает формы позиций из чужого филиала, даже если назначены лично', async () => {
+      await svc.upsertPosition(admin, { name: 'Холодильник №1', branch: 'Филиал 1', type: 'fridge', logWho: { 'Журнал термометрии': 'Петрова В. В.' } });
+      const scopedNurse = { ...nurse, branchName: 'Филиал 2' };
+      expect(await svc.listForms(scopedNurse)).toEqual([]);
+    });
   });
 });

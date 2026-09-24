@@ -253,6 +253,10 @@ describe('HTTP: /api/auth и защита эндпоинтов правами', 
     const vkkReg = await container.auth.register({ inn: '7712345671', login: 'vkk', password: 'vkk2026lead', password2: 'vkk2026lead', fio: 'Иванова М. А.', side: 'clinic', role: 'vkk_lead' });
     const auditorReg = await container.auth.register({ inn: '7712345671', login: 'auditor', password: 'auditor2026', password2: 'auditor2026', fio: 'Сидорова В. В.', side: 'clinic', role: 'auditor' });
     if (!adminReg.ok || !vkkReg.ok || !auditorReg.ok) throw new Error('setup failed');
+    // клиника уже существует после adminReg — vkk и auditor уходят в заявку (см. auth/service.ts register()),
+    // подтверждение заявки тестируется отдельно, здесь просто активируем напрямую
+    await repos.accounts.update(vkkReg.account.id, { pending: false });
+    await repos.accounts.update(auditorReg.account.id, { pending: false });
 
     async function loginAs(login: string, password: string) {
       const res = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { inn: '7712345671', login, password } });
@@ -400,12 +404,37 @@ describe('HTTP: /api/auth и защита эндпоинтов правами', 
     expect(content.json().content).toContain('ООО «Медицина Плюс»');
     expect(content.json().content).toContain('ЛО-77-01-123456');
 
+    // тот же документ скачивается как настоящий DOCX и PDF (README «Файлы и электронная подпись»)
+    const docNamePath = '/api/clinic/documents/' + encodeURIComponent('Приказ о создании комиссии по внутреннему контролю');
+    const docx = await app.inject({ method: 'GET', url: docNamePath + '/docx', cookies: { k785_session: clinicCookie } });
+    expect(docx.statusCode).toBe(200);
+    expect(docx.headers['content-type']).toBe('application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    expect(docx.rawPayload.subarray(0, 2).toString('latin1')).toBe('PK');
+
+    const pdf = await app.inject({ method: 'GET', url: docNamePath + '/pdf', cookies: { k785_session: clinicCookie } });
+    expect(pdf.statusCode).toBe(200);
+    expect(pdf.headers['content-type']).toBe('application/pdf');
+    expect(pdf.rawPayload.subarray(0, 5).toString('latin1')).toBe('%PDF-');
+
+    // документ ещё не выдан другой клинике — тот же запрет действует и для docx/pdf, не только для content
+    const otherClinicReg = await container.auth.register({ inn: '5001007322', login: 'otherclinic', password: 'other2026aa', password2: 'other2026aa', fio: 'Y', side: 'clinic', role: 'clinic_admin' });
+    if (!otherClinicReg.ok) throw new Error('setup failed');
+    const otherLogin = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { inn: '5001007322', login: 'otherclinic', password: 'other2026aa' } });
+    const otherCookie = extractCookie(otherLogin.headers['set-cookie'], 'k785_session')!;
+    const deniedDocx = await app.inject({ method: 'GET', url: docNamePath + '/docx', cookies: { k785_session: otherCookie } });
+    expect(deniedDocx.statusCode).toBe(400);
+
     // опись документов видит выданный документ этапа как заполненный
     const inventory = await app.inject({ method: 'GET', url: '/api/clinic/documents/inventory', cookies: { k785_session: clinicCookie } });
     expect(inventory.statusCode).toBe(200);
     const invRow = inventory.json().rows.find((r: { name: string }) => r.name === 'Приказ о создании комиссии по внутреннему контролю');
     expect(invRow).toMatchObject({ filled: true, filledLabel: 'выдан' });
     expect(inventory.json().summary.filled).toBe(1);
+
+    const inventoryPdf = await app.inject({ method: 'GET', url: '/api/clinic/documents/inventory/pdf', cookies: { k785_session: clinicCookie } });
+    expect(inventoryPdf.statusCode).toBe(200);
+    expect(inventoryPdf.headers['content-type']).toBe('application/pdf');
+    expect(inventoryPdf.rawPayload.subarray(0, 5).toString('latin1')).toBe('%PDF-');
 
     // этап 2 заблокирован, пока платформа не приняла этап 1 — оплата сама по себе не открывает следующий
     const viewAfterPay = await app.inject({ method: 'GET', url: '/api/clinic/stages', cookies: { k785_session: clinicCookie } });
@@ -560,6 +589,9 @@ describe('HTTP: /api/auth и защита эндпоинтов правами', 
     const nurseReg = await container.auth.register({ inn: '7712345671', login: 'nurse1', password: 'nurse2026', password2: 'nurse2026', fio: 'Петрова В. В.', side: 'clinic', role: 'nurse', phone: '+79160000005' });
     const auditorReg = await container.auth.register({ inn: '7712345671', login: 'auditor9', password: 'auditor2026', password2: 'auditor2026', fio: 'Сидорова В. В.', side: 'clinic', role: 'auditor' });
     if (!nurseReg.ok || !auditorReg.ok) throw new Error('setup failed');
+    // клиника уже существует (vkk1 зарегистрирован выше) — заявки активируем напрямую, минуя ceremony подтверждения
+    await repos.accounts.update(nurseReg.account.id, { pending: false });
+    await repos.accounts.update(auditorReg.account.id, { pending: false });
     const pos2 = await app.inject({
       method: 'POST', url: '/api/clinic/equipment/positions', cookies: { k785_session: clinicCookie },
       payload: { name: 'Холодильник №2', type: 'fridge', logWho: { 'Журнал термометрии': 'Петрова В. В.' } },
@@ -796,9 +828,17 @@ describe('HTTP: /api/auth и защита эндпоинтов правами', 
 
     const confirm = await app.inject({ method: 'POST', url: `/api/second-hand/${requestId}/confirm`, cookies: { k785_session: adminCookie } });
     expect(confirm.statusCode).toBe(200);
+    // подтверждение отвечает сразу с jobId фоновой задачи, а не итоговым отчётом
+    const jobId = confirm.json().result.jobId;
+    expect(jobId).toBeTruthy();
 
     const cycleLive = await repos.channels.get('tenant', 'bulk-inn-0', 'cycle_live', null);
     expect(cycleLive.data).toMatchObject({ dirs: [{ name: 'Направление А', months: [0] }] });
+
+    // прогресс фоновой задачи виден через отдельный эндпоинт
+    const jobStatus = await app.inject({ method: 'GET', url: `/api/panel/bulk/jobs/${jobId}`, cookies: { k785_session: adminCookie } });
+    expect(jobStatus.statusCode).toBe(200);
+    expect(jobStatus.json().job).toMatchObject({ status: 'done', total: 21, doneCount: 21 });
   });
 
   it('панель: добавление клиники, очередь работы, портфель, сводка подписок и CSV-экспорт', async () => {
@@ -864,6 +904,75 @@ describe('HTTP: /api/auth и защита эндпоинтов правами', 
     expect(csv.statusCode).toBe(200);
     expect(csv.headers['content-type']).toContain('text/csv');
     expect(csv.body).toContain('Новая клиника');
+  });
+
+  it('журнал действий: администратор платформы проверяет цепочку хешей, менеджер этого сделать не может', async () => {
+    const managerReg = await container.auth.register({ inn: '7726345678', login: 'manager9', password: 'manager2026', password2: 'manager2026', fio: 'Гусев Р. А.', side: 'operator', role: 'sales_manager' });
+    const adminReg = await container.auth.register({ inn: '7726345678', login: 'admin9', password: 'platform2026', password2: 'platform2026', fio: 'Admin Nine', side: 'operator', role: 'platform_admin' });
+    if (!managerReg.ok || !adminReg.ok) throw new Error('setup failed');
+    await repos.accounts.update(managerReg.account.id, { pending: false });
+    await repos.accounts.update(adminReg.account.id, { pending: false });
+
+    async function loginAs(login: string, password: string) {
+      const res = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { inn: '7726345678', login, password } });
+      return extractCookie(res.headers['set-cookie'], 'k785_session')!;
+    }
+    const managerCookie = await loginAs('manager9', 'manager2026');
+    const adminCookie = await loginAs('admin9', 'platform2026');
+
+    const deniedForManager = await app.inject({ method: 'GET', url: '/api/admin/audit-log/verify', cookies: { k785_session: managerCookie } });
+    expect(deniedForManager.statusCode).toBe(403);
+
+    const verify = await app.inject({ method: 'GET', url: '/api/admin/audit-log/verify', cookies: { k785_session: adminCookie } });
+    expect(verify.statusCode).toBe(200);
+    expect(verify.json()).toMatchObject({ ok: true, brokenAtSeq: null });
+  });
+
+  it('КРИТИЧНО: незнакомец, знающий ИНН клиники, не получает доступ без подтверждения её администратором', async () => {
+    const adminReg = await app.inject({
+      method: 'POST', url: '/api/auth/register',
+      payload: { inn: '7712345671', login: 'clinicadmin', password: 'admin2026aa', password2: 'admin2026aa', fio: 'Смирнов А. П.', side: 'clinic', role: 'clinic_admin' },
+    });
+    expect(adminReg.statusCode).toBe(200);
+    const strangerReg = await app.inject({
+      method: 'POST', url: '/api/auth/register',
+      payload: { inn: '7712345671', login: 'stranger', password: 'stranger2026', password2: 'stranger2026', fio: 'Чужой', side: 'clinic', role: 'clinic_admin' },
+    });
+    expect(strangerReg.statusCode).toBe(200);
+
+    // незнакомец сразу пытается войти — заявка ещё не подтверждена
+    const strangerLoginBefore = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { inn: '7712345671', login: 'stranger', password: 'stranger2026' } });
+    expect(strangerLoginBefore.statusCode).toBe(401);
+    expect(strangerLoginBefore.json().error).toContain('администратора клиники');
+
+    const adminLogin = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { inn: '7712345671', login: 'clinicadmin', password: 'admin2026aa' } });
+    const adminCookie = extractCookie(adminLogin.headers['set-cookie'], 'k785_session')!;
+
+    // администратор ДРУГОЙ клиники не видит и не может подтвердить чужую заявку
+    const otherAdminReg = await app.inject({
+      method: 'POST', url: '/api/auth/register',
+      payload: { inn: '5001007322', login: 'otheradmin', password: 'other2026aa', password2: 'other2026aa', fio: 'Y', side: 'clinic', role: 'clinic_admin' },
+    });
+    expect(otherAdminReg.statusCode).toBe(200);
+    const otherAdminLogin = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { inn: '5001007322', login: 'otheradmin', password: 'other2026aa' } });
+    const otherAdminCookie = extractCookie(otherAdminLogin.headers['set-cookie'], 'k785_session')!;
+    const strangerAcc = await repos.accounts.findByInnLogin('7712345671', 'stranger');
+    const pendingId = strangerAcc!.id;
+    const crossApprove = await app.inject({
+      method: 'POST', url: `/api/clinic/accounts/${pendingId}/approve`, cookies: { k785_session: otherAdminCookie }, payload: { role: 'clinic_admin' },
+    });
+    expect(crossApprove.statusCode).toBe(403);
+
+    // администратор ЭТОЙ клиники видит заявку и подтверждает её
+    const pendingList = await app.inject({ method: 'GET', url: '/api/clinic/accounts/pending', cookies: { k785_session: adminCookie } });
+    expect(pendingList.json().pending.map((a: { id: string }) => a.id)).toEqual([pendingId]);
+    const approve = await app.inject({
+      method: 'POST', url: `/api/clinic/accounts/${pendingId}/approve`, cookies: { k785_session: adminCookie }, payload: { role: 'clinic_admin' },
+    });
+    expect(approve.statusCode).toBe(200);
+
+    const strangerLoginAfter = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { inn: '7712345671', login: 'stranger', password: 'stranger2026' } });
+    expect(strangerLoginAfter.statusCode).toBe(200);
   });
 
   it('logout отзывает cookie сессии — повторный запрос получает 401', async () => {

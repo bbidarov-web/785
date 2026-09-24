@@ -15,6 +15,7 @@ function toDomain(row: NonNullable<Awaited<ReturnType<PrismaClient['account']['f
     role: row.role,
     pending: row.pending,
     requestedRole: row.requestedRole,
+    branchName: row.branchName,
     passwordHash: row.passwordHash,
     twoFactor: row.twoFactor,
     twoFactorVia: row.twoFactorVia,

@@ -10,7 +10,7 @@ const inn = '7712345671';
 function makeAccount(role: Account['role'], side: Account['side']): Account {
   return {
     id: 'acc_' + role, inn: side === 'platform' ? '7726345678' : inn, login: role, phone: null, email: null, org: null,
-    fio: role, side, role, pending: false, requestedRole: null,
+    fio: role, side, role, pending: false, requestedRole: null, branchName: null,
     passwordHash: 'h', twoFactor: false, twoFactorVia: 'sms', blocked: false, mustChange: false,
     createdAt: new Date(), lastLoginAt: null, approvedById: null, approvedAt: null, passwordChangedAt: null,
   };

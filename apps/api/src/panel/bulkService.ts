@@ -66,6 +66,32 @@ export interface BulkReport {
 const REPORTS_KEY = 'bulk_reports';
 const MAX_REPORTS = 50;
 
+export type BulkJobStatus = 'running' | 'done' | 'failed';
+
+/**
+ * Состояние фоновой пачки (README «Что дальше» → «фоновые массовые операции»,
+ * закрыто): подтверждение второй рукой заводит задачу и возвращается сразу —
+ * пачка на сотни клиник не должна держать открытым HTTP-запрос подтверждения
+ * (и тем более не должна зависеть от того, не закрыл ли кто-то вкладку).
+ * Двойного применения не будет, даже если запрос подтверждения продублируется:
+ * `SecondHandService.confirm` переводит pending → confirmed атомарно (CAS) ДО
+ * вызова apply(), так что до второго `runInBackground` дело просто не дойдёт.
+ */
+export interface BulkJob {
+  id: string;
+  actionKey: string;
+  status: BulkJobStatus;
+  total: number;
+  doneCount: number;
+  startedAt: string;
+  finishedAt: string | null;
+  reportId: string | null;
+  error: string | null;
+}
+
+const JOBS_KEY = 'bulk_jobs';
+const MAX_JOBS = 50;
+
 /**
  * Массовые операции по каталогу клиентов (README «Дашборд»; прототип —
  * `bulkPrepare`/`bulkCommit`/`bulkUndo`, три контура защиты данных):
@@ -134,16 +160,56 @@ export class BulkOperationService {
     return { ok: true, report };
   }
 
-  /** Применяется при подтверждении `bulk:clinics` — см. container.ts. */
-  applyFromSecondHand = async (payload: Record<string, unknown>, confirmedById: string): Promise<BulkReport> => {
+  /**
+   * Применяется при подтверждении `bulk:clinics` (см. container.ts) — заводит
+   * фоновую задачу и возвращается сразу, не дожидаясь применения ко всем
+   * клиникам (см. комментарий у BulkJob). Прогресс и итог — через `getJob`.
+   */
+  applyFromSecondHand = async (payload: Record<string, unknown>, confirmedById: string): Promise<{ jobId: string }> => {
     const actionKey = String(payload.actionKey);
     const def = this.registry[actionKey];
     if (!def) throw new Error('Неизвестная массовая операция');
     const tenantInns = Array.isArray(payload.tenantInns) ? payload.tenantInns.map(String) : [];
-    const tenants = await this.repos.tenants.listAll();
-    const nameByInn = new Map(tenants.map((t) => [t.inn, t.name]));
-    return this.applyToTenants(actionKey, def, tenantInns, [], nameByInn, confirmedById);
+    const jobId = randomUUID();
+    const job: BulkJob = {
+      id: jobId, actionKey, status: 'running', total: tenantInns.length, doneCount: 0,
+      startedAt: todayString(), finishedAt: null, reportId: null, error: null,
+    };
+    await this.mutateJobs((all) => [job, ...all].slice(0, MAX_JOBS));
+    void this.runInBackground(jobId, actionKey, def, tenantInns, confirmedById);
+    return { jobId };
   };
+
+  private async runInBackground(jobId: string, actionKey: string, def: BulkActionDef, tenantInns: string[], byId: string): Promise<void> {
+    try {
+      const tenants = await this.repos.tenants.listAll();
+      const nameByInn = new Map(tenants.map((t) => [t.inn, t.name]));
+      const report = await this.applyToTenants(actionKey, def, tenantInns, [], nameByInn, byId, (doneCount) => this.patchJob(jobId, { doneCount }));
+      await this.patchJob(jobId, { status: 'done', finishedAt: todayString(), reportId: report.id, doneCount: tenantInns.length });
+    } catch (err) {
+      await this.patchJob(jobId, { status: 'failed', finishedAt: todayString(), error: err instanceof Error ? err.message : String(err) });
+    }
+  }
+
+  private async mutateJobs(fn: (all: BulkJob[]) => BulkJob[]): Promise<void> {
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const rec = await this.repos.channels.get<BulkJob[]>('platform', null, JOBS_KEY, []);
+      const res = await this.repos.channels.set('platform', null, JOBS_KEY, fn(rec.data), { expectedVersion: rec.version, updatedBy: null });
+      if (res.ok) return;
+    }
+    throw new Error('Не удалось сохранить состояние фоновой задачи — слишком много параллельных правок');
+  }
+
+  private patchJob(jobId: string, patch: Partial<BulkJob>): Promise<void> {
+    return this.mutateJobs((all) => all.map((j) => (j.id === jobId ? { ...j, ...patch } : j)));
+  }
+
+  /** Прогресс/итог фоновой пачки — панель опрашивает по jobId, полученному от confirm (README «Что дальше»). */
+  async getJob(account: Account, jobId: string): Promise<BulkJob | null> {
+    await assertPermission(this.repos.auditLog, account, 'clinic:read', 'bulk:job:get', jobId, null);
+    const all = (await this.repos.channels.get<BulkJob[]>('platform', null, JOBS_KEY, [])).data;
+    return all.find((j) => j.id === jobId) ?? null;
+  }
 
   private async applyToTenants(
     actionKey: string,
@@ -152,6 +218,7 @@ export class BulkOperationService {
     skipped: { inn: string; name: string; why: string }[],
     nameByInn: Map<string, string>,
     byId: string,
+    onProgress?: (doneCount: number) => Promise<void>,
   ): Promise<BulkReport> {
     const snapshot: BulkSnapshotEntry[] = [];
     for (const inn of inns) {
@@ -169,6 +236,7 @@ export class BulkOperationService {
       } catch (err) {
         failed.push({ inn, name: nameByInn.get(inn) ?? inn, why: err instanceof Error ? err.message : String(err) });
       }
+      if (onProgress) await onProgress(done.length + failed.length);
     }
     const report: BulkReport = {
       id: randomUUID(),

@@ -9,7 +9,7 @@ import type { CapaItem, StagePaymentState, SubscriptionState, TariffDef } from '
 function makeAccount(role: Account['role']): Account {
   return {
     id: 'acc_' + role, inn: '7726345678', login: role, phone: null, email: null, org: null,
-    fio: 'Тест', side: 'platform', role, pending: false, requestedRole: null,
+    fio: 'Тест', side: 'platform', role, pending: false, requestedRole: null, branchName: null,
     passwordHash: 'h', twoFactor: false, twoFactorVia: 'sms', blocked: false, mustChange: false,
     createdAt: new Date(), lastLoginAt: null, approvedById: null, approvedAt: null, passwordChangedAt: null,
   };
@@ -50,8 +50,8 @@ describe('DashboardService — каталог клиентов', () => {
     };
     await repos.channels.set('tenant', '7712345671', 'stage_paid', payments, { updatedBy: null });
     const capaItems: CapaItem[] = [
-      { id: '1', sourceKind: 'walk', sourcePlanId: 'p1', sourceItemIndex: 0, auditName: 'A', object: '', findingText: 'x', comment: '', who: 'Y', due: '', status: 'planned', createdAt: '', createdBy: '', closedAt: null },
-      { id: '2', sourceKind: 'walk', sourcePlanId: 'p1', sourceItemIndex: 1, auditName: 'A', object: '', findingText: 'x', comment: '', who: 'Y', due: '', status: 'done', createdAt: '', createdBy: '', closedAt: '' },
+      { id: '1', sourceKind: 'walk', sourcePlanId: 'p1', sourceItemIndex: 0, auditName: 'A', object: '', findingText: 'x', comment: '', who: 'Y', due: '', severity: null, status: 'planned', createdAt: '', createdBy: '', closedAt: null, effectiveness: 'not_checked', effectivenessComment: '', effectivenessAt: null },
+      { id: '2', sourceKind: 'walk', sourcePlanId: 'p1', sourceItemIndex: 1, auditName: 'A', object: '', findingText: 'x', comment: '', who: 'Y', due: '', severity: null, status: 'done', createdAt: '', createdBy: '', closedAt: '', effectiveness: 'not_checked', effectivenessComment: '', effectivenessAt: null },
     ];
     await repos.channels.set('tenant', '7712345671', 'capa', capaItems, { updatedBy: null });
 
@@ -194,7 +194,7 @@ describe('DashboardService — каталог клиентов: тариф, фи
   it('активность — самый поздний lastLoginAt среди сотрудников клиники', async () => {
     const acc = await repos.accounts.create({
       inn: '7712345671', login: 'clinicadmin', phone: null, email: null, org: null, fio: 'X', side: 'clinic', role: 'clinic_admin',
-      pending: false, requestedRole: null, passwordHash: 'h', twoFactor: false, twoFactorVia: 'sms', blocked: false, mustChange: false,
+      pending: false, requestedRole: null, branchName: null, passwordHash: 'h', twoFactor: false, twoFactorVia: 'sms', blocked: false, mustChange: false,
     });
     await repos.accounts.update(acc.id, { lastLoginAt: new Date('2026-03-05T10:00:00Z') });
     const rows = await svc.listClients(methodist);

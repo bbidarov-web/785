@@ -15,6 +15,8 @@ export interface Account {
   role: Role;
   pending: boolean;
   requestedRole: Role | null;
+  /** Ограничивает видимость плана проверок и оборудования СВОИМ филиалом (Branch.name) — null значит без ограничения (SERVER.md, README «Объекты как первый класс»). */
+  branchName: string | null;
   passwordHash: string;
   twoFactor: boolean;
   twoFactorVia: TwoFactorVia;
@@ -52,6 +54,7 @@ export interface OtpCode {
 
 export interface AuditLogEntry {
   id: string;
+  seq: number;
   at: Date;
   actorId: string | null;
   actorRole: Role | null;
@@ -60,6 +63,10 @@ export interface AuditLogEntry {
   target: string | null;
   meta: Record<string, unknown> | null;
   allowed: boolean;
+  /** Хеш предыдущей записи цепочки — null только у самой первой записи хранилища. */
+  prevHash: string | null;
+  /** HMAC-SHA256(секрет сервера, prevHash + канонический вид этой записи) — см. auditChain.ts. Подмена/удаление записи в обход интерфейса рвёт цепочку с этого места. */
+  hash: string;
 }
 
 export type SecondHandStatus = 'pending' | 'confirmed' | 'rejected' | 'expired';

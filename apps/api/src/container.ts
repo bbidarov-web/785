@@ -3,6 +3,7 @@ import { isRole, isPlatformRole, isClinicRole, type Permission, type SecondHandA
 import type { Repos } from './domain/ports.js';
 import { SystemClock } from './infra/memory/systemClock.js';
 import { ConsoleNotifier } from './infra/memory/notifier.js';
+import { HttpNotifier } from './infra/providers/httpNotifier.js';
 import { PrismaTenantRepo } from './infra/prisma/tenantRepo.js';
 import { PrismaAccountRepo } from './infra/prisma/accountRepo.js';
 import { PrismaSessionRepo } from './infra/prisma/sessionRepo.js';
@@ -58,24 +59,31 @@ export function resolveConfirmPermission(handler: SecondHandHandler, payload: Re
  * `testUtil/memoryRepos.ts` вместо этой сборки — сервисы от источника
  * данных не зависят (порты в domain/ports.ts).
  *
- * SERVER.md §7 "до запуска решить": ConsoleNotifier печатает коды 2FA/сброса
- * в лог сервера — замените на реальный шлюз смс/почты до продакшена
- * (см. .env.example и заготовки в infra/providers, когда провайдер выбран).
+ * SERVER.md §7 "до запуска решить" — закрыто: SMS.ru/Resend через HttpNotifier
+ * (infra/providers/httpNotifier.ts), если ключи заданы; иначе ConsoleNotifier
+ * для дев-стенда без реальной отправки (см. .env.example).
  */
-export function buildContainer(prisma: PrismaClient) {
+export interface ContainerOptions {
+  auditLogSecret: string;
+  smsApiKey?: string;
+  emailApiKey?: string;
+  emailFrom: string;
+}
+
+export function buildContainer(prisma: PrismaClient, opts: ContainerOptions) {
   const repos: Repos = {
     clock: new SystemClock(),
     tenants: new PrismaTenantRepo(prisma),
     accounts: new PrismaAccountRepo(prisma),
     sessions: new PrismaSessionRepo(prisma),
     otps: new PrismaOtpRepo(prisma),
-    auditLog: new PrismaAuditLog(prisma),
+    auditLog: new PrismaAuditLog(prisma, opts.auditLogSecret),
     secondHand: new PrismaSecondHandRepo(prisma),
     documentGrants: new PrismaDocumentGrantRepo(prisma),
     channels: new PrismaChannelStore(prisma),
     executorMarks: new PrismaExecutorMarkRepo(prisma),
     files: new LocalDiskFileStorage(process.env.FILES_DIR || './var/uploads'),
-    notifier: new ConsoleNotifier(),
+    notifier: opts.smsApiKey || opts.emailApiKey ? new HttpNotifier(opts.smsApiKey, opts.emailApiKey, opts.emailFrom) : new ConsoleNotifier(),
   };
   return buildContainerFromRepos(repos);
 }

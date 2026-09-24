@@ -46,8 +46,10 @@ export interface OtpRepo {
 
 export interface AuditLog {
   /** Только добавление — отказ в праве тоже пишется (CLAUDE.md). */
-  append(entry: Omit<AuditLogEntry, 'id' | 'at'>): Promise<void>;
+  append(entry: Omit<AuditLogEntry, 'id' | 'at' | 'seq' | 'prevHash' | 'hash'>): Promise<void>;
   list(filter: { tenantInn?: string; actorId?: string; limit?: number }): Promise<AuditLogEntry[]>;
+  /** Пересчитывает цепочку хешей с начала — обнаруживает правку/удаление записи в обход интерфейса (audit/chain.ts). */
+  verifyChain(): Promise<{ ok: boolean; brokenAtSeq: number | null }>;
 }
 
 export interface SecondHandRepo {
