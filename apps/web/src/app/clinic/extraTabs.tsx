@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 const cardStyle: React.CSSProperties = { background: 'var(--bg-card)', border: '1px solid var(--border-2)', borderRadius: 11, padding: '14px 16px' };
 const inputStyle: React.CSSProperties = { padding: '9px 11px', border: '1px solid var(--border-1)', borderRadius: 8, fontSize: 12.5, fontWeight: 600, width: '100%' };
@@ -11,6 +11,124 @@ export function EmptyState({ text }: { text: string }) {
   return (
     <div style={{ background: 'var(--bg-card)', border: '1px dashed #cfd8d7', borderRadius: 12, padding: 24, textAlign: 'center', fontSize: 12.5, color: 'var(--text-muted)', fontWeight: 600, lineHeight: 1.5 }}>
       {text}
+    </div>
+  );
+}
+
+// --- Реквизиты клиники ---
+export interface ClinicProfile {
+  orgFull: string;
+  orgShort: string;
+  license: string;
+  chiefDoctor: string;
+  city: string;
+}
+
+export function ProfileTab({ profile, canManage, onSave }: { profile: ClinicProfile; canManage: boolean; onSave: (next: ClinicProfile) => void }) {
+  const [draft, setDraft] = useState<ClinicProfile>(profile);
+  useEffect(() => setDraft(profile), [profile.orgFull, profile.orgShort, profile.license, profile.chiefDoctor, profile.city]);
+
+  const fields: { key: keyof ClinicProfile; label: string; tag: string }[] = [
+    { key: 'orgFull', label: 'Полное наименование по лицензии', tag: '{{org}}' },
+    { key: 'orgShort', label: 'Краткое наименование', tag: '—' },
+    { key: 'license', label: 'Номер лицензии', tag: '{{license}}' },
+    { key: 'chiefDoctor', label: 'Руководитель (подписант)', tag: '{{chief_doctor}}' },
+    { key: 'city', label: 'Город для шапки документов', tag: '{{city}}' },
+  ];
+
+  return (
+    <div style={cardStyle}>
+      <div style={{ fontSize: 13.5, fontWeight: 800, marginBottom: 4 }}>Реквизиты, виды работ, филиалы и кабинеты — источник всех переменных</div>
+      <div style={{ fontSize: 11.5, color: 'var(--text-muted)', fontWeight: 600, marginBottom: 12 }}>
+        Эти значения подставляются в шаблоны документов вместо переменных, отмеченных справа от поля.
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {fields.map((f) => (
+          <div key={f.key} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <div style={{ flex: '1 1 260px' }}>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 700, marginBottom: 4 }}>{f.label}</div>
+              <input
+                value={draft[f.key]}
+                disabled={!canManage}
+                onChange={(e) => setDraft((d) => ({ ...d, [f.key]: e.target.value }))}
+                style={inputStyle}
+              />
+            </div>
+            <span style={{ fontSize: 10.5, fontFamily: 'var(--font-mono)', color: 'var(--text-caption)', whiteSpace: 'nowrap' }}>{f.tag}</span>
+          </div>
+        ))}
+      </div>
+      {canManage && <button onClick={() => onSave(draft)} style={{ ...primaryBtn, marginTop: 12 }}>Сохранить реквизиты</button>}
+    </div>
+  );
+}
+
+// --- Опись документов ---
+export interface InventoryRow {
+  stageCode: number | null;
+  zone: string;
+  name: string;
+  filled: boolean;
+  filledLabel: string;
+  filledAt: string | null;
+  required: boolean;
+}
+
+export interface InventorySummary {
+  total: number;
+  filled: number;
+  notFilled: number;
+}
+
+export function InventoryTab({ rows, summary }: { rows: InventoryRow[]; summary: InventorySummary }) {
+  const [q, setQ] = useState('');
+  const [onlyNotFilled, setOnlyNotFilled] = useState(false);
+  const filtered = rows.filter((r) => {
+    if (onlyNotFilled && r.filled) return false;
+    if (!q.trim()) return true;
+    const s = q.trim().toLowerCase();
+    return r.name.toLowerCase().includes(s) || r.zone.toLowerCase().includes(s);
+  });
+  const zones = [...new Set(filtered.map((r) => r.zone))];
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={cardStyle}>
+        <div style={{ fontSize: 13.5, fontWeight: 800, marginBottom: 4 }}>Опись документов · контрольный лист</div>
+        <div style={{ fontSize: 11.5, color: 'var(--text-muted)', fontWeight: 600 }}>
+          документов: {summary.total} · заполнено: {summary.filled} · не заполнено: {summary.notFilled}
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Поиск по названию или разделу" style={{ ...inputStyle, flex: '1 1 260px' }} />
+        <button
+          onClick={() => setOnlyNotFilled((v) => !v)}
+          style={{ padding: '9px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap', background: onlyNotFilled ? 'var(--text-primary)' : 'var(--bg-card)', color: onlyNotFilled ? '#fff' : 'var(--text-primary)', border: `1px solid ${onlyNotFilled ? 'var(--text-primary)' : 'var(--border-1)'}` }}
+        >
+          {onlyNotFilled ? 'Показаны: не заполнены' : 'Все'}
+        </button>
+      </div>
+      {filtered.length === 0 && <EmptyState text="По этому фильтру документов нет." />}
+      {zones.map((zone) => (
+        <div key={zone} style={cardStyle}>
+          <div style={{ fontSize: 12.5, fontWeight: 800, marginBottom: 8 }}>{zone}</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {filtered.filter((r) => r.zone === zone).map((r) => (
+              <div key={r.name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid var(--border-3)' }}>
+                <div style={{ fontSize: 12, fontWeight: 600 }}>
+                  {r.name} {r.required && <span style={{ color: 'var(--error)' }}>*</span>}
+                </div>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  {r.filledAt && <span style={{ fontSize: 10.5, color: 'var(--text-muted)', fontWeight: 600 }}>{r.filledAt}</span>}
+                  <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 7px', borderRadius: 5, color: r.filled ? 'var(--accent-hover)' : 'var(--warn)', background: r.filled ? 'var(--accent-bg-light)' : 'var(--warn-bg)' }}>
+                    {r.filledLabel}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

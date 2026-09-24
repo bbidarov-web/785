@@ -307,10 +307,10 @@ describe('HTTP: /api/auth и защита эндпоинтов правами', 
       {
         code: 1, name: 'Базовая система', price: 68000,
         blocks: [{ key: 'b01', num: '01', name: 'Управление ВКК', docs: [
-          { name: 'Приказ о создании комиссии по внутреннему контролю', template: 'Приказ · {{org}} · ИНН {{inn}} · ответственный: {{responsible}}' },
+          { name: 'Приказ о создании комиссии по внутреннему контролю', template: 'Приказ · {{org}} · ИНН {{inn}} · ответственный: {{responsible}} · лицензия {{license}}' },
         ] }],
       },
-      { code: 2, name: 'Организационный пакет', price: 68000, blocks: [] },
+      { code: 2, name: 'Организационный пакет', price: 68000, offerText: 'Условия оффера этапа 2', offerFile: 'Оффер_этап_2.pdf', blocks: [] },
     ];
 
     // менеджер не может публиковать эталон
@@ -358,9 +358,25 @@ describe('HTTP: /api/auth и защита эндпоинтов правами', 
     });
     expect(grant.statusCode).toBe(200);
 
+    // клиника заполняет реквизиты — подставляются в шаблон документа вместе с {{org}}/{{inn}}/{{responsible}}
+    const profilePut = await app.inject({
+      method: 'PUT', url: '/api/clinic/profile', cookies: { k785_session: clinicCookie },
+      payload: { orgFull: 'ООО «Медицина Плюс»', orgShort: 'Медицина Плюс', license: 'ЛО-77-01-123456', chiefDoctor: 'Иванов И. И.', city: 'Москва' },
+    });
+    expect(profilePut.statusCode).toBe(200);
+
     const content = await app.inject({ method: 'GET', url: '/api/clinic/documents/' + encodeURIComponent('Приказ о создании комиссии по внутреннему контролю') + '/content', cookies: { k785_session: clinicCookie } });
     expect(content.statusCode).toBe(200);
     expect(content.json().content).toContain('ИНН 7712345671');
+    expect(content.json().content).toContain('ООО «Медицина Плюс»');
+    expect(content.json().content).toContain('ЛО-77-01-123456');
+
+    // опись документов видит выданный документ этапа как заполненный
+    const inventory = await app.inject({ method: 'GET', url: '/api/clinic/documents/inventory', cookies: { k785_session: clinicCookie } });
+    expect(inventory.statusCode).toBe(200);
+    const invRow = inventory.json().rows.find((r: { name: string }) => r.name === 'Приказ о создании комиссии по внутреннему контролю');
+    expect(invRow).toMatchObject({ filled: true, filledLabel: 'выдан' });
+    expect(inventory.json().summary.filled).toBe(1);
 
     // этап 2 заблокирован, пока платформа не приняла этап 1 — оплата сама по себе не открывает следующий
     const viewAfterPay = await app.inject({ method: 'GET', url: '/api/clinic/stages', cookies: { k785_session: clinicCookie } });
@@ -379,6 +395,16 @@ describe('HTTP: /api/auth и защита эндпоинтов правами', 
 
     const viewAfterAccept = await app.inject({ method: 'GET', url: '/api/clinic/stages', cookies: { k785_session: clinicCookie } });
     expect(viewAfterAccept.json().stages[1].locked).toBe(false);
+    expect(viewAfterAccept.json().stages[1]).toMatchObject({ offerText: 'Условия оффера этапа 2', offerFile: 'Оффер_этап_2.pdf' });
+
+    // у этапа 2 есть оффер — заказать оплату нельзя, пока клиника не приняла условия
+    const orderBeforeOffer = await app.inject({ method: 'POST', url: '/api/clinic/stages/2/request-payment', cookies: { k785_session: clinicCookie } });
+    expect(orderBeforeOffer.statusCode).toBe(400);
+
+    const acceptOffer = await app.inject({ method: 'POST', url: '/api/clinic/stages/2/accept-offer', cookies: { k785_session: clinicCookie } });
+    expect(acceptOffer.statusCode).toBe(200);
+    expect(acceptOffer.json().payment.offerAccepted).toBe(true);
+
     const secondOrder = await app.inject({ method: 'POST', url: '/api/clinic/stages/2/request-payment', cookies: { k785_session: clinicCookie } });
     expect(secondOrder.statusCode).toBe(200);
   });
@@ -473,6 +499,33 @@ describe('HTTP: /api/auth и защита эндпоинтов правами', 
     expect(fill.statusCode).toBe(200);
     const forms = await app.inject({ method: 'GET', url: '/api/clinic/equipment/forms', cookies: { k785_session: clinicCookie } });
     expect(forms.json().forms[0].dueNow).toBe(false);
+
+    // раздел «Оборудование» мобильного обхода (/walk) использует ТОТ ЖЕ эндпоинт с source='обход' —
+    // медсестра заполняет назначенную ей форму, аудитор эту же форму заполнить не может (ведёт проверки, не журналы)
+    const nurseReg = await container.auth.register({ inn: '7712345671', login: 'nurse1', password: 'nurse2026', password2: 'nurse2026', fio: 'Петрова В. В.', side: 'clinic', role: 'nurse', phone: '+79160000005' });
+    const auditorReg = await container.auth.register({ inn: '7712345671', login: 'auditor9', password: 'auditor2026', password2: 'auditor2026', fio: 'Сидорова В. В.', side: 'clinic', role: 'auditor' });
+    if (!nurseReg.ok || !auditorReg.ok) throw new Error('setup failed');
+    const pos2 = await app.inject({
+      method: 'POST', url: '/api/clinic/equipment/positions', cookies: { k785_session: clinicCookie },
+      payload: { name: 'Холодильник №2', type: 'fridge', logWho: { 'Журнал термометрии': 'Петрова В. В.' } },
+    });
+    const posUid2 = pos2.json().position.uid;
+
+    const nurseLogin = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { inn: '7712345671', login: 'nurse1', password: 'nurse2026' } });
+    const nurseCookie = extractCookie(nurseLogin.headers['set-cookie'], 'k785_session')!;
+    const nurseFill = await app.inject({
+      method: 'POST', url: `/api/clinic/equipment/positions/${posUid2}/forms/${encodeURIComponent('Журнал термометрии')}/fill`,
+      cookies: { k785_session: nurseCookie }, payload: { value: '+5°C', source: 'обход' },
+    });
+    expect(nurseFill.statusCode).toBe(200);
+
+    const auditorLogin = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { inn: '7712345671', login: 'auditor9', password: 'auditor2026' } });
+    const auditorCookie = extractCookie(auditorLogin.headers['set-cookie'], 'k785_session')!;
+    const auditorFill = await app.inject({
+      method: 'POST', url: `/api/clinic/equipment/positions/${posUid2}/forms/${encodeURIComponent('Журнал термометрии')}/fill`,
+      cookies: { k785_session: auditorCookie }, payload: { value: '+6°C', source: 'обход' },
+    });
+    expect(auditorFill.statusCode).toBe(403);
 
     // сводный отчёт: клиника загружает файл
     const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';

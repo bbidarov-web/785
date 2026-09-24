@@ -14,7 +14,7 @@ function makeAccount(role: Account['role'], id: string): Account {
   };
 }
 
-const EMPTY_PAYMENT: StagePaymentState = { status: 'none', requestedAt: null, requestedBy: null, confirmedAt: null, confirmedBy: null, amount: 0, accepted: false, acceptedAt: null, acceptedBy: null };
+const EMPTY_PAYMENT: StagePaymentState = { status: 'none', requestedAt: null, requestedBy: null, confirmedAt: null, confirmedBy: null, amount: 0, accepted: false, acceptedAt: null, acceptedBy: null, offerAccepted: false, offerAcceptedAt: null, offerAcceptedBy: null };
 const EMPTY_SUB: SubscriptionState = { tariffKey: null, status: 'none', startedAt: null, expiresAt: null, history: [] };
 
 describe('WorkQueueService — очередь работы', () => {

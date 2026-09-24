@@ -17,7 +17,7 @@ function makeAccount(role: Account['role'], side: Account['side']): Account {
 }
 
 async function seedPending(repos: MemoryRepos, amount: number) {
-  const payment: StagePaymentState = { status: 'pending', requestedAt: '01.03.2026', requestedBy: 'acc_clinic_admin', confirmedAt: null, confirmedBy: null, amount, accepted: false, acceptedAt: null, acceptedBy: null };
+  const payment: StagePaymentState = { status: 'pending', requestedAt: '01.03.2026', requestedBy: 'acc_clinic_admin', confirmedAt: null, confirmedBy: null, amount, accepted: false, acceptedAt: null, acceptedBy: null, offerAccepted: false, offerAcceptedAt: null, offerAcceptedBy: null };
   await repos.channels.set('tenant', inn, 'stage_paid', { 1: payment }, { updatedBy: null });
 }
 

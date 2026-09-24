@@ -45,8 +45,8 @@ describe('DashboardService — каталог клиентов', () => {
     await repos.tenants.upsert('7712345671', 'ООО «Медицина Плюс»');
     await repos.channels.set('tenant', '7712345671', 'staff', [{ fio: 'Петрова В. В.', pos: 'Медсестра' }], { updatedBy: null });
     const payments: Record<number, StagePaymentState> = {
-      1: { status: 'paid', requestedAt: null, requestedBy: null, confirmedAt: null, confirmedBy: null, amount: 68000, accepted: false, acceptedAt: null, acceptedBy: null },
-      2: { status: 'pending', requestedAt: null, requestedBy: null, confirmedAt: null, confirmedBy: null, amount: 68000, accepted: false, acceptedAt: null, acceptedBy: null },
+      1: { status: 'paid', requestedAt: null, requestedBy: null, confirmedAt: null, confirmedBy: null, amount: 68000, accepted: false, acceptedAt: null, acceptedBy: null, offerAccepted: false, offerAcceptedAt: null, offerAcceptedBy: null },
+      2: { status: 'pending', requestedAt: null, requestedBy: null, confirmedAt: null, confirmedBy: null, amount: 68000, accepted: false, acceptedAt: null, acceptedBy: null, offerAccepted: false, offerAcceptedAt: null, offerAcceptedBy: null },
     };
     await repos.channels.set('tenant', '7712345671', 'stage_paid', payments, { updatedBy: null });
     const capaItems: CapaItem[] = [
@@ -139,8 +139,8 @@ describe('DashboardService — финансовый дашборд (getFinancial
   it('средний срок внедрения — от заказа первого этапа до приёмки последнего принятого', async () => {
     await repos.tenants.upsert('7712345671', 'Клиника 1');
     const payments: Record<number, StagePaymentState> = {
-      1: { status: 'paid', requestedAt: '01.01.2026', requestedBy: null, confirmedAt: '02.01.2026', confirmedBy: null, amount: 68000, accepted: true, acceptedAt: '05.01.2026', acceptedBy: null },
-      2: { status: 'paid', requestedAt: '06.01.2026', requestedBy: null, confirmedAt: '07.01.2026', confirmedBy: null, amount: 68000, accepted: true, acceptedAt: '16.01.2026', acceptedBy: null },
+      1: { status: 'paid', requestedAt: '01.01.2026', requestedBy: null, confirmedAt: '02.01.2026', confirmedBy: null, amount: 68000, accepted: true, acceptedAt: '05.01.2026', acceptedBy: null, offerAccepted: false, offerAcceptedAt: null, offerAcceptedBy: null },
+      2: { status: 'paid', requestedAt: '06.01.2026', requestedBy: null, confirmedAt: '07.01.2026', confirmedBy: null, amount: 68000, accepted: true, acceptedAt: '16.01.2026', acceptedBy: null, offerAccepted: false, offerAcceptedAt: null, offerAcceptedBy: null },
     };
     await repos.channels.set('tenant', '7712345671', 'stage_paid', payments, { updatedBy: null });
     const f = await svc.getFinancials(methodist);
@@ -150,7 +150,7 @@ describe('DashboardService — финансовый дашборд (getFinancial
   it('без принятых этапов срок внедрения не считается (null, а не 0)', async () => {
     await repos.tenants.upsert('7712345671', 'Клиника 1');
     const payments: Record<number, StagePaymentState> = {
-      1: { status: 'pending', requestedAt: '01.01.2026', requestedBy: null, confirmedAt: null, confirmedBy: null, amount: 68000, accepted: false, acceptedAt: null, acceptedBy: null },
+      1: { status: 'pending', requestedAt: '01.01.2026', requestedBy: null, confirmedAt: null, confirmedBy: null, amount: 68000, accepted: false, acceptedAt: null, acceptedBy: null, offerAccepted: false, offerAcceptedAt: null, offerAcceptedBy: null },
     };
     await repos.channels.set('tenant', '7712345671', 'stage_paid', payments, { updatedBy: null });
     const f = await svc.getFinancials(methodist);

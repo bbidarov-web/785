@@ -161,4 +161,54 @@ describe('StageService — этапы внедрения и документы',
       expect(r.ok).toBe(false);
     });
   });
+
+  describe('оффер этапа — клиника принимает условия до заказа оплаты', () => {
+    // оффер — на этапе 2, чтобы проверка гейта не путалась с последовательной блокировкой:
+    // для неё этап 1 сначала честно проходит полный цикл оплата → приёмка платформой
+    const CATALOG_WITH_OFFER: Stage[] = [
+      { code: 1, name: 'Базовая система', price: 68000, blocks: [] },
+      { code: 2, name: 'Организационный пакет', price: 68000, offerText: 'Условия оффера этапа 2', offerFile: 'Оффер_этап_2.pdf', blocks: [] },
+    ];
+
+    beforeEach(async () => {
+      await repos.channels.set('platform', null, 'stage_docs', CATALOG_WITH_OFFER, { updatedBy: null });
+      await svc.requestPayment(admin, 1);
+      await markPaid(1);
+      await svc.acceptStage(methodist, inn, 1); // разблокировать этап 2 — иначе гейт локи и гейт оффера неразличимы
+    });
+
+    it('заказать оплату этапа с оффером нельзя, пока условия не приняты', async () => {
+      const r = await svc.requestPayment(admin, 2);
+      expect(r.ok).toBe(false);
+    });
+
+    it('после принятия оффера заказ проходит', async () => {
+      const accept = await svc.acceptOffer(admin, 2);
+      expect(accept.ok).toBe(true);
+      if (accept.ok) expect(accept.payment.offerAccepted).toBe(true);
+      const r = await svc.requestPayment(admin, 2);
+      expect(r.ok).toBe(true);
+    });
+
+    it('vkk_lead не может принять оффер (нет order:write)', async () => {
+      await expect(svc.acceptOffer(vkk, 2)).rejects.toThrow();
+    });
+
+    it('повторное принятие оффера отклоняется', async () => {
+      await svc.acceptOffer(admin, 2);
+      const r = await svc.acceptOffer(admin, 2);
+      expect(r.ok).toBe(false);
+    });
+
+    it('принять оффер у этапа без условий нечего', async () => {
+      const r = await svc.acceptOffer(admin, 1);
+      expect(r.ok).toBe(false);
+    });
+
+    it('каталог отдаёт текст и файл оффера клинике', async () => {
+      const view = await svc.getClinicView(admin);
+      expect(view[0]).toMatchObject({ offerText: null, offerFile: null });
+      expect(view[1]).toMatchObject({ offerText: 'Условия оффера этапа 2', offerFile: 'Оффер_этап_2.pdf' });
+    });
+  });
 });

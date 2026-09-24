@@ -2,17 +2,31 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
+import {
+  EquipmentTab, SummaryTab,
+  type EquipmentPosition, type EquipmentTypeDef, type EquipmentFormRow, type SummaryRow,
+} from '../clinic/extraTabs';
 
 /**
- * Мобильный обход — перенос ключевого сценария «Аудиты» из
- * reference/prototype/Обход - мобильный.dc.html: список назначенных проверок →
- * чек-лист с ответами/комментарием/фото → завершение. «Оборудование» и
- * «Сводный отчёт» не перенесены (см. apps/api/src/walk/service.ts, шапка файла).
+ * Мобильный обход — перенос сценариев «Аудиты», «Оборудование» и «Сводный
+ * отчёт» из reference/prototype/Обход - мобильный.dc.html: главный экран с
+ * тремя разделами → внутри раздела свой сценарий (чек-лист с ответами для
+ * аудитов, формы журналов для оборудования, статус загрузки для сводного
+ * отчёта). Оборудование и сводный отчёт используют ТЕ ЖЕ эндпоинты и права,
+ * что и `/clinic` (`EquipmentService`/`SummaryService`, `apps/api/src/http/routes/clinicExtras.ts`)
+ * — сервер не различает, откуда пришёл запрос, только роль в сессии:
+ * управлять позициями оборудования и загружать сводный отчёт может только
+ * `vkk_lead` (право `doc:write`), медсестра донабирает журналы (`journal:write`
+ * на свои назначенные формы), аудитор эти два раздела только просматривает
+ * (ведёт проверки, но не журналы — дословно по матрице ROLES).
  *
- * Офлайн-очередь (SERVER.md §6.5): каждая правка получает свой opId в момент
- * постановки в очередь, до попытки отправки. Пока нет сети — правки копятся
- * в localStorage и уходят по одной при её появлении; повтор с тем же opId
- * сервер не применит дважды (see apps/api/src/walk/service.ts, ChannelStore.set opId).
+ * Офлайн-очередь (SERVER.md §6.5) — только для раздела «Аудиты»: каждая
+ * правка получает свой opId в момент постановки в очередь, до попытки
+ * отправки. Пока нет сети — правки копятся в localStorage и уходят по одной
+ * при её появлении; повтор с тем же opId сервер не применит дважды (see
+ * apps/api/src/walk/service.ts, ChannelStore.set opId). Оборудование и
+ * сводный отчёт офлайн-очередь пока не используют — это отдельные экраны с
+ * собственными формами, требующими подключения к сети сразу.
  */
 
 interface SessionInfo {
@@ -60,6 +74,7 @@ interface QueuedOp {
 
 const QUEUE_KEY = 'k785_walk_queue';
 const ALLOWED_ROLES = ['auditor', 'nurse', 'vkk_lead'];
+type View = 'sections' | 'audits' | 'equipment' | 'summary';
 
 function loadQueue(): QueuedOp[] {
   try {
@@ -104,8 +119,13 @@ function resizeImage(file: File): Promise<string> {
 export default function MobileWalkPage() {
   const [ready, setReady] = useState(false);
   const [session, setSession] = useState<SessionInfo | null>(null);
+  const [view, setView] = useState<View>('sections');
   const [list, setList] = useState<WalkListItem[] | null>(null);
   const [detail, setDetail] = useState<WalkDetail | null>(null);
+  const [equipPositions, setEquipPositions] = useState<EquipmentPosition[]>([]);
+  const [equipTypes, setEquipTypes] = useState<EquipmentTypeDef[]>([]);
+  const [equipForms, setEquipForms] = useState<EquipmentFormRow[]>([]);
+  const [summaryRows, setSummaryRows] = useState<SummaryRow[]>([]);
   const [toast, setToast] = useState('');
   const [online, setOnline] = useState(true);
   const [queue, setQueue] = useState<QueuedOp[]>([]);
@@ -120,6 +140,22 @@ export default function MobileWalkPage() {
   const loadList = useCallback(async () => {
     const r = await api.get<{ ok: true; walks: WalkListItem[] } | { ok: false; error: string }>('/api/walk/plan');
     if (r.ok) setList(r.walks);
+  }, []);
+
+  const loadEquipment = useCallback(async () => {
+    const [pos, types, forms] = await Promise.all([
+      api.get<{ ok: true; positions: EquipmentPosition[] } | { ok: false; error: string }>('/api/clinic/equipment/positions'),
+      api.get<{ ok: true; types: EquipmentTypeDef[] }>('/api/panel/equip-types'),
+      api.get<{ ok: true; forms: EquipmentFormRow[] } | { ok: false; error: string }>('/api/clinic/equipment/forms'),
+    ]);
+    if (pos.ok) setEquipPositions(pos.positions);
+    if (types.ok) setEquipTypes(types.types);
+    if (forms.ok) setEquipForms(forms.forms);
+  }, []);
+
+  const loadSummary = useCallback(async () => {
+    const r = await api.get<{ ok: true; rows: SummaryRow[] } | { ok: false; error: string }>('/api/clinic/summary');
+    if (r.ok) setSummaryRows(r.rows);
   }, []);
 
   const flushQueue = useCallback(async () => {
@@ -148,7 +184,7 @@ export default function MobileWalkPage() {
       const ok = r.ok && r.session && ALLOWED_ROLES.includes(r.session.role);
       setSession(ok ? r.session : null);
       setReady(true);
-      if (ok) await loadList();
+      if (ok) await Promise.all([loadList(), loadEquipment(), loadSummary()]);
     })();
     setQueue(loadQueue());
     setOnline(navigator.onLine !== false);
@@ -323,9 +359,89 @@ export default function MobileWalkPage() {
     );
   }
 
+  const auditsTotal = list?.length ?? 0;
+  const auditsToWork = (list ?? []).filter((w) => !w.finished && !w.noCheck).length;
+  const equipToWork = equipForms.filter((f) => f.dueNow).length;
+  const summaryUploaded = summaryRows.filter((r) => r.file).length;
+  const summaryToWork = summaryRows.filter((r) => r.required && !r.file).length;
+  const canManageEquipment = session.role === 'vkk_lead';
+  const canManageSummary = session.role === 'vkk_lead';
+
+  if (view === 'sections') {
+    return (
+      <div style={{ minHeight: '100vh', background: 'var(--bg-app)', display: 'flex', flexDirection: 'column' }}>
+        <TopBar fio={session.fio} online={online} queueLen={queue.length} onFlush={flushQueue} />
+        <div style={{ padding: '16px clamp(12px, 4vw, 22px) 32px', maxWidth: 680, width: '100%', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ fontSize: 16, fontWeight: 800 }}>Разделы</div>
+          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 4 }}>Выберите раздел работы</div>
+          <SectionCard no="01" title="Аудиты" desc="обходы по плану проверок, чек-листы и результаты"
+            stat={`проверок: ${auditsTotal}`} badge={auditsToWork ? `к работе: ${auditsToWork}` : undefined} onClick={() => setView('audits')} />
+          <SectionCard no="02" title="Оборудование" desc="журналы и чек-листы по позициям оборудования"
+            stat={`форм: ${equipForms.length}`} badge={equipToWork ? `к работе: ${equipToWork}` : undefined} onClick={() => setView('equipment')} />
+          <SectionCard no="03" title="Сводный отчёт" desc="итоговые документы клиники: состав от методиста"
+            stat={`загружено ${summaryUploaded} из ${summaryRows.length}`} badge={summaryToWork ? `к работе: ${summaryToWork}` : undefined} onClick={() => setView('summary')} />
+        </div>
+        {toast && <Toast text={toast} />}
+      </div>
+    );
+  }
+
+  if (view === 'equipment') {
+    return (
+      <div style={{ minHeight: '100vh', background: 'var(--bg-app)', display: 'flex', flexDirection: 'column' }}>
+        <TopBar fio={session.fio} online={online} queueLen={queue.length} onBack={() => setView('sections')} onFlush={flushQueue} />
+        <div style={{ padding: '16px clamp(12px, 4vw, 22px) 32px', maxWidth: 680, width: '100%', margin: '0 auto' }}>
+          <EquipmentTab
+            positions={equipPositions} types={equipTypes} forms={equipForms} canManage={canManageEquipment}
+            onAddPosition={async (input) => {
+              const r = await api.post<{ ok: true } | { ok: false; error: string }>('/api/clinic/equipment/positions', input);
+              if (!r.ok) { say(r.error); return; }
+              await loadEquipment(); say('Позиция добавлена');
+            }}
+            onRemovePosition={async (uid) => {
+              const r = await api.del<{ ok: true } | { ok: false; error: string }>(`/api/clinic/equipment/positions/${uid}`);
+              if (!r.ok) { say(r.error); return; }
+              await loadEquipment(); say('Позиция удалена');
+            }}
+            onFill={async (posUid, formName, value, note) => {
+              const r = await api.post<{ ok: true } | { ok: false; error: string }>(`/api/clinic/equipment/positions/${posUid}/forms/${encodeURIComponent(formName)}/fill`, { value, note, source: 'обход' });
+              if (!r.ok) { say(r.error); return; }
+              await loadEquipment(); say('Форма заполнена');
+            }}
+          />
+        </div>
+        {toast && <Toast text={toast} />}
+      </div>
+    );
+  }
+
+  if (view === 'summary') {
+    return (
+      <div style={{ minHeight: '100vh', background: 'var(--bg-app)', display: 'flex', flexDirection: 'column' }}>
+        <TopBar fio={session.fio} online={online} queueLen={queue.length} onBack={() => setView('sections')} onFlush={flushQueue} />
+        <div style={{ padding: '16px clamp(12px, 4vw, 22px) 32px', maxWidth: 680, width: '100%', margin: '0 auto' }}>
+          <SummaryTab
+            rows={summaryRows} canManage={canManageSummary}
+            onUpload={async (name, fileName, base64) => {
+              const r = await api.post<{ ok: true } | { ok: false; error: string }>(`/api/clinic/summary/${encodeURIComponent(name)}/upload`, { fileName, base64 });
+              if (!r.ok) { say(r.error); return; }
+              await loadSummary(); say('Файл загружен');
+            }}
+            onRemove={async (name) => {
+              const r = await api.del<{ ok: true } | { ok: false; error: string }>(`/api/clinic/summary/${encodeURIComponent(name)}`);
+              if (!r.ok) { say(r.error); return; }
+              await loadSummary(); say('Файл удалён');
+            }}
+          />
+        </div>
+        {toast && <Toast text={toast} />}
+      </div>
+    );
+  }
+
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-app)', display: 'flex', flexDirection: 'column' }}>
-      <TopBar fio={session.fio} online={online} queueLen={queue.length} onFlush={flushQueue} />
+      <TopBar fio={session.fio} online={online} queueLen={queue.length} onBack={() => setView('sections')} onFlush={flushQueue} />
       <div style={{ padding: '16px clamp(12px, 4vw, 22px) 32px', maxWidth: 680, width: '100%', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 10 }}>
         {list && list.length === 0 && <EmptyState text="Проверок на вас не назначено. Как только клиника поставит вас проверяющим в плане, они появятся здесь." />}
         {(list ?? []).map((w) => (
@@ -353,6 +469,27 @@ export default function MobileWalkPage() {
       </div>
       {toast && <Toast text={toast} />}
     </div>
+  );
+}
+
+function SectionCard({ no, title, desc, stat, badge, onClick }: { no: string; title: string; desc: string; stat: string; badge?: string; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="k785-tap-target"
+      style={{ textAlign: 'left', display: 'flex', alignItems: 'center', gap: 14, background: 'var(--bg-card)', border: '1px solid var(--border-2)', borderRadius: 12, padding: '16px 18px', cursor: 'pointer' }}
+    >
+      <div style={{ width: 40, height: 40, borderRadius: 9, background: 'var(--bg-app)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800, color: 'var(--accent-hover)', flexShrink: 0 }}>{no}</div>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontSize: 14, fontWeight: 800 }}>{title}</div>
+        <div style={{ fontSize: 11.5, color: 'var(--text-muted)', fontWeight: 600, marginTop: 2 }}>{desc}</div>
+        <div style={{ display: 'flex', gap: 8, marginTop: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 11, fontWeight: 700 }}>{stat}</span>
+          {badge && <span style={{ fontSize: 10, fontWeight: 800, padding: '3px 8px', borderRadius: 5, color: 'var(--error)', background: 'var(--error-bg)' }}>{badge}</span>}
+        </div>
+      </div>
+      <span style={{ fontSize: 18, color: 'var(--text-muted)' }}>›</span>
+    </button>
   );
 }
 

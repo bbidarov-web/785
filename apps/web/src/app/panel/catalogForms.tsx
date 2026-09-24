@@ -24,6 +24,8 @@ export interface StageDraft {
   code: number;
   name: string;
   price: number;
+  offerText?: string;
+  offerFile?: string;
   blocks: StageBlockDraft[];
 }
 
@@ -55,6 +57,21 @@ export function StageCatalogForm({ stages, canPublish, onPublish }: { stages: St
             <input value={stage.name} disabled={!canPublish} onChange={(e) => updateStage(si, { name: e.target.value })} placeholder="Название этапа" style={{ ...inputStyle, flex: '1 1 220px' }} />
             <input type="number" value={stage.price} disabled={!canPublish} onChange={(e) => updateStage(si, { price: Number(e.target.value) })} placeholder="Цена, ₽" style={{ ...inputStyle, flex: '0 1 140px' }} />
             {canPublish && <button onClick={() => setDraft((d) => d.filter((_, j) => j !== si))} style={outlineBtn}>Удалить этап</button>}
+          </div>
+
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+            <textarea
+              value={stage.offerText ?? ''} disabled={!canPublish}
+              onChange={(e) => updateStage(si, { offerText: e.target.value })}
+              placeholder="Условия оффера этапа (необязательно) — если заполнено, клиника должна принять их до заказа оплаты"
+              style={{ ...inputStyle, flex: '1 1 260px', minHeight: 44, fontFamily: 'inherit' }}
+            />
+            <input
+              value={stage.offerFile ?? ''} disabled={!canPublish}
+              onChange={(e) => updateStage(si, { offerFile: e.target.value })}
+              placeholder="Имя файла оффера (например Оффер_этап_1.pdf)"
+              style={{ ...inputStyle, flex: '1 1 220px' }}
+            />
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingLeft: 12, borderLeft: '2px solid var(--border-2)' }}>

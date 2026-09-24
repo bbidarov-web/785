@@ -29,6 +29,8 @@ import { CycleService } from './clinic/cycleService.js';
 import { EquipmentService } from './clinic/equipmentService.js';
 import { SummaryService } from './clinic/summaryService.js';
 import { SelfAuditService } from './clinic/selfAuditService.js';
+import { ProfileService } from './clinic/profileService.js';
+import { InventoryService } from './clinic/inventoryService.js';
 import { DashboardService } from './panel/dashboardService.js';
 import { TariffService } from './panel/tariffService.js';
 import { SubscriptionService } from './panel/subscriptionService.js';
@@ -201,6 +203,8 @@ export function buildContainerFromRepos(repos: Repos) {
     equipment: new EquipmentService(repos),
     summary: new SummaryService(repos),
     selfAudit: new SelfAuditService(repos, capa),
+    profile: new ProfileService(repos),
+    inventory: new InventoryService(repos),
     dashboard: new DashboardService(repos, documents),
     tariff,
     subscription,

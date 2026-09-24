@@ -116,11 +116,12 @@ export interface CapaItem {
 /**
  * Документ внутри блока этапа. `template` — текст с плейсхолдерами
  * `{{org}}`, `{{inn}}`, `{{date}}`, `{{responsible}}` (последний берётся из
- * матрицы ответственных, `docasg[name]`) — перенос идеи «бланк выбирается по
- * виду документа, в переменные подставляются реквизиты профиля и
- * ответственный по направлению» из README, без полноценного профиля клиники
- * (адрес, лицензия и т.д. — этого поля ещё нет, см. README «Известные
- * ограничения»).
+ * матрицы ответственных, `docasg[name]`), `{{license}}`, `{{chief_doctor}}`,
+ * `{{city}}` (из `ClinicProfile`, `ProfileService`) — перенос идеи «бланк
+ * выбирается по виду документа, в переменные подставляются реквизиты
+ * профиля и ответственный по направлению» из README. Профиль пока без
+ * адреса/логотипа/видов работ — это уже часть филиалов, отдельная фича
+ * (см. README «Известные ограничения»).
  */
 export interface StageDoc {
   name: string;
@@ -141,12 +142,18 @@ export interface StageBlock {
 
 /**
  * Этап внедрения. Цены — из прототипа (offer-карточки этапов, строки
- * ~7346–7349): 68 000 / 68 000 / 54 000 / 42 000 ₽.
+ * ~7346–7349): 68 000 / 68 000 / 54 000 / 42 000 ₽. `offerText`/`offerFile` —
+ * условия оффера этапа (reference/prototype/Личный кабинет ВКК.dc.html,
+ * `stageMeta`: «Оффер на этап N», файл вида «Оффер_этап_1_создание_системы.pdf»,
+ * бейдж «условия / приняты») — если заполнены, клиника должна явно принять
+ * условия (`StageService.acceptOffer`), прежде чем заказать оплату этапа.
  */
 export interface Stage {
   code: number;
   name: string;
   price: number;
+  offerText?: string;
+  offerFile?: string;
   blocks: StageBlock[];
 }
 
@@ -171,6 +178,10 @@ export interface StagePaymentState {
   accepted: boolean;
   acceptedAt: string | null;
   acceptedBy: string | null;
+  /** Клиника приняла условия оффера этапа (`Stage.offerText`) — отдельно от `accepted` (приёмка платформой готовой работы). Пока оффер не принят, заказать оплату этапа нельзя, если у этапа есть текст оффера. */
+  offerAccepted: boolean;
+  offerAcceptedAt: string | null;
+  offerAcceptedBy: string | null;
 }
 
 /** Годовой цикл — эталон методиста (`cycle_master`, платформенный канал). */
@@ -214,6 +225,22 @@ export interface CycleLive {
 export interface Branch {
   id: string;
   name: string;
+}
+
+/**
+ * Реквизиты клиники (`profile`, тенантский канал; reference/prototype/Личный
+ * кабинет ВКК.dc.html, `profileFields`/`{{ORGANIZATION_FULL}}` и т.д.) —
+ * источник переменных для шаблонов документов (`StageService.getDocumentContent`),
+ * дополняет `{{org}}`/`{{inn}}`/`{{date}}`/`{{responsible}}`. Пока без логотипа,
+ * видов работ и кабинетов — этого либо нет в перенесённой части прототипа,
+ * либо это отдельная фича филиалов (см. README «Известные ограничения»).
+ */
+export interface ClinicProfile {
+  orgFull: string; // полное наименование по лицензии — {{org}}, если заполнено
+  orgShort: string; // краткое наименование
+  license: string; // номер лицензии — {{license}}
+  chiefDoctor: string; // руководитель/подписант — {{chief_doctor}}
+  city: string; // город для шапки документов — {{city}}
 }
 
 /** Тип оборудования из эталона методиста (`equip_types`, платформенный канал). */

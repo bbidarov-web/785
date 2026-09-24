@@ -3,9 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import {
-  BranchesTab, CycleTab, EquipmentTab, SummaryTab, SelfAuditTab,
+  BranchesTab, CycleTab, EquipmentTab, SummaryTab, SelfAuditTab, ProfileTab, InventoryTab,
   type Branch, type CycleDirectionView, type EquipmentPosition, type EquipmentTypeDef, type EquipmentFormRow,
-  type SummaryRow, type SelfAuditRunView,
+  type SummaryRow, type SelfAuditRunView, type ClinicProfile, type InventoryRow, type InventorySummary,
 } from './extraTabs';
 
 /**
@@ -53,6 +53,7 @@ interface StagePayment {
   amount: number;
   confirmedAt: string | null;
   accepted: boolean;
+  offerAccepted: boolean;
 }
 
 interface StageDocView {
@@ -71,6 +72,8 @@ interface StageView {
   code: number;
   name: string;
   price: number;
+  offerText: string | null;
+  offerFile: string | null;
   payment: StagePayment;
   locked: boolean;
   blocks: StageBlockView[];
@@ -89,7 +92,9 @@ interface CapaItem {
   closedAt: string | null;
 }
 
-type Tab = 'stages' | 'staff' | 'plan' | 'findings' | 'capa' | 'branches' | 'cycle' | 'equipment' | 'summary' | 'selfaudit';
+type Tab = 'stages' | 'staff' | 'plan' | 'findings' | 'capa' | 'profile' | 'inventory' | 'branches' | 'cycle' | 'equipment' | 'summary' | 'selfaudit';
+const EMPTY_PROFILE: ClinicProfile = { orgFull: '', orgShort: '', license: '', chiefDoctor: '', city: '' };
+const EMPTY_INVENTORY_SUMMARY: InventorySummary = { total: 0, filled: 0, notFilled: 0 };
 const ALLOWED_ROLES = ['clinic_admin', 'vkk_lead', 'auditor', 'observer'];
 
 const cardStyle: React.CSSProperties = { background: 'var(--bg-card)', border: '1px solid var(--border-2)', borderRadius: 11, padding: '14px 16px' };
@@ -124,6 +129,9 @@ export default function ClinicCabinetPage() {
   const [summaryRows, setSummaryRows] = useState<SummaryRow[]>([]);
   const [selfAuditRuns, setSelfAuditRuns] = useState<SelfAuditRunView[]>([]);
   const [checklistCatalog, setChecklistCatalog] = useState<string[]>([]);
+  const [profile, setProfile] = useState<ClinicProfile>(EMPTY_PROFILE);
+  const [inventoryRows, setInventoryRows] = useState<InventoryRow[]>([]);
+  const [inventorySummary, setInventorySummary] = useState<InventorySummary>(EMPTY_INVENTORY_SUMMARY);
 
   const say = useCallback((text: string) => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -132,7 +140,7 @@ export default function ClinicCabinetPage() {
   }, []);
 
   const loadAll = useCallback(async () => {
-    const [st, s, a, p, f, c, br, cy, eqp, eqt, eqf, sm, sa, chk] = await Promise.all([
+    const [st, s, a, p, f, c, br, cy, eqp, eqt, eqf, sm, sa, chk, pr, inv] = await Promise.all([
       api.get<{ ok: true; stages: StageView[] }>('/api/clinic/stages'),
       api.get<{ ok: true; staff: StaffMember[] }>('/api/clinic/staff'),
       api.get<{ ok: true; assignments: Record<string, string> }>('/api/clinic/assignments'),
@@ -147,6 +155,8 @@ export default function ClinicCabinetPage() {
       api.get<{ ok: true; rows: SummaryRow[] }>('/api/clinic/summary'),
       api.get<{ ok: true; runs: SelfAuditRunView[] }>('/api/clinic/selfaudit'),
       api.get<{ ok: true; checklists: { name: string }[] }>('/api/panel/checklists'),
+      api.get<{ ok: true; profile: ClinicProfile } | { ok: false; error: string }>('/api/clinic/profile'),
+      api.get<{ ok: true; rows: InventoryRow[]; summary: InventorySummary } | { ok: false; error: string }>('/api/clinic/documents/inventory'),
     ]);
     if (st.ok) setStages(st.stages);
     if (s.ok) setStaff(s.staff);
@@ -162,6 +172,8 @@ export default function ClinicCabinetPage() {
     if (sm.ok) setSummaryRows(sm.rows);
     if (sa.ok) setSelfAuditRuns(sa.runs);
     if (chk.ok) setChecklistCatalog(chk.checklists.map((c) => c.name));
+    if (pr.ok) setProfile(pr.profile);
+    if (inv.ok) { setInventoryRows(inv.rows); setInventorySummary(inv.summary); }
   }, []);
 
   useEffect(() => {
@@ -229,6 +241,7 @@ export default function ClinicCabinetPage() {
   const canCreateCapa = canAssign;
   const canManageBranches = session.role === 'clinic_admin';
   const canManageEquip = canAssign;
+  const canManageProfile = session.role === 'clinic_admin';
 
   const tabs: { key: Tab; label: string }[] = [
     { key: 'stages', label: `Этапы и документы · ${stages.length}` },
@@ -236,6 +249,8 @@ export default function ClinicCabinetPage() {
     { key: 'plan', label: `План проверок · ${plan.length}` },
     { key: 'findings', label: `Находки · ${findings.length}` },
     { key: 'capa', label: `CAPA · ${capa.filter((c) => c.status === 'planned').length}` },
+    { key: 'profile', label: 'Профиль клиники' },
+    { key: 'inventory', label: `Опись документов · ${inventorySummary.total}` },
     { key: 'branches', label: `Филиалы · ${branches.length}` },
     { key: 'cycle', label: 'Годовой цикл' },
     { key: 'equipment', label: `Оборудование · ${equipPositions.length}` },
@@ -266,6 +281,11 @@ export default function ClinicCabinetPage() {
               const r = await api.post<{ ok: true } | { ok: false; error: string }>(`/api/clinic/stages/${code}/request-payment`, {});
               if (!r.ok) { say(r.error); return; }
               await loadAll(); say('Счёт выставлен, ожидает подтверждения оператора');
+            }}
+            onAcceptOffer={async (code) => {
+              const r = await api.post<{ ok: true } | { ok: false; error: string }>(`/api/clinic/stages/${code}/accept-offer`, {});
+              if (!r.ok) { say(r.error); return; }
+              await loadAll(); say('Условия оффера приняты');
             }}
             onOpen={async (name) => {
               const r = await api.get<{ ok: true; content: string } | { ok: false; error: string }>(`/api/clinic/documents/${encodeURIComponent(name)}/content`);
@@ -334,6 +354,18 @@ export default function ClinicCabinetPage() {
             }}
           />
         )}
+
+        {tab === 'profile' && (
+          <ProfileTab profile={profile} canManage={canManageProfile}
+            onSave={async (next) => {
+              const r = await api.put<{ ok: true } | { ok: false; error: string }>('/api/clinic/profile', next);
+              if (!r.ok) { say(r.error); return; }
+              await loadAll(); say('Реквизиты сохранены');
+            }}
+          />
+        )}
+
+        {tab === 'inventory' && <InventoryTab rows={inventoryRows} summary={inventorySummary} />}
 
         {tab === 'branches' && (
           <BranchesTab branches={branches} canManage={canManageBranches}
@@ -444,7 +476,9 @@ export default function ClinicCabinetPage() {
   );
 }
 
-function StagesTab({ stages, canOrder, onOrder, onOpen }: { stages: StageView[]; canOrder: boolean; onOrder: (code: number) => void; onOpen: (name: string) => void }) {
+function StagesTab({ stages, canOrder, onOrder, onAcceptOffer, onOpen }: {
+  stages: StageView[]; canOrder: boolean; onOrder: (code: number) => void; onAcceptOffer: (code: number) => void; onOpen: (name: string) => void;
+}) {
   const statusLabel: Record<StagePayment['status'], string> = { none: 'не заказан', pending: 'счёт выставлен', paid: 'оплачен' };
   const statusColor: Record<StagePayment['status'], string> = { none: 'var(--text-muted)', pending: 'var(--warn)', paid: 'var(--accent-hover)' };
   const statusBg: Record<StagePayment['status'], string> = { none: 'var(--bg-app)', pending: 'var(--warn-bg)', paid: 'var(--accent-bg-light)' };
@@ -465,7 +499,22 @@ function StagesTab({ stages, canOrder, onOrder, onOpen }: { stages: StageView[];
               Заблокирован: нельзя заказать, пока платформа не приняла предыдущий этап.
             </div>
           )}
-          {s.payment.status === 'none' && canOrder && !s.locked && (
+          {s.offerText && s.payment.status === 'none' && !s.locked && (
+            <div style={{ background: 'var(--warn-bg)', border: '1px solid var(--warn)', borderRadius: 9, padding: '10px 12px', marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                <div style={{ fontSize: 12.5, fontWeight: 800 }}>Оффер на этап {s.code}</div>
+                <span style={{ fontSize: 10, fontWeight: 800, padding: '3px 8px', borderRadius: 5, color: s.payment.offerAccepted ? 'var(--accent-hover)' : 'var(--warn)', background: s.payment.offerAccepted ? 'var(--accent-bg-light)' : '#fff' }}>
+                  {s.payment.offerAccepted ? 'условия приняты' : 'ожидает вашего решения'}
+                </span>
+              </div>
+              <div style={{ fontSize: 12, fontWeight: 600, whiteSpace: 'pre-wrap' }}>{s.offerText}</div>
+              {s.offerFile && <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>Загружено методистом · {s.offerFile}</div>}
+              {canOrder && !s.payment.offerAccepted && (
+                <button onClick={() => onAcceptOffer(s.code)} style={{ ...primaryBtn, alignSelf: 'flex-start' }}>Принять условия</button>
+              )}
+            </div>
+          )}
+          {s.payment.status === 'none' && canOrder && !s.locked && (!s.offerText || s.payment.offerAccepted) && (
             <button onClick={() => onOrder(s.code)} style={{ ...primaryBtn, marginTop: 10 }}>Заказать (выставить счёт)</button>
           )}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>

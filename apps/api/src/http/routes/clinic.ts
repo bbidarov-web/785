@@ -166,6 +166,15 @@ export async function clinicRoutes(app: FastifyInstance): Promise<void> {
     return reply.code(r.ok ? 200 : 400).send(r);
   });
 
+  app.post('/api/clinic/stages/:code/accept-offer', async (req, reply) => {
+    const ctx = requireAuth(req, reply);
+    if (!ctx) return;
+    const { code } = z.object({ code: z.coerce.number().int() }).parse(req.params);
+    const r = await guarded(() => app.container.stage.acceptOffer(ctx.account, code), reply);
+    if (r === undefined) return;
+    return reply.code(r.ok ? 200 : 400).send(r);
+  });
+
   app.get('/api/clinic/documents/:name/content', async (req, reply) => {
     const ctx = requireAuth(req, reply);
     if (!ctx) return;

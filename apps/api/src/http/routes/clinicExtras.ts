@@ -26,6 +26,7 @@ const equipFillSchema = z.object({
   source: z.enum(['обход', 'кабинет клиники']).default('кабинет клиники'),
 });
 const summaryUploadSchema = z.object({ fileName: z.string().min(1), base64: z.string().min(1) });
+const profileSchema = z.object({ orgFull: z.string(), orgShort: z.string(), license: z.string(), chiefDoctor: z.string(), city: z.string() });
 const selfAuditAnswerSchema = z.object({ index: z.number().int().min(0), answer: z.enum(['', 'ok', 'bad', 'na']), comment: z.string().default('') });
 
 /**
@@ -43,6 +44,33 @@ export async function clinicExtraRoutes(app: FastifyInstance): Promise<void> {
       throw err;
     });
   }
+
+  // --- Реквизиты клиники ---
+  app.get('/api/clinic/profile', async (req, reply) => {
+    const ctx = requireAuth(req, reply);
+    if (!ctx) return;
+    const profile = await guarded(() => app.container.profile.get(ctx.account), reply);
+    if (profile === undefined) return;
+    return reply.send({ ok: true, profile });
+  });
+
+  app.put('/api/clinic/profile', async (req, reply) => {
+    const ctx = requireAuth(req, reply);
+    if (!ctx) return;
+    const body = profileSchema.parse(req.body);
+    const r = await guarded(() => app.container.profile.save(ctx.account, body), reply);
+    if (r === undefined) return;
+    return reply.code(r.ok ? 200 : 400).send(r);
+  });
+
+  // --- Опись документов ---
+  app.get('/api/clinic/documents/inventory', async (req, reply) => {
+    const ctx = requireAuth(req, reply);
+    if (!ctx) return;
+    const inventory = await guarded(() => app.container.inventory.getInventory(ctx.account), reply);
+    if (inventory === undefined) return;
+    return reply.send({ ok: true, ...inventory });
+  });
 
   // --- Филиалы ---
   app.get('/api/clinic/branches', async (req, reply) => {

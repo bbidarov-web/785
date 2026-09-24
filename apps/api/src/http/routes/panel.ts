@@ -6,7 +6,11 @@ import { assertPermission, PermissionDeniedError } from '../../rbac/service.js';
 const checklistSchema = z.object({ name: z.string().min(1), items: z.array(z.string()) });
 const stageDocSchema = z.object({ name: z.string().min(1), template: z.string() });
 const stageBlockSchema = z.object({ key: z.string(), num: z.string(), name: z.string(), docs: z.array(stageDocSchema) });
-const stageSchema = z.object({ code: z.number().int(), name: z.string(), price: z.number().nonnegative(), blocks: z.array(stageBlockSchema) });
+const stageSchema = z.object({
+  code: z.number().int(), name: z.string(), price: z.number().nonnegative(),
+  offerText: z.string().optional(), offerFile: z.string().optional(),
+  blocks: z.array(stageBlockSchema),
+});
 const cycleSchema = z.object({
   year: z.number().int(),
   dirs: z.array(z.object({ name: z.string(), months: z.array(z.number().int().min(0).max(11)) })),

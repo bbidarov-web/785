@@ -4,6 +4,7 @@ import type { Account } from '../domain/types.js';
 import { assertPermission, PermissionDeniedError } from '../rbac/service.js';
 import type { Stage, StagePaymentState } from '../shared/channelShapes.js';
 import { DocumentService } from '../documents/service.js';
+import { ProfileService } from './profileService.js';
 
 export type StageResult<T> = { ok: true } & T | { ok: false; error: string };
 
@@ -23,6 +24,8 @@ export interface StageView {
   code: number;
   name: string;
   price: number;
+  offerText: string | null;
+  offerFile: string | null;
   payment: StagePaymentState;
   /** Заказать оплату нельзя, пока платформа не приняла предыдущий этап (см. заголовок класса). */
   locked: boolean;
@@ -38,6 +41,7 @@ function today(): string {
 const EMPTY_PAYMENT: StagePaymentState = {
   status: 'none', requestedAt: null, requestedBy: null, confirmedAt: null, confirmedBy: null,
   amount: 0, accepted: false, acceptedAt: null, acceptedBy: null,
+  offerAccepted: false, offerAcceptedAt: null, offerAcceptedBy: null,
 };
 
 /**
@@ -59,9 +63,11 @@ const EMPTY_PAYMENT: StagePaymentState = {
  */
 export class StageService {
   private documents: DocumentService;
+  private profile: ProfileService;
 
   constructor(private repos: Repos) {
     this.documents = new DocumentService(repos);
+    this.profile = new ProfileService(repos);
   }
 
   private assertReadAccess(account: Account): void {
@@ -100,6 +106,8 @@ export class StageService {
       code: stage.code,
       name: stage.name,
       price: stage.price,
+      offerText: stage.offerText ?? null,
+      offerFile: stage.offerFile ?? null,
       payment: paidRec.data[stage.code] ?? EMPTY_PAYMENT,
       locked: this.isLocked(stage.code, sorted, paidRec.data),
       blocks: stage.blocks.map((b) => ({
@@ -126,10 +134,39 @@ export class StageService {
       const current = rec.data[stageCode];
       if (current?.status === 'paid') return { ok: false, error: 'Этап уже оплачен' };
       if (current?.status === 'pending') return { ok: false, error: 'Счёт уже выставлен, ожидает подтверждения оператора' };
-      const payment: StagePaymentState = { ...EMPTY_PAYMENT, status: 'pending', requestedAt: today(), requestedBy: account.id, amount: stage.price };
+      if (stage.offerText && !current?.offerAccepted) {
+        return { ok: false, error: 'Сначала примите условия оффера этапа' };
+      }
+      const payment: StagePaymentState = { ...EMPTY_PAYMENT, ...current, status: 'pending', requestedAt: today(), requestedBy: account.id, amount: stage.price };
       const next = { ...rec.data, [stageCode]: payment };
       const res = await this.repos.channels.set('tenant', account.inn, 'stage_paid', next, { expectedVersion: rec.version, updatedBy: account.id });
       if (res.ok) return { ok: true, payment };
+    }
+    return { ok: false, error: 'Не удалось сохранить — слишком много параллельных правок, повторите' };
+  }
+
+  /**
+   * Принять условия оффера этапа (`order:write` — та же роль, что заказывает
+   * оплату) — отдельный факт от `accepted` (приёмка платформой готовой
+   * работы): здесь клиника соглашается с условиями ДО начала работы, оффер
+   * прикладывает методист вместе с текстом этапа в каталоге
+   * (reference/prototype/Личный кабинет ВКК.dc.html, `stageMeta`/`offerBadge`).
+   */
+  async acceptOffer(account: Account, stageCode: number): Promise<StageResult<{ payment: StagePaymentState }>> {
+    await assertPermission(this.repos.auditLog, account, 'order:write', 'stage:accept-offer', String(stageCode), account.inn);
+    const catalog = await this.getCatalog();
+    const stage = catalog.find((s) => s.code === stageCode);
+    if (!stage) return { ok: false, error: 'Этап не найден в каталоге' };
+    if (!stage.offerText) return { ok: false, error: 'У этапа нет условий оффера — принимать нечего' };
+
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const rec = await this.repos.channels.get<Record<number, StagePaymentState>>('tenant', account.inn, 'stage_paid', {});
+      const current = rec.data[stageCode] ?? EMPTY_PAYMENT;
+      if (current.offerAccepted) return { ok: false, error: 'Условия оффера уже приняты' };
+      const updated: StagePaymentState = { ...current, offerAccepted: true, offerAcceptedAt: today(), offerAcceptedBy: account.id };
+      const next = { ...rec.data, [stageCode]: updated };
+      const res = await this.repos.channels.set('tenant', account.inn, 'stage_paid', next, { expectedVersion: rec.version, updatedBy: account.id });
+      if (res.ok) return { ok: true, payment: updated };
     }
     return { ok: false, error: 'Не удалось сохранить — слишком много параллельных правок, повторите' };
   }
@@ -180,13 +217,19 @@ export class StageService {
     const granted = await this.documents.getTemplateIfGranted(account.inn, docName, async () => found!.template);
     if (!granted.ok) return granted;
 
-    const docasg = (await this.repos.channels.get<Record<string, string>>('tenant', account.inn, 'docasg', {})).data;
-    const tenant = await this.repos.tenants.findByInn(account.inn);
+    const [docasg, tenant, profile] = await Promise.all([
+      this.repos.channels.get<Record<string, string>>('tenant', account.inn, 'docasg', {}).then((r) => r.data),
+      this.repos.tenants.findByInn(account.inn),
+      this.profile.getForTenant(account.inn),
+    ]);
     const content = granted.content
-      .replaceAll('{{org}}', tenant?.name ?? account.org ?? `ИНН ${account.inn}`)
+      .replaceAll('{{org}}', profile.orgFull || tenant?.name || account.org || `ИНН ${account.inn}`)
       .replaceAll('{{inn}}', account.inn)
       .replaceAll('{{date}}', today())
-      .replaceAll('{{responsible}}', docasg[docName] ?? 'не назначен');
+      .replaceAll('{{responsible}}', docasg[docName] ?? 'не назначен')
+      .replaceAll('{{license}}', profile.license || 'не указан')
+      .replaceAll('{{chief_doctor}}', profile.chiefDoctor || 'не указан')
+      .replaceAll('{{city}}', profile.city || '');
     return { ok: true, content };
   }
 }
