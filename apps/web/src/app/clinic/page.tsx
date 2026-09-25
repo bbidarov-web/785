@@ -29,6 +29,15 @@ interface StaffMember {
   pos: string;
 }
 
+interface StandardRec {
+  catalog: string;
+  label: string;
+  adopted: number;
+  latest: number;
+  status: 'pending' | 'declined';
+  changes: string[];
+}
+
 interface WalkAct {
   planId: string;
   actNo: string;
@@ -139,7 +148,7 @@ interface CapaTerm {
   days: number;
 }
 
-type Tab = 'stages' | 'staff' | 'plan' | 'findings' | 'capa' | 'profile' | 'inventory' | 'branches' | 'cycle' | 'equipment' | 'summary' | 'selfaudit';
+type Tab = 'standard' | 'stages' | 'staff' | 'plan' | 'findings' | 'capa' | 'profile' | 'inventory' | 'branches' | 'cycle' | 'equipment' | 'summary' | 'selfaudit';
 const EMPTY_PROFILE: ClinicProfile = { orgFull: '', orgShort: '', license: '', chiefDoctor: '', city: '' };
 const EMPTY_INVENTORY_SUMMARY: InventorySummary = { total: 0, filled: 0, notFilled: 0 };
 const ALLOWED_ROLES = ['clinic_admin', 'vkk_lead', 'auditor', 'observer'];
@@ -173,6 +182,7 @@ export default function ClinicCabinetPage() {
   const [capa, setCapa] = useState<CapaItem[]>([]);
   const [readiness, setReadiness] = useState<{ percent: number; lines: { key: string; label: string; weight: number; earned: number; reason: string }[] } | null>(null);
   const [acts, setActs] = useState<WalkAct[]>([]);
+  const [stdRecs, setStdRecs] = useState<StandardRec[]>([]);
   const [showReadiness, setShowReadiness] = useState(false);
   const [clinicAccounts, setClinicAccounts] = useState<ClinicAccount[]>([]);
   const [capaTerms, setCapaTerms] = useState<CapaTerm[]>([]);
@@ -198,7 +208,7 @@ export default function ClinicCabinetPage() {
   const roleRef = useRef('');
   const loadAll = useCallback(async () => {
     const sessionRole = roleRef.current;
-    const [st, s, pend, acc, rd, ac, a, p, f, c, br, cy, eqp, eqt, eqf, sm, sa, chk, pr, inv] = await Promise.all([
+    const [st, s, pend, acc, rd, ac, sr, a, p, f, c, br, cy, eqp, eqt, eqf, sm, sa, chk, pr, inv] = await Promise.all([
       api.get<{ ok: true; stages: StageView[] }>('/api/clinic/stages'),
       api.get<{ ok: true; staff: StaffMember[] }>('/api/clinic/staff'),
       sessionRole === 'clinic_admin'
@@ -209,6 +219,7 @@ export default function ClinicCabinetPage() {
         : Promise.resolve({ ok: false as const, error: 'нет права' }),
       api.get<{ ok: true; readiness: { percent: number; lines: { key: string; label: string; weight: number; earned: number; reason: string }[] } } | { ok: false; error: string }>('/api/clinic/readiness'),
       api.get<{ ok: true; acts: WalkAct[] } | { ok: false; error: string }>('/api/clinic/acts'),
+      api.get<{ ok: true; recommendations: StandardRec[] } | { ok: false; error: string }>('/api/clinic/standard'),
       api.get<{ ok: true; assignments: Record<string, string>; progress?: Record<string, { fio: string; at: string }[]> }>('/api/clinic/assignments'),
       api.get<{ ok: true; plan: PlanItem[] }>('/api/clinic/plan'),
       api.get<{ ok: true; findings: Finding[] }>('/api/clinic/capa/findings'),
@@ -230,6 +241,7 @@ export default function ClinicCabinetPage() {
     setClinicAccounts(acc.ok ? acc.accounts : []);
     if (rd.ok) setReadiness(rd.readiness);
     setActs(ac.ok ? ac.acts : []);
+    setStdRecs(sr.ok ? sr.recommendations : []);
     if (a.ok) { setAssignments(a.assignments); setDocProgress(a.progress ?? {}); }
     if (p.ok) setPlan(p.plan);
     if (f.ok) setFindings(f.findings);
@@ -322,6 +334,7 @@ export default function ClinicCabinetPage() {
   const canManageProfile = session.role === 'clinic_admin';
 
   const tabs: { key: Tab; label: string }[] = [
+    { key: 'standard', label: stdRecs.some((r) => r.status === 'pending') ? `Стандарт · обновлений ${stdRecs.filter((r) => r.status === 'pending').length}` : 'Стандарт' },
     { key: 'stages', label: `Этапы и документы · ${stages.length}` },
     { key: 'staff', label: pendingAccounts.length ? `Сотрудники · ${staff.length} · заявок ${pendingAccounts.length}` : `Сотрудники · ${staff.length}` },
     { key: 'plan', label: `План проверок · ${plan.length}` },
@@ -375,6 +388,21 @@ export default function ClinicCabinetPage() {
             </button>
           ))}
         </div>
+
+        {tab === 'standard' && (
+          <StandardTab recs={stdRecs} canDecide={session.role === 'clinic_admin' || session.role === 'vkk_lead'}
+            onAccept={async (catalog) => {
+              const r = await api.post<{ ok: true } | { ok: false; error: string }>(`/api/clinic/standard/${catalog}/accept`, {});
+              if (!r.ok) { say(r.error); return; }
+              await loadAll(); say('Редакция принята — кабинет работает по новой версии');
+            }}
+            onDecline={async (catalog) => {
+              const r = await api.post<{ ok: true } | { ok: false; error: string }>(`/api/clinic/standard/${catalog}/decline`, {});
+              if (!r.ok) { say(r.error); return; }
+              await loadAll(); say('Вы остались на прежней редакции');
+            }}
+          />
+        )}
 
         {tab === 'stages' && (
           <StagesTab stages={stages} canOrder={canOrderStages}
@@ -941,6 +969,39 @@ function CapaTab({ items, myFio, canCheckEffectiveness, onClose, onReopen, onChe
           </div>
         );
       })}
+    </div>
+  );
+}
+
+function StandardTab({ recs, canDecide, onAccept, onDecline }: {
+  recs: StandardRec[]; canDecide: boolean; onAccept: (catalog: string) => void; onDecline: (catalog: string) => void;
+}) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600, lineHeight: 1.5 }}>
+        Методист выпускает новые редакции эталона. Пока вы не приняли редакцию, вы работаете по прежней —
+        обходы, документы и план не меняются сами. Принять или оставить прежнюю можно в любой момент.
+      </div>
+      {recs.length === 0 && <EmptyState text="Обновлений стандарта нет — вы работаете по последним редакциям." />}
+      {recs.map((r) => (
+        <div key={r.catalog} style={{ ...cardStyle, borderColor: r.status === 'pending' ? 'var(--warn)' : 'var(--border-2)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+            <div style={{ fontSize: 13.5, fontWeight: 800 }}>{r.label}</div>
+            <span style={{ fontSize: 11, fontWeight: 700, color: r.status === 'pending' ? 'var(--warn)' : 'var(--text-muted)' }}>
+              у вас ред. {r.adopted} · доступна ред. {r.latest}{r.status === 'declined' ? ' · вы отказались' : ''}
+            </span>
+          </div>
+          <ul style={{ margin: '8px 0', paddingLeft: 18, fontSize: 12, fontWeight: 600, lineHeight: 1.6 }}>
+            {r.changes.map((c) => <li key={c}>{c}</li>)}
+          </ul>
+          {canDecide && (
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => onAccept(r.catalog)} style={primaryBtn}>Принять редакцию {r.latest}</button>
+              {r.status === 'pending' && <button onClick={() => onDecline(r.catalog)} style={outlineBtn}>Остаться на прежней</button>}
+            </div>
+          )}
+        </div>
+      ))}
     </div>
   );
 }

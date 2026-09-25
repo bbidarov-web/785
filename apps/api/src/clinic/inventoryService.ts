@@ -1,3 +1,4 @@
+import { StandardEditionService } from '../standard/editions.js';
 import type { Repos } from '../domain/ports.js';
 import type { Account } from '../domain/types.js';
 import { assertPermission } from '../rbac/service.js';
@@ -42,8 +43,8 @@ export class InventoryService {
   async getInventory(account: Account): Promise<{ rows: InventoryRow[]; summary: InventorySummary }> {
     await assertPermission(this.repos.auditLog, account, 'doc:read', 'inventory:view', null, account.inn);
     const [catalog, summaryMaster, grants, summaryFiles] = await Promise.all([
-      this.repos.channels.get<Stage[]>('platform', null, 'stage_docs', []).then((r) => r.data),
-      this.repos.channels.get<SummaryRowDef[]>('platform', null, 'summary_master', []).then((r) => r.data),
+      new StandardEditionService(this.repos).catalog<Stage[]>(account.inn, 'stage_docs', []),
+      new StandardEditionService(this.repos).catalog<SummaryRowDef[]>(account.inn, 'summary_master', []),
       this.documents.listActiveGrants(account.inn),
       this.repos.channels.get<Record<string, SummaryFileEntry>>('tenant', account.inn, 'summary_files', {}).then((r) => r.data),
     ]);

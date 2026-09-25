@@ -52,8 +52,9 @@ export async function panelRoutes(app: FastifyInstance): Promise<void> {
   }
 
   app.get('/api/panel/checklists', async (req, reply) => {
-    if (!requireAuth(req, reply)) return;
-    return reply.send({ ok: true, checklists: await app.container.catalog.getChecklists() });
+    const ctx = requireAuth(req, reply);
+    if (!ctx) return;
+    return reply.send({ ok: true, checklists: await app.container.catalog.getChecklists(ctx.account) });
   });
 
   app.put('/api/panel/checklists', async (req, reply) => {
@@ -66,8 +67,9 @@ export async function panelRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.get('/api/panel/stage-docs', async (req, reply) => {
-    if (!requireAuth(req, reply)) return;
-    return reply.send({ ok: true, stages: await app.container.catalog.getStageDocs() });
+    const ctx = requireAuth(req, reply);
+    if (!ctx) return;
+    return reply.send({ ok: true, stages: await app.container.catalog.getStageDocs(ctx.account) });
   });
 
   app.put('/api/panel/stage-docs', async (req, reply) => {
@@ -80,8 +82,9 @@ export async function panelRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.get('/api/panel/cycle', async (req, reply) => {
-    if (!requireAuth(req, reply)) return;
-    return reply.send({ ok: true, cycle: await app.container.catalog.getCycle() });
+    const ctx = requireAuth(req, reply);
+    if (!ctx) return;
+    return reply.send({ ok: true, cycle: await app.container.catalog.getCycle(ctx.account) });
   });
 
   app.put('/api/panel/cycle', async (req, reply) => {
@@ -91,6 +94,23 @@ export async function panelRoutes(app: FastifyInstance): Promise<void> {
     const r = await guarded(() => app.container.catalog.publishCycle(ctx.account, cycle), reply);
     if (r === undefined) return;
     return reply.code(r.ok ? 200 : 409).send(r);
+  });
+
+  // Редакции стандарта: история выпусков и телеметрия внедрения (кто на какой редакции)
+  app.get('/api/panel/standard/editions', async (req, reply) => {
+    const ctx = requireAuth(req, reply);
+    if (!ctx) return;
+    const history = await guarded(() => app.container.standard.history(ctx.account), reply);
+    if (history === undefined) return;
+    return reply.send({ ok: true, history });
+  });
+
+  app.get('/api/panel/standard/adoption', async (req, reply) => {
+    const ctx = requireAuth(req, reply);
+    if (!ctx) return;
+    const report = await guarded(() => app.container.standard.adoptionReport(ctx.account), reply);
+    if (report === undefined) return;
+    return reply.send({ ok: true, report });
   });
 
   app.get('/api/panel/stage-payments', async (req, reply) => {
@@ -120,8 +140,9 @@ export async function panelRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.get('/api/panel/equip-types', async (req, reply) => {
-    if (!requireAuth(req, reply)) return;
-    return reply.send({ ok: true, types: await app.container.catalog.getEquipTypes() });
+    const ctx = requireAuth(req, reply);
+    if (!ctx) return;
+    return reply.send({ ok: true, types: await app.container.catalog.getEquipTypes(ctx.account) });
   });
 
   app.put('/api/panel/equip-types', async (req, reply) => {
@@ -134,8 +155,9 @@ export async function panelRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.get('/api/panel/summary-master', async (req, reply) => {
-    if (!requireAuth(req, reply)) return;
-    return reply.send({ ok: true, rows: await app.container.catalog.getSummaryMaster() });
+    const ctx = requireAuth(req, reply);
+    if (!ctx) return;
+    return reply.send({ ok: true, rows: await app.container.catalog.getSummaryMaster(ctx.account) });
   });
 
   app.put('/api/panel/summary-master', async (req, reply) => {

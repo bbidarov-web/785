@@ -1004,6 +1004,53 @@ describe('HTTP: /api/auth и защита эндпоинтов правами', 
     expect(ok.statusCode).toBe(200);
   });
 
+  it('редакции стандарта: клиника остаётся на принятой, новая приходит рекомендацией, принять — и методист видит внедрение', async () => {
+    const met = await container.auth.register({ inn: '7726345678', login: 'metx', password: 'metodist2026', password2: 'metodist2026', fio: 'M', side: 'operator', role: 'methodist' });
+    const adm = await container.auth.register({ inn: '7726345678', login: 'admx', password: 'platform2026', password2: 'platform2026', fio: 'A', side: 'operator', role: 'platform_admin' });
+    if (!met.ok || !adm.ok) throw new Error('setup failed');
+    await repos.accounts.update(met.account.id, { pending: false });
+    await repos.accounts.update(adm.account.id, { pending: false });
+    await container.auth.register({ inn: '7712345671', login: 'clinx', password: 'admin2026aa', password2: 'admin2026aa', fio: 'C', side: 'clinic', role: 'clinic_admin' });
+    const cookieOf = async (inn: string, login: string, password: string) => {
+      const r = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { inn, login, password } });
+      return extractCookie(r.headers['set-cookie'], 'k785_session')!;
+    };
+    const metC = await cookieOf('7726345678', 'metx', 'metodist2026');
+    const admC = await cookieOf('7726345678', 'admx', 'platform2026');
+    const clC = await cookieOf('7712345671', 'clinx', 'admin2026aa');
+    const publish = async (checklists: unknown[]) => {
+      const put = await app.inject({ method: 'PUT', url: '/api/panel/checklists', cookies: { k785_session: metC }, payload: checklists });
+      const conf = await app.inject({ method: 'POST', url: `/api/second-hand/${put.json().secondHandRequest.id}/confirm`, cookies: { k785_session: admC } });
+      expect(conf.statusCode).toBe(200);
+    };
+
+    await publish([{ name: 'ЧЛ 1', items: ['п1'] }]);
+    const first = await app.inject({ method: 'GET', url: '/api/panel/checklists', cookies: { k785_session: clC } });
+    expect(first.json().checklists).toHaveLength(1);
+
+    await publish([{ name: 'ЧЛ 1', items: ['п1', 'п2'] }, { name: 'ЧЛ 2', items: ['x'] }]);
+    const still = await app.inject({ method: 'GET', url: '/api/panel/checklists', cookies: { k785_session: clC } });
+    expect(still.json().checklists).toHaveLength(1); // клиника не «переехала» молча
+    const live = await app.inject({ method: 'GET', url: '/api/panel/checklists', cookies: { k785_session: metC } });
+    expect(live.json().checklists).toHaveLength(2); // методист видит последнюю
+
+    const rec = await app.inject({ method: 'GET', url: '/api/clinic/standard', cookies: { k785_session: clC } });
+    expect(rec.json().recommendations[0]).toMatchObject({ catalog: 'checklists', adopted: 1, latest: 2, status: 'pending' });
+
+    const before = await app.inject({ method: 'GET', url: '/api/panel/standard/adoption', cookies: { k785_session: metC } });
+    expect(before.json().report[0]).toMatchObject({ catalog: 'checklists', latest: 2, accepted: 0, pending: 1 });
+
+    const accept = await app.inject({ method: 'POST', url: '/api/clinic/standard/checklists/accept', cookies: { k785_session: clC } });
+    expect(accept.json()).toMatchObject({ ok: true, adopted: 2 });
+    const now = await app.inject({ method: 'GET', url: '/api/panel/checklists', cookies: { k785_session: clC } });
+    expect(now.json().checklists).toHaveLength(2);
+
+    const after = await app.inject({ method: 'GET', url: '/api/panel/standard/adoption', cookies: { k785_session: metC } });
+    expect(after.json().report[0]).toMatchObject({ accepted: 1, pending: 0 });
+    const denied = await app.inject({ method: 'GET', url: '/api/panel/standard/adoption', cookies: { k785_session: clC } });
+    expect(denied.statusCode).toBe(403);
+  });
+
   it('logout отзывает cookie сессии — повторный запрос получает 401', async () => {
     await container.auth.register({ inn: '7712345671', login: 'medplus', password: 'medplus2026', password2: 'medplus2026', fio: 'x', side: 'clinic' });
     const login = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { inn: '7712345671', login: 'medplus', password: 'medplus2026' } });

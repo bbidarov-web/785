@@ -1,3 +1,4 @@
+import { StandardEditionService } from '../standard/editions.js';
 import type { Repos } from '../domain/ports.js';
 import type { Account } from '../domain/types.js';
 import { assertPermission } from '../rbac/service.js';
@@ -37,7 +38,7 @@ export class ReadinessService {
     await assertPermission(this.repos.auditLog, account, 'doc:read', 'readiness:view', null, account.inn);
     const inn = account.inn;
     const [catalog, grants, profile, staff, plan, results, capa] = await Promise.all([
-      this.repos.channels.get<Stage[]>('platform', null, 'stage_docs', []).then((r) => r.data),
+      new StandardEditionService(this.repos).catalog<Stage[]>(inn, 'stage_docs', []),
       this.documents.listActiveGrants(inn),
       this.repos.channels.get<ClinicProfile | null>('tenant', inn, 'profile', null).then((r) => r.data),
       this.repos.channels.get<StaffMember[]>('tenant', inn, 'staff', []).then((r) => r.data),

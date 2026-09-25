@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { can } from '@kontur785/shared';
+import { StandardEditionService } from '../standard/editions.js';
 import type { Repos } from '../domain/ports.js';
 import type { Account } from '../domain/types.js';
 import { assertPermission, PermissionDeniedError, visibleToBranch } from '../rbac/service.js';
@@ -63,7 +64,8 @@ export class EquipmentService {
     return positions.filter((p) => visibleToBranch(account, p.branch));
   }
 
-  async getTypes(): Promise<EquipmentType[]> {
+  async getTypes(tenantInn?: string): Promise<EquipmentType[]> {
+    if (tenantInn) return new StandardEditionService(this.repos).catalog<EquipmentType[]>(tenantInn, 'equip_types', []);
     return (await this.repos.channels.get<EquipmentType[]>('platform', null, 'equip_types', [])).data;
   }
 
@@ -97,7 +99,7 @@ export class EquipmentService {
     const canSeeAll = can(account.role, 'doc:write');
     const [positions, types, fills] = await Promise.all([
       this.repos.channels.get<EquipmentPosition[]>('tenant', account.inn, 'equip_pos', []),
-      this.getTypes(),
+      this.getTypes(account.inn),
       this.repos.channels.get<Record<string, EquipmentFill>>('tenant', account.inn, 'equip_fill', {}),
     ]);
     const typeByKey = new Map(types.map((t) => [t.key, t]));

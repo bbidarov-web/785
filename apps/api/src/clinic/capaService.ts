@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { can } from '@kontur785/shared';
+import { StandardEditionService } from '../standard/editions.js';
 import type { Repos } from '../domain/ports.js';
 import type { Account } from '../domain/types.js';
 import { assertPermission, PermissionDeniedError } from '../rbac/service.js';
@@ -65,12 +66,12 @@ export class CapaService {
    * произвольный срок (CLAUDE.md: не подставлять правдоподобное вместо
    * честного отказа).
    */
-  private async resolveDue(opts: { due?: string; severity?: string }): Promise<CapaResult<{ due: string }>> {
+  private async resolveDue(inn: string, opts: { due?: string; severity?: string }): Promise<CapaResult<{ due: string }>> {
     if (!opts.severity) {
       const due = normalizeDateInput(opts.due);
       return due === null ? { ok: false, error: 'Срок не распознан — нужен формат ДД.ММ.ГГГГ' } : { ok: true, due };
     }
-    const master = (await this.repos.channels.get<CycleMaster | null>('platform', null, 'cycle_master', null)).data;
+    const master = await new StandardEditionService(this.repos).catalog<CycleMaster | null>(inn, 'cycle_master', null);
     const term = master?.capaTerms.find((t) => t.level === opts.severity);
     if (!term) return { ok: false, error: 'Неизвестная степень критичности — уточните каталог у методиста' };
     return { ok: true, due: addDays(today(), term.days) };
@@ -84,7 +85,7 @@ export class CapaService {
     const found = entry.items[itemIndex];
     if (!found) return { ok: false, error: 'Пункт проверки не найден' };
     if (found.answer !== 'bad') return { ok: false, error: 'Мероприятие заводится только по нарушению' };
-    const dueResult = await this.resolveDue(opts);
+    const dueResult = await this.resolveDue(account.inn, opts);
     if (!dueResult.ok) return dueResult;
 
     for (let attempt = 0; attempt < 5; attempt++) {

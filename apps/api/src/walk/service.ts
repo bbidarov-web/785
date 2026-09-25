@@ -1,3 +1,4 @@
+import { StandardEditionService } from '../standard/editions.js';
 import type { Repos } from '../domain/ports.js';
 import type { Account } from '../domain/types.js';
 import { assertPermission } from '../rbac/service.js';
@@ -47,8 +48,8 @@ interface ResolvedChecklist {
 export class WalkService {
   constructor(private repos: Repos) {}
 
-  private async checklistCatalog(): Promise<ChecklistDef[]> {
-    return (await this.repos.channels.get<ChecklistDef[]>('platform', null, 'checklists', [])).data;
+  private async checklistCatalog(inn: string): Promise<ChecklistDef[]> {
+    return new StandardEditionService(this.repos).catalog<ChecklistDef[]>(inn, 'checklists', []);
   }
 
   private resolveChecklist(plan: AuditPlanItem, catalog: ChecklistDef[]): ResolvedChecklist {
@@ -100,7 +101,7 @@ export class WalkService {
     const inn = account.inn;
     const [planRec, catalog, staff, clientState, resultsRec] = await Promise.all([
       this.repos.channels.get<AuditPlanItem[]>('tenant', inn, 'audit_plan', []),
-      this.checklistCatalog(),
+      this.checklistCatalog(inn),
       this.repos.channels.get<StaffMember[]>('tenant', inn, 'staff', []),
       this.repos.channels.get<ClientStateShape>('tenant', inn, 'client_state', {}),
       this.repos.channels.get<Record<string, WalkResultEntry>>('tenant', inn, 'walk_results', {}),

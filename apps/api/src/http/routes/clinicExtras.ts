@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { requireAuth } from '../plugins/session.js';
 import { PermissionDeniedError } from '../../rbac/service.js';
 import { renderPdf } from '../../documents/render.js';
+import { isCatalogKey } from '../../standard/editions.js';
 
 const branchNameSchema = z.object({ name: z.string().min(1) });
 const cyclePatchSchema = z.object({
@@ -63,6 +64,27 @@ export async function clinicExtraRoutes(app: FastifyInstance): Promise<void> {
     if (r === undefined) return;
     return reply.code(r.ok ? 200 : 400).send(r);
   });
+
+  // --- Редакции стандарта: рекомендации методиста, принять или остаться на прежней ---
+  app.get('/api/clinic/standard', async (req, reply) => {
+    const ctx = requireAuth(req, reply);
+    if (!ctx) return;
+    const r = await guarded(() => app.container.standard.recommendations(ctx.account), reply);
+    if (r === undefined) return;
+    return reply.send({ ok: true, ...r });
+  });
+
+  for (const action of ['accept', 'decline'] as const) {
+    app.post(`/api/clinic/standard/:catalog/${action}`, async (req, reply) => {
+      const ctx = requireAuth(req, reply);
+      if (!ctx) return;
+      const { catalog } = z.object({ catalog: z.string() }).parse(req.params);
+      if (!isCatalogKey(catalog)) return reply.code(400).send({ ok: false, error: 'Неизвестный каталог' });
+      const r = await guarded(() => app.container.standard[action](ctx.account, catalog), reply);
+      if (r === undefined) return;
+      return reply.code(r.ok ? 200 : 400).send(r);
+    });
+  }
 
   // --- Готовность к проверке ---
   app.get('/api/clinic/readiness', async (req, reply) => {

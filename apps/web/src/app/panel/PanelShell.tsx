@@ -39,6 +39,16 @@ interface SessionInfo {
   fio: string;
 }
 
+interface AdoptionRow {
+  catalog: string;
+  label: string;
+  latest: number;
+  accepted: number;
+  pending: number;
+  declined: number;
+  tenants: { inn: string; name: string; adopted: number; status: 'current' | 'pending' | 'declined' }[];
+}
+
 interface StaffAccount {
   id: string;
   login: string;
@@ -76,7 +86,7 @@ const outlineBtn: React.CSSProperties = { padding: '7px 11px', borderRadius: 7, 
 
 const ROLE_LABELS: Record<string, string> = { methodist: 'методист', sales_manager: 'менеджер по продажам', sales_head: 'руководитель продаж', platform_admin: 'администратор платформы' };
 
-type Tab = 'accounts' | 'checklists' | 'stages' | 'cycle' | 'equip' | 'summary' | 'tariffs' | 'subscriptions' | 'payments' | 'bulk' | 'queue' | 'secondhand' | 'clients' | 'grants';
+type Tab = 'accounts' | 'checklists' | 'stages' | 'cycle' | 'equip' | 'summary' | 'tariffs' | 'subscriptions' | 'payments' | 'bulk' | 'queue' | 'secondhand' | 'clients' | 'grants' | 'adoption';
 
 export function PlatformPanelShell({ allowedRoles, heading }: { allowedRoles: string[]; heading: string }) {
   const [ready, setReady] = useState(false);
@@ -106,6 +116,7 @@ export function PlatformPanelShell({ allowedRoles, heading }: { allowedRoles: st
   const [subscriptionSummary, setSubscriptionSummary] = useState<SubscriptionSummary | null>(null);
   const [bulkReports, setBulkReports] = useState<BulkReport[]>([]);
   const [bulkJob, setBulkJob] = useState<BulkJob | null>(null);
+  const [adoption, setAdoption] = useState<AdoptionRow[]>([]);
   const [platformStaff, setPlatformStaff] = useState<StaffAccount[]>([]);
   const [stagePayments, setStagePayments] = useState<StagePaymentRow[]>([]);
 
@@ -131,7 +142,7 @@ export function PlatformPanelShell({ allowedRoles, heading }: { allowedRoles: st
   }, []);
 
   const loadAll = useCallback(async () => {
-    const [p, c, sd, cy, eq, sm, sh, cl, tf, sb, ss, br, fin, qt, ds, sp, ps] = await Promise.all([
+    const [p, c, sd, cy, eq, sm, sh, cl, tf, sb, ss, br, fin, qt, ds, sp, ps, ad] = await Promise.all([
       isAdminRef.current
         ? api.get<{ ok: true; pending: PendingAccount[] } | { ok: false; error: string }>('/api/admin/accounts/pending')
         : Promise.resolve({ ok: false as const, error: 'нет права' }),
@@ -153,6 +164,7 @@ export function PlatformPanelShell({ allowedRoles, heading }: { allowedRoles: st
       isAdminRef.current
         ? api.get<{ ok: true; accounts: StaffAccount[] } | { ok: false; error: string }>('/api/admin/accounts')
         : Promise.resolve({ ok: false as const, error: 'нет права' }),
+      api.get<{ ok: true; report: AdoptionRow[] } | { ok: false; error: string }>('/api/panel/standard/adoption'),
     ]);
     if (p.ok) setPending(p.pending);
     if (c.ok) setChecklists(c.checklists);
@@ -171,6 +183,7 @@ export function PlatformPanelShell({ allowedRoles, heading }: { allowedRoles: st
     if (ds.ok) setDigestSettings(ds.settings);
     if (sp.ok) setStagePayments(sp.payments);
     setPlatformStaff(ps.ok ? ps.accounts : []);
+    setAdoption(ad.ok ? ad.report : []);
     await loadPortfolio(periodDays);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadPortfolio]);
@@ -267,6 +280,7 @@ export function PlatformPanelShell({ allowedRoles, heading }: { allowedRoles: st
     { key: 'subscriptions', label: `Подписки · ${subscriptions.length}` },
     { key: 'payments', label: `Оплата этапов · ${stagePayments.filter((r) => r.payment.status === 'pending' || !r.payment.accepted).length}` },
     { key: 'grants', label: 'Выдача документов' },
+    { key: 'adoption', label: `Внедрение стандарта · ${adoption.reduce((n, r) => n + r.pending, 0)}` },
     { key: 'bulk', label: 'Массовые операции' },
     { key: 'queue', label: `Очередь работы · ${activeQueueCount}` },
     { key: 'secondhand', label: `Вторая рука · ${secondHand.length}` },
@@ -489,6 +503,8 @@ export function PlatformPanelShell({ allowedRoles, heading }: { allowedRoles: st
           />
         )}
 
+        {tab === 'adoption' && <AdoptionTab rows={adoption} />}
+
         {tab === 'grants' && (
           <DocumentGrantsTab clients={clients} stages={stages} payments={stagePayments}
             onLoadGrants={async (inn) => {
@@ -635,6 +651,40 @@ function ChecklistsTab({ checklists, canPublish, onPublish }: { checklists: Chec
           <button onClick={() => onPublish(draft)} style={primaryBtn}>Опубликовать каталог</button>
         </div>
       )}
+    </div>
+  );
+}
+
+function AdoptionTab({ rows }: { rows: AdoptionRow[] }) {
+  const [open, setOpen] = useState<string | null>(null);
+  const label = { current: 'на последней', pending: 'не отреагировала', declined: 'отказалась' } as const;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600, lineHeight: 1.5 }}>
+        Кто на какой редакции эталона. Массовый отказ от редакции — сигнал переписать документ, а не давить на внедрение.
+      </div>
+      {rows.length === 0 && <EmptyState text="Редакции ещё не выпускались — публикация каталога создаёт редакцию 1." />}
+      {rows.map((r) => (
+        <div key={r.catalog} style={cardStyle}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <div>
+              <div style={{ fontSize: 13.5, fontWeight: 800 }}>{r.label} · последняя ред. {r.latest}</div>
+              <div style={{ fontSize: 11.5, color: 'var(--text-muted)', fontWeight: 600 }}>приняли: {r.accepted} · не отреагировали: {r.pending} · отказались: {r.declined}</div>
+            </div>
+            <button onClick={() => setOpen(open === r.catalog ? null : r.catalog)} style={outlineBtn}>{open === r.catalog ? 'Скрыть клиники' : 'По клиникам'}</button>
+          </div>
+          {open === r.catalog && (
+            <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {r.tenants.map((t) => (
+                <div key={t.inn} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12, fontWeight: 600, padding: '4px 0', borderBottom: '1px solid var(--border-3)' }}>
+                  <span>{t.name} <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>{t.inn}</span></span>
+                  <span style={{ color: t.status === 'current' ? 'var(--accent-hover)' : t.status === 'declined' ? 'var(--error)' : 'var(--warn)' }}>ред. {t.adopted} · {label[t.status]}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ))}
     </div>
   );
 }

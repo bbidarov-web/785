@@ -1,3 +1,4 @@
+import { StandardEditionService } from '../standard/editions.js';
 import type { Repos } from '../domain/ports.js';
 import type { Account } from '../domain/types.js';
 import { assertPermission } from '../rbac/service.js';
@@ -40,7 +41,8 @@ export class CycleService {
   constructor(private repos: Repos) {}
 
   /** Публичный: массовая операция «Применить годовой цикл» (`BulkOperationService`) читает эталон для предпросмотра до подтверждения. */
-  async getMaster(): Promise<CycleMaster | null> {
+  async getMaster(tenantInn?: string): Promise<CycleMaster | null> {
+    if (tenantInn) return new StandardEditionService(this.repos).catalog<CycleMaster | null>(tenantInn, 'cycle_master', null);
     return (await this.repos.channels.get<CycleMaster | null>('platform', null, 'cycle_master', null)).data;
   }
 
@@ -50,7 +52,7 @@ export class CycleService {
 
   async getMergedView(account: Account): Promise<CycleResult<{ year: number; dirs: MergedCycleDirection[]; capaTerms: CapaTerm[] }>> {
     await assertPermission(this.repos.auditLog, account, 'plan:read', 'cycle:view', null, account.inn);
-    const master = await this.getMaster();
+    const master = await this.getMaster(account.inn);
     if (!master) return { ok: false, error: 'Годовой цикл ещё не опубликован методистом' };
     const live = await this.getLive(account);
     const liveByName = new Map(live.dirs.map((d) => [d.name, d]));

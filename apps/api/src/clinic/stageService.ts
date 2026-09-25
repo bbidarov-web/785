@@ -1,4 +1,5 @@
 import { can } from '@kontur785/shared';
+import { StandardEditionService } from '../standard/editions.js';
 import type { Repos } from '../domain/ports.js';
 import type { Account } from '../domain/types.js';
 import { assertPermission, PermissionDeniedError } from '../rbac/service.js';
@@ -62,12 +63,15 @@ const EMPTY_PAYMENT: StagePaymentState = {
  * перенесён) И оплаты этапа, в который документ входит (SERVER.md §5).
  */
 export class StageService {
+  private editions: StandardEditionService;
+
   private documents: DocumentService;
   private profile: ProfileService;
 
   constructor(private repos: Repos) {
     this.documents = new DocumentService(repos);
     this.profile = new ProfileService(repos);
+    this.editions = new StandardEditionService(repos);
   }
 
   private assertReadAccess(account: Account): void {
@@ -78,7 +82,9 @@ export class StageService {
     }
   }
 
-  async getCatalog(): Promise<Stage[]> {
+  /** Клиника (tenantInn) видит ПРИНЯТУЮ ею редакцию каталога, платформа (без ИНН) — последнюю опубликованную. */
+  async getCatalog(tenantInn?: string): Promise<Stage[]> {
+    if (tenantInn) return this.editions.catalog<Stage[]>(tenantInn, 'stage_docs', []);
     return (await this.repos.channels.get<Stage[]>('platform', null, 'stage_docs', [])).data;
   }
 
@@ -97,7 +103,7 @@ export class StageService {
   async getClinicView(account: Account): Promise<StageView[]> {
     this.assertReadAccess(account);
     const [catalog, paidRec, grants] = await Promise.all([
-      this.getCatalog(),
+      this.getCatalog(account.inn),
       this.repos.channels.get<Record<number, StagePaymentState>>('tenant', account.inn, 'stage_paid', {}),
       this.documents.listActiveGrants(account.inn),
     ]);
@@ -122,7 +128,7 @@ export class StageService {
   /** Только администратор клиники заказывает и оплачивает этапы (order:write). */
   async requestPayment(account: Account, stageCode: number): Promise<StageResult<{ payment: StagePaymentState }>> {
     await assertPermission(this.repos.auditLog, account, 'order:write', 'stage:request-payment', String(stageCode), account.inn);
-    const catalog = await this.getCatalog();
+    const catalog = await this.getCatalog(account.inn);
     const stage = catalog.find((s) => s.code === stageCode);
     if (!stage) return { ok: false, error: 'Этап не найден в каталоге' };
 
@@ -154,7 +160,7 @@ export class StageService {
    */
   async acceptOffer(account: Account, stageCode: number): Promise<StageResult<{ payment: StagePaymentState }>> {
     await assertPermission(this.repos.auditLog, account, 'order:write', 'stage:accept-offer', String(stageCode), account.inn);
-    const catalog = await this.getCatalog();
+    const catalog = await this.getCatalog(account.inn);
     const stage = catalog.find((s) => s.code === stageCode);
     if (!stage) return { ok: false, error: 'Этап не найден в каталоге' };
     if (!stage.offerText) return { ok: false, error: 'У этапа нет условий оффера — принимать нечего' };
@@ -196,7 +202,7 @@ export class StageService {
   async getDocumentContent(account: Account, docName: string): Promise<StageResult<{ content: string }>> {
     this.assertReadAccess(account);
     const [catalog, paidRec] = await Promise.all([
-      this.getCatalog(),
+      this.getCatalog(account.inn),
       this.repos.channels.get<Record<number, StagePaymentState>>('tenant', account.inn, 'stage_paid', {}),
     ]);
     let found: { stageCode: number; template: string } | null = null;

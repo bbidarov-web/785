@@ -1,3 +1,4 @@
+import { StandardEditionService } from '../standard/editions.js';
 import type { Repos } from '../domain/ports.js';
 import type { Account } from '../domain/types.js';
 import { assertPermission } from '../rbac/service.js';
@@ -33,8 +34,8 @@ export class SelfAuditService {
     private capa: CapaService,
   ) {}
 
-  private async catalog(): Promise<ChecklistDef[]> {
-    return (await this.repos.channels.get<ChecklistDef[]>('platform', null, 'checklists', [])).data;
+  private async catalog(inn: string): Promise<ChecklistDef[]> {
+    return new StandardEditionService(this.repos).catalog<ChecklistDef[]>(inn, 'checklists', []);
   }
 
   async listRuns(account: Account): Promise<SelfAuditRun[]> {
@@ -45,7 +46,7 @@ export class SelfAuditService {
 
   async start(account: Account, checklistName: string): Promise<SelfAuditResult<{ run: SelfAuditRun }>> {
     await assertPermission(this.repos.auditLog, account, 'plan:write', 'selfaudit:start', checklistName, account.inn);
-    const checklist = (await this.catalog()).find((c) => c.name === checklistName);
+    const checklist = (await this.catalog(account.inn)).find((c) => c.name === checklistName);
     if (!checklist) return { ok: false, error: 'Чек-лист не найден в каталоге методиста' };
 
     const run: SelfAuditRun = {

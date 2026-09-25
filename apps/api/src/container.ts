@@ -39,6 +39,7 @@ import { BulkOperationService, type BulkActionDef } from './panel/bulkService.js
 import { WorkQueueService } from './panel/workQueueService.js';
 import { ReminderService } from './clinic/reminderService.js';
 import { ReadinessService } from './clinic/readinessService.js';
+import { StandardEditionService } from './standard/editions.js';
 import { addDays, todayString } from './shared/date.js';
 
 export interface SecondHandHandler {
@@ -232,6 +233,7 @@ export function buildContainerFromRepos(repos: Repos) {
     queue: new WorkQueueService(repos),
     reminders: new ReminderService(repos),
     readiness: new ReadinessService(repos),
+    standard: new StandardEditionService(repos),
   };
 }
 

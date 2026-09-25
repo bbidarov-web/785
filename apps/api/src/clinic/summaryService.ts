@@ -1,3 +1,4 @@
+import { StandardEditionService } from '../standard/editions.js';
 import type { Repos } from '../domain/ports.js';
 import type { Account } from '../domain/types.js';
 import { assertPermission } from '../rbac/service.js';
@@ -28,15 +29,15 @@ export class SummaryService {
   async getView(account: Account): Promise<SummaryRowView[]> {
     await assertPermission(this.repos.auditLog, account, 'doc:read', 'summary:view', null, account.inn);
     const [master, files] = await Promise.all([
-      this.repos.channels.get<SummaryRowDef[]>('platform', null, 'summary_master', []),
+      new StandardEditionService(this.repos).catalog<SummaryRowDef[]>(account.inn, 'summary_master', []),
       this.repos.channels.get<Record<string, SummaryFileEntry>>('tenant', account.inn, 'summary_files', {}),
     ]);
-    return master.data.map((row) => ({ name: row.name, note: row.note, required: row.req, file: files.data[row.name] ?? null }));
+    return master.map((row) => ({ name: row.name, note: row.note, required: row.req, file: files.data[row.name] ?? null }));
   }
 
   async uploadFile(account: Account, rowName: string, fileName: string, base64: string): Promise<SummaryResult<{ file: SummaryFileEntry }>> {
     await assertPermission(this.repos.auditLog, account, 'doc:write', 'summary:upload', rowName, account.inn);
-    const master = (await this.repos.channels.get<SummaryRowDef[]>('platform', null, 'summary_master', [])).data;
+    const master = await new StandardEditionService(this.repos).catalog<SummaryRowDef[]>(account.inn, 'summary_master', []);
     if (!master.some((r) => r.name === rowName)) return { ok: false, error: 'Строка сводного отчёта не найдена в составе методиста' };
     const decoded = decodeDataUrl(base64);
     if (!decoded) return { ok: false, error: 'Не удалось прочитать файл' };
