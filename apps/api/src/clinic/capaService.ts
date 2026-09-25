@@ -3,7 +3,7 @@ import { can } from '@kontur785/shared';
 import { StandardEditionService } from '../standard/editions.js';
 import type { Repos } from '../domain/ports.js';
 import type { Account } from '../domain/types.js';
-import { assertPermission, PermissionDeniedError } from '../rbac/service.js';
+import { assertPermission, PermissionDeniedError, visibleToBranch } from '../rbac/service.js';
 import type { CapaItem, CycleMaster, WalkResultEntry } from '../shared/channelShapes.js';
 import { addDays, normalizeDateInput } from '../shared/date.js';
 import { assignees, isMine } from '../shared/assignment.js';
@@ -35,7 +35,8 @@ export class CapaService {
 
   async list(account: Account): Promise<CapaItem[]> {
     await assertPermission(this.repos.auditLog, account, 'journal:read', 'capa:list', null, account.inn);
-    return (await this.repos.channels.get<CapaItem[]>('tenant', account.inn, 'capa', [])).data;
+    // сотрудник, закреплённый за филиалом, не видит нарушения других филиалов (общеклинические — видит)
+    return (await this.repos.channels.get<CapaItem[]>('tenant', account.inn, 'capa', [])).data.filter((c) => visibleToBranch(account, c.branch));
   }
 
   /** Находки, ещё не превращённые в мероприятие — то, что клинике предстоит разобрать. */
@@ -48,7 +49,7 @@ export class CapaService {
     const converted = new Set(capaRec.data.filter((c) => c.sourceKind === 'walk').map((c) => `${c.sourcePlanId}|${c.sourceItemIndex}`));
     const out: { planId: string; itemIndex: number; auditName: string; object: string; text: string; comment: string }[] = [];
     for (const entry of Object.values(resultsRec.data)) {
-      if (!entry.finished) continue;
+      if (!entry.finished || !visibleToBranch(account, entry.branch)) continue;
       entry.items.forEach((item, i) => {
         if (item.answer !== 'bad') return;
         if (converted.has(`${entry.planId}|${i}`)) return;
@@ -81,7 +82,7 @@ export class CapaService {
     await assertPermission(this.repos.auditLog, account, 'capa:write', 'capa:create', planId, account.inn);
     const resultsRec = await this.repos.channels.get<Record<string, WalkResultEntry>>('tenant', account.inn, 'walk_results', {});
     const entry = resultsRec.data[planId];
-    if (!entry) return { ok: false, error: 'Проверка не найдена' };
+    if (!entry || !visibleToBranch(account, entry.branch)) return { ok: false, error: 'Проверка не найдена' };
     const found = entry.items[itemIndex];
     if (!found) return { ok: false, error: 'Пункт проверки не найден' };
     if (found.answer !== 'bad') return { ok: false, error: 'Мероприятие заводится только по нарушению' };
@@ -100,6 +101,7 @@ export class CapaService {
         sourceItemIndex: itemIndex,
         auditName: entry.name,
         object: entry.object,
+        branch: entry.branch || '',
         findingText: found.text,
         comment: found.comment,
         // в результате обхода «who» хранится как «ФИО · должность» (formatOwner) — в мероприятие
@@ -178,7 +180,7 @@ export class CapaService {
     for (let attempt = 0; attempt < 5; attempt++) {
       const rec = await this.repos.channels.get<CapaItem[]>('tenant', account.inn, 'capa', []);
       const idx = rec.data.findIndex((c) => c.id === id);
-      if (idx === -1) return { ok: false, error: 'Мероприятие не найдено' };
+      if (idx === -1 || !visibleToBranch(account, rec.data[idx]!.branch)) return { ok: false, error: 'Мероприятие не найдено' };
       const current = rec.data[idx]!;
       if (!canFull && canOwn && !isMine(current.who, account.fio)) {
         throw new PermissionDeniedError('capa:own');
@@ -208,7 +210,7 @@ export class CapaService {
     for (let attempt = 0; attempt < 5; attempt++) {
       const rec = await this.repos.channels.get<CapaItem[]>('tenant', account.inn, 'capa', []);
       const idx = rec.data.findIndex((c) => c.id === id);
-      if (idx === -1) return { ok: false, error: 'Мероприятие не найдено' };
+      if (idx === -1 || !visibleToBranch(account, rec.data[idx]!.branch)) return { ok: false, error: 'Мероприятие не найдено' };
       const current = rec.data[idx]!;
       if (current.status !== 'done') return { ok: false, error: 'Проверять эффективность можно только у выполненного мероприятия' };
       const updated: CapaItem = effective

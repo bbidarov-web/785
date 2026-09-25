@@ -131,4 +131,74 @@ describe('StandardEditionService — редакции стандарта и пр
     await svc.accept(admin, 'stage_docs');
     expect((await stages.getClinicView(admin)).map((s) => s.code)).toEqual([1, 2]);
   });
+
+  describe('пилотный тираж и откат', () => {
+    const platformAdmin = acc('platform_admin', '7726345678', 'platform');
+
+    it('пилотная редакция видна только выбранным клиникам; остальные остаются на общей', async () => {
+      await svc.publish('checklists', [cl('a')], 'm', 'm');
+      await svc.catalog(A, 'checklists', []);
+      await svc.catalog(B, 'checklists', []);
+      await svc.publish('checklists', [cl('a', 'пилот')], 'm', 'm', [A]);
+      expect((await svc.recommendations(admin)).recommendations[0]).toMatchObject({ latest: 2, status: 'pending' });
+      expect((await svc.recommendations(adminB)).recommendations).toEqual([]);
+      await svc.accept(admin, 'checklists');
+      expect(await svc.catalog(A, 'checklists', [])).toEqual([cl('a', 'пилот')]);
+      expect(await svc.catalog(B, 'checklists', [])).toEqual([cl('a')]);
+      const row = (await svc.adoptionReport(methodist)).find((r) => r.catalog === 'checklists')!;
+      expect(row.pilot).toEqual({ no: 2, inns: [A] });
+      expect(row).toMatchObject({ accepted: 2, pending: 0 }); // Б на своей последней доступной
+    });
+
+    it('клиника вне пилота не может принять пилотную редакцию; новая клиника получает общую, не пилотную', async () => {
+      await svc.publish('checklists', [cl('a')], 'm', 'm');
+      await svc.publish('checklists', [cl('a', 'пилот')], 'm', 'm', [A]);
+      expect(await svc.accept(adminB, 'checklists')).toMatchObject({ ok: true, adopted: 1 });
+      await repos.tenants.upsert('7719000010', 'Новая');
+      expect(await svc.adoptedNo('7719000010', 'checklists')).toBe(1);
+    });
+
+    it('если все редакции пилотные, клиника вне пилота не получает пилотные данные из живого канала', async () => {
+      await svc.publish('checklists', [cl('пилотный')], 'm', 'm', [A]);
+      await repos.channels.set('platform', null, 'checklists', [cl('пилотный')], { updatedBy: null }); // как делает applyPublish
+      expect(await svc.catalog(B, 'checklists', [])).toEqual([]);
+      expect(await svc.catalog(A, 'checklists', [])).toEqual([cl('пилотный')]);
+    });
+
+    it('выпуск для всех: рекомендация появляется у остальных; повторный выпуск — ошибка; нужен standard:publish', async () => {
+      await svc.publish('checklists', [cl('a')], 'm', 'm');
+      await svc.catalog(B, 'checklists', []);
+      await svc.publish('checklists', [cl('a', 'x')], 'm', 'm', [A]);
+      await expect(svc.release(auditor, 'checklists', 2)).rejects.toThrow();
+      expect((await svc.release(platformAdmin, 'checklists', 2)).ok).toBe(true);
+      expect((await svc.recommendations(adminB)).recommendations[0]).toMatchObject({ latest: 2, status: 'pending' });
+      expect((await svc.release(platformAdmin, 'checklists', 2)).ok).toBe(false);
+    });
+
+    it('откат клиники на предыдущую редакцию: возвращает каталог, новая не навязывается повторно', async () => {
+      await svc.publish('checklists', [cl('v1')], 'm', 'm');
+      await svc.catalog(A, 'checklists', []);
+      await svc.publish('checklists', [cl('v2')], 'm', 'm');
+      await svc.accept(admin, 'checklists');
+      expect((await svc.rollbackTargets(admin, 'checklists')).map((e) => e.no)).toEqual([1]);
+      expect(await svc.rollback(admin, 'checklists', 1)).toEqual({ ok: true, adopted: 1 });
+      expect(await svc.catalog(A, 'checklists', [])).toEqual([cl('v1')]);
+      expect((await svc.recommendations(admin)).recommendations[0]!.status).toBe('declined');
+      await svc.publish('checklists', [cl('v3')], 'm', 'm');
+      expect((await svc.recommendations(admin)).recommendations[0]).toMatchObject({ latest: 3, status: 'pending' });
+    });
+
+    it('откат: только на более раннюю редакцию, только с правом adoption:decide, клиника Б не затронута', async () => {
+      await svc.publish('checklists', [cl('v1')], 'm', 'm');
+      await svc.catalog(A, 'checklists', []);
+      await svc.catalog(B, 'checklists', []);
+      await svc.publish('checklists', [cl('v2')], 'm', 'm');
+      await svc.accept(admin, 'checklists');
+      await svc.accept(adminB, 'checklists');
+      expect((await svc.rollback(admin, 'checklists', 2)).ok).toBe(false);
+      await expect(svc.rollback(auditor, 'checklists', 1)).rejects.toThrow();
+      await svc.rollback(admin, 'checklists', 1);
+      expect(await svc.adoptedNo(B, 'checklists')).toBe(2);
+    });
+  });
 });

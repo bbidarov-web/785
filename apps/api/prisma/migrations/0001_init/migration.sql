@@ -8,7 +8,7 @@ CREATE TYPE "Role" AS ENUM ('methodist', 'sales_manager', 'sales_head', 'platfor
 CREATE TYPE "TwoFactorVia" AS ENUM ('sms', 'email');
 
 -- CreateEnum
-CREATE TYPE "OtpPurpose" AS ENUM ('login_2fa', 'password_reset');
+CREATE TYPE "OtpPurpose" AS ENUM ('login_2fa', 'password_reset', 'enable_2fa');
 
 -- CreateEnum
 CREATE TYPE "SecondHandStatus" AS ENUM ('pending', 'confirmed', 'rejected', 'expired');

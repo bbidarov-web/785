@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
-import { ResetPasswordForm, ChangePasswordDialog, authLinkBtn } from '../AuthForms';
+import { ResetPasswordForm, ChangePasswordDialog, OtpStep, TwoFactorDialog, authLinkBtn, type TwoFactorState } from '../AuthForms';
 import {
   StageCatalogForm, CycleMasterForm, EquipTypesForm, SummaryMasterForm,
   type StageDraft, type CycleMasterDraft, type EquipTypeDraft, type SummaryRowDraft,
@@ -31,7 +31,7 @@ import { WorkQueueTab, type QueueTask, type DigestSettings } from './queueForms'
  * один кабинет пустят под несколько ролей — раскладка кнопок не потребует правки.
  */
 
-interface SessionInfo {
+interface SessionInfo extends TwoFactorState {
   mustChange?: boolean;
   accountId?: string;
   role: string;
@@ -47,6 +47,7 @@ interface AdoptionRow {
   pending: number;
   declined: number;
   tenants: { inn: string; name: string; adopted: number; status: 'current' | 'pending' | 'declined' }[];
+  pilot: { no: number; inns: string[] } | null;
 }
 
 interface StaffAccount {
@@ -94,6 +95,8 @@ export function PlatformPanelShell({ allowedRoles, heading }: { allowedRoles: st
   const [authError, setAuthError] = useState('');
   const [authMode, setAuthMode] = useState<'login' | 'register' | 'reset'>('login');
   const [showPw, setShowPw] = useState(false);
+  const [show2fa, setShow2fa] = useState(false);
+  const [otpVia, setOtpVia] = useState<string | null>(null);
   const [aInn, setAInn] = useState('');
   const [aLogin, setALogin] = useState('');
   const [aPass, setAPass] = useState('');
@@ -116,6 +119,8 @@ export function PlatformPanelShell({ allowedRoles, heading }: { allowedRoles: st
   const [subscriptionSummary, setSubscriptionSummary] = useState<SubscriptionSummary | null>(null);
   const [bulkReports, setBulkReports] = useState<BulkReport[]>([]);
   const [bulkJob, setBulkJob] = useState<BulkJob | null>(null);
+  const [pilotInns, setPilotInns] = useState('');
+  const pilotQs = () => (pilotInns.trim() ? `?pilot=${encodeURIComponent(pilotInns.trim())}` : '');
   const [adoption, setAdoption] = useState<AdoptionRow[]>([]);
   const [platformStaff, setPlatformStaff] = useState<StaffAccount[]>([]);
   const [stagePayments, setStagePayments] = useState<StagePaymentRow[]>([]);
@@ -210,11 +215,17 @@ export function PlatformPanelShell({ allowedRoles, heading }: { allowedRoles: st
       setAuthError('Введите ИНН, логин и пароль');
       return;
     }
-    const r = await api.post<{ ok: true } | { ok: false; error: string }>('/api/auth/login', { inn: aInn, login: aLogin, password: aPass });
+    const r = await api.post<{ ok: true; needOtp?: boolean; via?: string } | { ok: false; error: string }>('/api/auth/login', { inn: aInn, login: aLogin, password: aPass });
     if (!r.ok) {
       setAuthError(r.error);
       return;
     }
+    if (r.needOtp) { setAuthError(''); setOtpVia(r.via ?? 'sms'); return; }
+    await finishLogin();
+  }
+
+  async function finishLogin() {
+    setOtpVia(null);
     const s = await api.get<{ ok: true; session: SessionInfo | null }>('/api/auth/session');
     if (!s.ok || !s.session || !allowedRoles.includes(s.session.role)) {
       await api.post('/api/auth/logout');
@@ -244,7 +255,7 @@ export function PlatformPanelShell({ allowedRoles, heading }: { allowedRoles: st
             <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-caption)' }}>Контур 785</div>
             <div style={{ fontSize: 19, fontWeight: 800 }}>{heading}</div>
           </div>
-          {authMode === 'reset' ? <ResetPasswordForm onBack={() => setAuthMode('login')} /> : (
+          {otpVia ? <OtpStep via={otpVia} onVerified={finishLogin} onBack={() => setOtpVia(null)} /> : authMode === 'reset' ? <ResetPasswordForm onBack={() => setAuthMode('login')} /> : (
             <>
               {authError && <div style={{ background: 'var(--error-bg)', border: '1px solid var(--error-border)', borderRadius: 9, padding: '11px 13px', fontSize: 12.5, fontWeight: 700, color: 'var(--error)' }}>{authError}</div>}
               <input value={aInn} onChange={(e) => setAInn(e.target.value)} placeholder="ИНН компании" style={{ ...inputStyle, fontFamily: 'var(--font-mono)', padding: '12px 13px', fontSize: 15 }} />
@@ -294,6 +305,7 @@ export function PlatformPanelShell({ allowedRoles, heading }: { allowedRoles: st
           <div style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 0.6, opacity: 0.7 }}>{heading}</div>
           <div style={{ fontSize: 13, fontWeight: 700 }}>{session.fio} · {session.role}</div>
         </div>
+        <button onClick={() => setShow2fa(true)} className="k785-tap-target" style={{ padding: '8px 12px', borderRadius: 7, border: '1px solid #2c4442', background: 'transparent', color: 'var(--sidebar-text)', fontSize: 12, fontWeight: 700 }}>{session.twoFactor ? '2FA: включена' : 'Включить 2FA'}</button>
         <button onClick={() => setShowPw(true)} className="k785-tap-target" style={{ padding: '8px 12px', borderRadius: 7, border: '1px solid #2c4442', background: 'transparent', color: 'var(--sidebar-text)', fontSize: 12, fontWeight: 700 }}>Сменить пароль</button>
         <button onClick={doLogout} className="k785-tap-target" style={{ padding: '8px 12px', borderRadius: 7, border: '1px solid #2c4442', background: 'transparent', color: 'var(--sidebar-text)', fontSize: 12, fontWeight: 700 }}>Выйти</button>
       </div>
@@ -331,7 +343,7 @@ export function PlatformPanelShell({ allowedRoles, heading }: { allowedRoles: st
         {tab === 'checklists' && (
           <ChecklistsTab checklists={checklists} canPublish={canPublish}
             onPublish={async (next) => {
-              const r = await api.put<{ ok: true } | { ok: false; error: string }>('/api/panel/checklists', next);
+              const r = await api.put<{ ok: true } | { ok: false; error: string }>('/api/panel/checklists' + pilotQs(), next);
               if (!r.ok) { say(r.error); return; }
               await loadAll(); say('Заявка на публикацию отправлена — нужно подтверждение другого сотрудника (вкладка «Вторая рука»)');
             }}
@@ -341,7 +353,7 @@ export function PlatformPanelShell({ allowedRoles, heading }: { allowedRoles: st
         {tab === 'stages' && (
           <StageCatalogForm stages={stages} canPublish={canPublish}
             onPublish={async (next) => {
-              const r = await api.put<{ ok: true } | { ok: false; error: string }>('/api/panel/stage-docs', next);
+              const r = await api.put<{ ok: true } | { ok: false; error: string }>('/api/panel/stage-docs' + pilotQs(), next);
               if (!r.ok) { say(r.error); return; }
               await loadAll(); say('Заявка на публикацию отправлена — нужно подтверждение другого сотрудника (вкладка «Вторая рука»)');
             }}
@@ -351,7 +363,7 @@ export function PlatformPanelShell({ allowedRoles, heading }: { allowedRoles: st
         {tab === 'cycle' && (
           <CycleMasterForm cycle={cycle} canPublish={canPublish}
             onPublish={async (next) => {
-              const r = await api.put<{ ok: true } | { ok: false; error: string }>('/api/panel/cycle', next);
+              const r = await api.put<{ ok: true } | { ok: false; error: string }>('/api/panel/cycle' + pilotQs(), next);
               if (!r.ok) { say(r.error); return; }
               await loadAll(); say('Заявка на публикацию отправлена — нужно подтверждение другого сотрудника (вкладка «Вторая рука»)');
             }}
@@ -361,7 +373,7 @@ export function PlatformPanelShell({ allowedRoles, heading }: { allowedRoles: st
         {tab === 'equip' && (
           <EquipTypesForm types={equipTypes} canPublish={canPublish}
             onPublish={async (next) => {
-              const r = await api.put<{ ok: true } | { ok: false; error: string }>('/api/panel/equip-types', next);
+              const r = await api.put<{ ok: true } | { ok: false; error: string }>('/api/panel/equip-types' + pilotQs(), next);
               if (!r.ok) { say(r.error); return; }
               await loadAll(); say('Заявка на публикацию отправлена — нужно подтверждение другого сотрудника (вкладка «Вторая рука»)');
             }}
@@ -371,7 +383,7 @@ export function PlatformPanelShell({ allowedRoles, heading }: { allowedRoles: st
         {tab === 'summary' && (
           <SummaryMasterForm rows={summaryRows} canPublish={canPublish}
             onPublish={async (next) => {
-              const r = await api.put<{ ok: true } | { ok: false; error: string }>('/api/panel/summary-master', next);
+              const r = await api.put<{ ok: true } | { ok: false; error: string }>('/api/panel/summary-master' + pilotQs(), next);
               if (!r.ok) { say(r.error); return; }
               await loadAll(); say('Заявка на публикацию отправлена — нужно подтверждение другого сотрудника (вкладка «Вторая рука»)');
             }}
@@ -503,7 +515,15 @@ export function PlatformPanelShell({ allowedRoles, heading }: { allowedRoles: st
           />
         )}
 
-        {tab === 'adoption' && <AdoptionTab rows={adoption} />}
+        {tab === 'adoption' && (
+          <AdoptionTab rows={adoption} pilotInns={pilotInns} setPilotInns={setPilotInns} canRelease={canPublish}
+            onRelease={async (catalog, no) => {
+              const r = await api.post<{ ok: true } | { ok: false; error: string }>(`/api/panel/standard/${catalog}/${no}/release`, {});
+              if (!r.ok) { say(r.error); return; }
+              await loadAll(); say('Редакция выпущена для всех клиник');
+            }}
+          />
+        )}
 
         {tab === 'grants' && (
           <DocumentGrantsTab clients={clients} stages={stages} payments={stagePayments}
@@ -548,6 +568,7 @@ export function PlatformPanelShell({ allowedRoles, heading }: { allowedRoles: st
       </div>
 
       {showPw && <ChangePasswordDialog onClose={() => setShowPw(false)} />}
+      {show2fa && <TwoFactorDialog state={session} onClose={() => setShow2fa(false)} onChanged={async () => { const r = await api.get<{ ok: true; session: SessionInfo | null }>('/api/auth/session'); if (r.ok && r.session) setSession(r.session); }} />}
       {session.mustChange && <ChangePasswordDialog forced onClose={() => undefined} onChanged={async () => { const r = await api.get<{ ok: true; session: SessionInfo | null }>('/api/auth/session'); if (r.ok && r.session) { setSession(r.session); await loadAll(); } }} />}
 
       {toast && (
@@ -655,13 +676,22 @@ function ChecklistsTab({ checklists, canPublish, onPublish }: { checklists: Chec
   );
 }
 
-function AdoptionTab({ rows }: { rows: AdoptionRow[] }) {
+function AdoptionTab({ rows, pilotInns, setPilotInns, canRelease, onRelease }: {
+  rows: AdoptionRow[]; pilotInns: string; setPilotInns: (v: string) => void; canRelease: boolean; onRelease: (catalog: string, no: number) => void;
+}) {
   const [open, setOpen] = useState<string | null>(null);
   const label = { current: 'на последней', pending: 'не отреагировала', declined: 'отказалась' } as const;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       <div style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600, lineHeight: 1.5 }}>
         Кто на какой редакции эталона. Массовый отказ от редакции — сигнал переписать документ, а не давить на внедрение.
+      </div>
+      <div style={cardStyle}>
+        <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 4 }}>Пилотный тираж</div>
+        <div style={{ fontSize: 11.5, color: 'var(--text-muted)', fontWeight: 600, marginBottom: 8 }}>
+          Ближайшие публикации каталогов уйдут ТОЛЬКО клиникам из списка (ИНН через запятую), остальные останутся на прежней редакции, пока вы не выпустите её для всех. Пусто — публикация для всех.
+        </div>
+        <input value={pilotInns} onChange={(e) => setPilotInns(e.target.value)} placeholder="ИНН пилотных клиник через запятую" style={{ ...inputStyle, fontFamily: 'var(--font-mono)' }} />
       </div>
       {rows.length === 0 && <EmptyState text="Редакции ещё не выпускались — публикация каталога создаёт редакцию 1." />}
       {rows.map((r) => (
@@ -671,8 +701,12 @@ function AdoptionTab({ rows }: { rows: AdoptionRow[] }) {
               <div style={{ fontSize: 13.5, fontWeight: 800 }}>{r.label} · последняя ред. {r.latest}</div>
               <div style={{ fontSize: 11.5, color: 'var(--text-muted)', fontWeight: 600 }}>приняли: {r.accepted} · не отреагировали: {r.pending} · отказались: {r.declined}</div>
             </div>
-            <button onClick={() => setOpen(open === r.catalog ? null : r.catalog)} style={outlineBtn}>{open === r.catalog ? 'Скрыть клиники' : 'По клиникам'}</button>
+            <div style={{ display: 'flex', gap: 6 }}>
+              {r.pilot && canRelease && <button onClick={() => onRelease(r.catalog, r.pilot!.no)} style={primaryBtn}>Выпустить ред. {r.pilot.no} для всех</button>}
+              <button onClick={() => setOpen(open === r.catalog ? null : r.catalog)} style={outlineBtn}>{open === r.catalog ? 'Скрыть клиники' : 'По клиникам'}</button>
+            </div>
           </div>
+          {r.pilot && <div style={{ fontSize: 11.5, color: 'var(--warn)', fontWeight: 700, marginTop: 6 }}>Ред. {r.pilot.no} в пилоте: {r.pilot.inns.join(', ')}</div>}
           {open === r.catalog && (
             <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 4 }}>
               {r.tenants.map((t) => (

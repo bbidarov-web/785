@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { isCatalogKey } from '../../standard/editions.js';
 import { requireAuth } from '../plugins/session.js';
 import { assertPermission, PermissionDeniedError } from '../../rbac/service.js';
 
@@ -40,6 +41,12 @@ const digestSettingsSchema = z.object({ recipientEmail: z.string(), schedule: z.
  * данные конкретной клиники), публикует — только `standard:publish`
  * (методист, администратор платформы), через вторую руку (SERVER.md §4).
  */
+/** «Пилот»: ?pilot=ИНН,ИНН — редакция уйдёт только этим клиникам, пока её не выпустят для всех. */
+function pilotOf(req: { query?: unknown }): string[] {
+  const raw = String((req.query as { pilot?: string } | undefined)?.pilot ?? '');
+  return raw.split(',').map((x) => x.replace(/\D/g, '')).filter((x) => x.length === 10 || x.length === 12);
+}
+
 export async function panelRoutes(app: FastifyInstance): Promise<void> {
   function guarded<T>(fn: () => Promise<T>, reply: Parameters<typeof requireAuth>[1]) {
     return fn().catch((err) => {
@@ -61,7 +68,7 @@ export async function panelRoutes(app: FastifyInstance): Promise<void> {
     const ctx = requireAuth(req, reply);
     if (!ctx) return;
     const checklists = z.array(checklistSchema).parse(req.body);
-    const r = await guarded(() => app.container.catalog.publishChecklists(ctx.account, checklists), reply);
+    const r = await guarded(() => app.container.catalog.publishChecklists(ctx.account, checklists, pilotOf(req)), reply);
     if (r === undefined) return;
     return reply.code(r.ok ? 200 : 409).send(r);
   });
@@ -76,7 +83,7 @@ export async function panelRoutes(app: FastifyInstance): Promise<void> {
     const ctx = requireAuth(req, reply);
     if (!ctx) return;
     const stages = z.array(stageSchema).parse(req.body);
-    const r = await guarded(() => app.container.catalog.publishStageDocs(ctx.account, stages), reply);
+    const r = await guarded(() => app.container.catalog.publishStageDocs(ctx.account, stages, pilotOf(req)), reply);
     if (r === undefined) return;
     return reply.code(r.ok ? 200 : 409).send(r);
   });
@@ -91,7 +98,7 @@ export async function panelRoutes(app: FastifyInstance): Promise<void> {
     const ctx = requireAuth(req, reply);
     if (!ctx) return;
     const cycle = cycleSchema.parse(req.body);
-    const r = await guarded(() => app.container.catalog.publishCycle(ctx.account, cycle), reply);
+    const r = await guarded(() => app.container.catalog.publishCycle(ctx.account, cycle, pilotOf(req)), reply);
     if (r === undefined) return;
     return reply.code(r.ok ? 200 : 409).send(r);
   });
@@ -103,6 +110,16 @@ export async function panelRoutes(app: FastifyInstance): Promise<void> {
     const history = await guarded(() => app.container.standard.history(ctx.account), reply);
     if (history === undefined) return;
     return reply.send({ ok: true, history });
+  });
+
+  app.post('/api/panel/standard/:catalog/:no/release', async (req, reply) => {
+    const ctx = requireAuth(req, reply);
+    if (!ctx) return;
+    const { catalog, no } = z.object({ catalog: z.string(), no: z.coerce.number().int() }).parse(req.params);
+    if (!isCatalogKey(catalog)) return reply.code(400).send({ ok: false, error: 'Неизвестный каталог' });
+    const r = await guarded(() => app.container.standard.release(ctx.account, catalog, no), reply);
+    if (r === undefined) return;
+    return reply.code(r.ok ? 200 : 400).send(r);
   });
 
   app.get('/api/panel/standard/adoption', async (req, reply) => {
@@ -149,7 +166,7 @@ export async function panelRoutes(app: FastifyInstance): Promise<void> {
     const ctx = requireAuth(req, reply);
     if (!ctx) return;
     const types = z.array(equipTypeSchema).parse(req.body);
-    const r = await guarded(() => app.container.catalog.publishEquipTypes(ctx.account, types), reply);
+    const r = await guarded(() => app.container.catalog.publishEquipTypes(ctx.account, types, pilotOf(req)), reply);
     if (r === undefined) return;
     return reply.code(r.ok ? 200 : 409).send(r);
   });
@@ -164,7 +181,7 @@ export async function panelRoutes(app: FastifyInstance): Promise<void> {
     const ctx = requireAuth(req, reply);
     if (!ctx) return;
     const rows = z.array(summaryRowSchema).parse(req.body);
-    const r = await guarded(() => app.container.catalog.publishSummaryMaster(ctx.account, rows), reply);
+    const r = await guarded(() => app.container.catalog.publishSummaryMaster(ctx.account, rows, pilotOf(req)), reply);
     if (r === undefined) return;
     return reply.code(r.ok ? 200 : 409).send(r);
   });

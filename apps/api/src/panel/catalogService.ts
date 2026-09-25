@@ -29,9 +29,9 @@ export class CatalogService {
     return (await this.repos.channels.get<T>('platform', null, key, fallback)).data;
   }
 
-  private async requestPublish<T>(account: Account, key: string, value: T): Promise<CatalogResult<{ secondHandRequest: SecondHandRequest }>> {
+  private async requestPublish<T>(account: Account, key: string, value: T, pilot?: string[]): Promise<CatalogResult<{ secondHandRequest: SecondHandRequest }>> {
     await assertPermission(this.repos.auditLog, account, 'standard:publish', `catalog:${key}:publish`, null, null);
-    const secondHandRequest = await this.secondHand.request('standard:publish', { key, value, requestedBy: account.id }, null, account.id);
+    const secondHandRequest = await this.secondHand.request('standard:publish', { key, value, requestedBy: account.id, ...(pilot?.length ? { pilot } : {}) }, null, account.id);
     return { ok: true, secondHandRequest };
   }
 
@@ -45,24 +45,24 @@ export class CatalogService {
     return this.forViewer<ChecklistDef[]>(account, 'checklists', []);
   }
 
-  publishChecklists(account: Account, checklists: ChecklistDef[]): Promise<CatalogResult<{ secondHandRequest: SecondHandRequest }>> {
-    return this.requestPublish(account, 'checklists', checklists);
+  publishChecklists(account: Account, checklists: ChecklistDef[], pilot?: string[]): Promise<CatalogResult<{ secondHandRequest: SecondHandRequest }>> {
+    return this.requestPublish(account, 'checklists', checklists, pilot);
   }
 
   getStageDocs(account?: Account): Promise<Stage[]> {
     return this.forViewer<Stage[]>(account, 'stage_docs', []);
   }
 
-  publishStageDocs(account: Account, stages: Stage[]): Promise<CatalogResult<{ secondHandRequest: SecondHandRequest }>> {
-    return this.requestPublish(account, 'stage_docs', stages);
+  publishStageDocs(account: Account, stages: Stage[], pilot?: string[]): Promise<CatalogResult<{ secondHandRequest: SecondHandRequest }>> {
+    return this.requestPublish(account, 'stage_docs', stages, pilot);
   }
 
   getCycle(account?: Account): Promise<CycleMaster | null> {
     return this.forViewer<CycleMaster | null>(account, 'cycle_master', null);
   }
 
-  publishCycle(account: Account, cycle: CycleMaster): Promise<CatalogResult<{ secondHandRequest: SecondHandRequest }>> {
-    return this.requestPublish(account, 'cycle_master', cycle);
+  publishCycle(account: Account, cycle: CycleMaster, pilot?: string[]): Promise<CatalogResult<{ secondHandRequest: SecondHandRequest }>> {
+    return this.requestPublish(account, 'cycle_master', cycle, pilot);
   }
 
   /** Типы оборудования и периодичность форм (README «Оборудование и журналы»). */
@@ -70,8 +70,8 @@ export class CatalogService {
     return this.forViewer<EquipmentType[]>(account, 'equip_types', []);
   }
 
-  publishEquipTypes(account: Account, types: EquipmentType[]): Promise<CatalogResult<{ secondHandRequest: SecondHandRequest }>> {
-    return this.requestPublish(account, 'equip_types', types);
+  publishEquipTypes(account: Account, types: EquipmentType[], pilot?: string[]): Promise<CatalogResult<{ secondHandRequest: SecondHandRequest }>> {
+    return this.requestPublish(account, 'equip_types', types, pilot);
   }
 
   /** Состав сводного отчёта (README «Самообследование», «Сводный отчёт»). */
@@ -79,8 +79,8 @@ export class CatalogService {
     return this.forViewer<SummaryRowDef[]>(account, 'summary_master', []);
   }
 
-  publishSummaryMaster(account: Account, rows: SummaryRowDef[]): Promise<CatalogResult<{ secondHandRequest: SecondHandRequest }>> {
-    return this.requestPublish(account, 'summary_master', rows);
+  publishSummaryMaster(account: Account, rows: SummaryRowDef[], pilot?: string[]): Promise<CatalogResult<{ secondHandRequest: SecondHandRequest }>> {
+    return this.requestPublish(account, 'summary_master', rows, pilot);
   }
 
   /** Применяется при подтверждении `standard:publish` — см. container.ts. Выпускает НОВУЮ неизменяемую редакцию (standard/editions.ts) и обновляет живую версию каталога. */
@@ -89,7 +89,7 @@ export class CatalogService {
     const value = payload.value;
     let edition: number | null = null;
     if (isCatalogKey(key)) {
-      const meta = await new StandardEditionService(this.repos).publish(key, value, confirmedById ?? null, typeof payload.requestedBy === 'string' ? payload.requestedBy : null);
+      const meta = await new StandardEditionService(this.repos).publish(key, value, confirmedById ?? null, typeof payload.requestedBy === 'string' ? payload.requestedBy : null, Array.isArray(payload.pilot) ? payload.pilot.map(String) : undefined);
       edition = meta?.no ?? null;
     }
     for (let attempt = 0; attempt < 5; attempt++) {

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createMemoryRepos } from '../testUtil/memoryRepos.js';
 import { AuthService } from './service.js';
-import { OTP_TTL_MS } from '@kontur785/shared';
+import { OTP_TTL_MS, normPhone } from '@kontur785/shared';
 
 describe('AuthService', () => {
   let repos: ReturnType<typeof createMemoryRepos>;
@@ -268,6 +268,49 @@ describe('AuthService', () => {
     repos.clock.advanceMs(OTP_TTL_MS + 1000);
     const r = await auth.verifyOtp(reg.account.id, sentCode, {});
     expect(r.ok).toBe(false);
+  });
+
+  it('включение 2FA: нужен пароль и контакт, включается только после верного кода, затем вход требует код', async () => {
+    const reg = await auth.register({ inn: '7712345671', login: 'medplus', password: 'medplus2026', password2: 'medplus2026', fio: 'x', side: 'clinic', email: 'a@b.ru' });
+    if (!reg.ok) throw new Error('setup');
+    expect((await auth.start2fa(reg.account.id, 'email', 'wrongpass1')).ok).toBe(false);
+    const noPhone = await auth.start2fa(reg.account.id, 'sms', 'medplus2026');
+    expect(noPhone.ok).toBe(false);
+    expect((await auth.start2fa(reg.account.id, 'email', 'medplus2026')).ok).toBe(true);
+    expect(repos.notifier.sentOtp.at(-1)?.to).toBe('a@b.ru');
+    expect((await repos.accounts.findById(reg.account.id))?.twoFactor).toBe(false); // без кода не включена
+
+    expect((await auth.confirm2fa(reg.account.id, '000000')).ok).toBe(false);
+    expect((await auth.confirm2fa(reg.account.id, repos.notifier.sentOtp.at(-1)!.code)).ok).toBe(true);
+    const acc = await repos.accounts.findById(reg.account.id);
+    expect(acc?.twoFactor).toBe(true);
+    expect(acc?.twoFactorVia).toBe('email');
+
+    const login = await auth.login('7712345671', 'medplus', 'medplus2026', {});
+    expect(login.ok && 'needOtp' in login).toBe(true);
+    // код для входа не подходит как код включения и наоборот — цели разные
+    expect((await auth.confirm2fa(reg.account.id, repos.notifier.sentOtp.at(-1)!.code)).ok).toBe(false);
+  });
+
+  it('отключение 2FA требует пароль; вход снова без кода', async () => {
+    const reg = await auth.register({ inn: '7712345671', login: 'medplus', password: 'medplus2026', password2: 'medplus2026', fio: 'x', side: 'clinic', email: 'a@b.ru' });
+    if (!reg.ok) throw new Error('setup');
+    await repos.accounts.update(reg.account.id, { twoFactor: true, twoFactorVia: 'email' });
+    expect((await auth.disable2fa(reg.account.id, 'wrongpass1')).ok).toBe(false);
+    expect((await repos.accounts.findById(reg.account.id))?.twoFactor).toBe(true);
+    expect((await auth.disable2fa(reg.account.id, 'medplus2026')).ok).toBe(true);
+    const login = await auth.login('7712345671', 'medplus', 'medplus2026', {});
+    expect(login.ok && 'session' in login).toBe(true);
+  });
+
+  it('вход исполнителя по телефону тоже требует код 2FA (не обход)', async () => {
+    const reg = await auth.register({ inn: '7712345671', login: 'nurse1', password: 'nurse2026pw', password2: 'nurse2026pw', fio: 'Н', side: 'clinic', role: 'nurse' });
+    if (!reg.ok) throw new Error('setup');
+    await repos.accounts.update(reg.account.id, { role: 'nurse', phone: normPhone('+79160000005'), pending: false, twoFactor: true, twoFactorVia: 'sms' });
+    const r = await auth.loginByPhone('7712345671', '+79160000005', 'nurse2026pw', {});
+    expect(r.ok && 'needOtp' in r).toBe(true);
+    const code = repos.notifier.sentOtp.at(-1)!.code;
+    expect((await auth.verifyOtp(reg.account.id, code, {})).ok).toBe(true);
   });
 
   it('вход по телефону работает только для роли nurse', async () => {

@@ -86,6 +86,27 @@ export async function clinicExtraRoutes(app: FastifyInstance): Promise<void> {
     });
   }
 
+  app.get('/api/clinic/standard/:catalog/rollback-targets', async (req, reply) => {
+    const ctx = requireAuth(req, reply);
+    if (!ctx) return;
+    const { catalog } = z.object({ catalog: z.string() }).parse(req.params);
+    if (!isCatalogKey(catalog)) return reply.code(400).send({ ok: false, error: 'Неизвестный каталог' });
+    const targets = await guarded(() => app.container.standard.rollbackTargets(ctx.account, catalog), reply);
+    if (targets === undefined) return;
+    return reply.send({ ok: true, targets });
+  });
+
+  app.post('/api/clinic/standard/:catalog/rollback', async (req, reply) => {
+    const ctx = requireAuth(req, reply);
+    if (!ctx) return;
+    const { catalog } = z.object({ catalog: z.string() }).parse(req.params);
+    const { no } = z.object({ no: z.number().int() }).parse(req.body);
+    if (!isCatalogKey(catalog)) return reply.code(400).send({ ok: false, error: 'Неизвестный каталог' });
+    const r = await guarded(() => app.container.standard.rollback(ctx.account, catalog, no), reply);
+    if (r === undefined) return;
+    return reply.code(r.ok ? 200 : 400).send(r);
+  });
+
   // --- Готовность к проверке ---
   app.get('/api/clinic/readiness', async (req, reply) => {
     const ctx = requireAuth(req, reply);

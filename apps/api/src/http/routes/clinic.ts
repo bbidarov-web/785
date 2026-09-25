@@ -83,6 +83,33 @@ export async function clinicRoutes(app: FastifyInstance): Promise<void> {
     return reply.send({ ok: true, accounts: accounts.map(toPublicAccount) });
   });
 
+  app.get('/api/clinic/invites', async (req, reply) => {
+    const ctx = requireAuth(req, reply);
+    if (!ctx) return;
+    const invites = await guarded(() => app.container.auth.invites.list(ctx.account), reply);
+    if (invites === undefined) return;
+    return reply.send({ ok: true, invites });
+  });
+
+  app.post('/api/clinic/invites', async (req, reply) => {
+    const ctx = requireAuth(req, reply);
+    if (!ctx) return;
+    const { role, branchName } = z.object({ role: z.string(), branchName: z.string().nullable().optional() }).parse(req.body);
+    if (!isRole(role)) return reply.code(400).send({ ok: false, error: 'Неизвестная роль' });
+    const r = await guarded(() => app.container.auth.invites.create(ctx.account, role, branchName ?? null), reply);
+    if (r === undefined) return;
+    return reply.code(r.ok ? 200 : 400).send(r);
+  });
+
+  app.delete('/api/clinic/invites/:id', async (req, reply) => {
+    const ctx = requireAuth(req, reply);
+    if (!ctx) return;
+    const { id } = z.object({ id: z.string() }).parse(req.params);
+    const r = await guarded(() => app.container.auth.invites.revoke(ctx.account, id), reply);
+    if (r === undefined) return;
+    return reply.code(r.ok ? 200 : 400).send(r);
+  });
+
   app.post('/api/clinic/accounts/:id/approve', async (req, reply) => {
     const ctx = requireAuth(req, reply);
     if (!ctx) return;

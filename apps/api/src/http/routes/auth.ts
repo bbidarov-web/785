@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { normPhone } from '@kontur785/shared';
 import {
   clearOtpPendingCookie,
   clearSessionCookie,
@@ -20,11 +21,14 @@ const registerSchema = z.object({
   email: z.string().optional(),
   side: z.enum(['clinic', 'operator']),
   role: z.string().optional(),
+  invite: z.string().optional(),
 });
 
 const loginSchema = z.object({ inn: z.string(), login: z.string(), password: z.string() });
 const loginByPhoneSchema = z.object({ inn: z.string(), phone: z.string(), password: z.string() });
 const otpVerifySchema = z.object({ code: z.string() });
+const start2faSchema = z.object({ via: z.enum(['sms', 'email']), password: z.string() });
+const disable2faSchema = z.object({ password: z.string() });
 const requestResetSchema = z.object({ inn: z.string(), login: z.string() });
 const confirmResetSchema = z.object({ inn: z.string(), login: z.string(), code: z.string(), password: z.string(), password2: z.string() });
 const changePasswordSchema = z.object({ oldPassword: z.string(), newPassword: z.string(), newPassword2: z.string() });
@@ -37,6 +41,14 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     const r = await app.container.auth.register(body as Parameters<typeof app.container.auth.register>[0]);
     if (!r.ok) return reply.code(400).send(r);
     return reply.send({ ok: true, pending: r.pending, warn: r.warn });
+  });
+
+  // Публичная проверка ссылки-приглашения: форма регистрации показывает клинику и роль.
+  app.get('/api/auth/invite', { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (req, reply) => {
+    const { token } = z.object({ token: z.string() }).parse(req.query);
+    const preview = await app.container.auth.invites.peek(token);
+    if (!preview) return reply.code(404).send({ ok: false, error: 'Приглашение недействительно или просрочено' });
+    return reply.send({ ok: true, invite: preview });
   });
 
   app.post('/api/auth/login', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req, reply) => {
@@ -64,6 +76,11 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       ip: req.ip,
     });
     if (!r.ok) return reply.code(401).send(r);
+    if ('needOtp' in r) {
+      const acc = await app.container.repos.accounts.findByInnPhone(body.inn.replace(/\D/g, ''), normPhone(body.phone));
+      if (acc) setOtpPendingCookie(reply, acc.id, secureCookies);
+      return reply.send({ ok: true, needOtp: true, via: r.via });
+    }
     setSessionCookie(reply, r.session.id, secureCookies);
     return reply.send({ ok: true });
   });
@@ -108,6 +125,30 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     return reply.code(r.ok ? 200 : 400).send(r);
   });
 
+  app.post('/api/auth/2fa/start', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req, reply) => {
+    const ctx = requireAuth(req, reply);
+    if (!ctx) return;
+    const body = start2faSchema.parse(req.body);
+    const r = await app.container.auth.start2fa(ctx.account.id, body.via, body.password);
+    return reply.code(r.ok ? 200 : 400).send(r);
+  });
+
+  app.post('/api/auth/2fa/confirm', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req, reply) => {
+    const ctx = requireAuth(req, reply);
+    if (!ctx) return;
+    const { code } = otpVerifySchema.parse(req.body);
+    const r = await app.container.auth.confirm2fa(ctx.account.id, code);
+    return reply.code(r.ok ? 200 : 400).send(r);
+  });
+
+  app.post('/api/auth/2fa/disable', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req, reply) => {
+    const ctx = requireAuth(req, reply);
+    if (!ctx) return;
+    const body = disable2faSchema.parse(req.body);
+    const r = await app.container.auth.disable2fa(ctx.account.id, body.password);
+    return reply.code(r.ok ? 200 : 400).send(r);
+  });
+
   app.post('/api/auth/logout', async (req, reply) => {
     if (req.auth) await app.container.auth.logout(req.auth.session.id);
     clearSessionCookie(reply);
@@ -128,6 +169,10 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
         org: account.org,
         fio: account.fio,
         mustChange: account.mustChange,
+        twoFactor: account.twoFactor,
+        twoFactorVia: account.twoFactorVia,
+        hasPhone: !!account.phone,
+        hasEmail: !!account.email,
       },
     });
   });

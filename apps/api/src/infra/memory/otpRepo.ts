@@ -26,6 +26,7 @@ export class InMemoryOtpRepo implements OtpRepo {
     const now = this.clock.now().getTime();
     const candidates = this.rows
       .filter((r) => r.accountId === accountId && r.purpose === purpose && !r.consumedAt && r.expiresAt.getTime() > now)
+      .reverse() // при равных отметках времени (замороженные часы тестов) побеждает более поздняя запись
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
     return candidates[0] ?? null;
   }

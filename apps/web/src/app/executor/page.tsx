@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { OtpStep, TwoFactorDialog, type TwoFactorState } from '../AuthForms';
 import { api } from '@/lib/api';
 
 /**
@@ -9,7 +10,7 @@ import { api } from '@/lib/api';
  * из прототипа (CLAUDE.md: "Тексты... брать из прототипа дословно").
  */
 
-interface SessionInfo {
+interface SessionInfo extends TwoFactorState {
   accountId: string;
   inn: string;
   login: string;
@@ -76,6 +77,8 @@ export default function ExecutorCabinetPage() {
   const [aInn, setAInn] = useState('');
   const [aPhone, setAPhone] = useState('');
   const [aPass, setAPass] = useState('');
+  const [otpVia, setOtpVia] = useState<string | null>(null);
+  const [show2fa, setShow2fa] = useState(false);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const say = useCallback((text: string) => {
@@ -104,11 +107,17 @@ export default function ExecutorCabinetPage() {
       setAuthError('Введите ИНН клиники, телефон и пароль');
       return;
     }
-    const r = await api.post<{ ok: true } | { ok: false; error: string }>('/api/auth/login-by-phone', { inn: aInn, phone: aPhone, password: aPass });
+    const r = await api.post<{ ok: true; needOtp?: boolean; via?: string } | { ok: false; error: string }>('/api/auth/login-by-phone', { inn: aInn, phone: aPhone, password: aPass });
     if (!r.ok) {
       setAuthError(r.error);
       return;
     }
+    if (r.needOtp) { setAuthError(''); setOtpVia(r.via ?? 'sms'); return; }
+    await finishLogin();
+  }
+
+  async function finishLogin() {
+    setOtpVia(null);
     const s = await api.get<{ ok: true; session: SessionInfo | null }>('/api/auth/session');
     if (!s.ok || !s.session || s.session.role !== 'nurse') {
       await api.post('/api/auth/logout');
@@ -154,7 +163,8 @@ export default function ExecutorCabinetPage() {
             </div>
           )}
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
+          {otpVia && <OtpStep via={otpVia} onVerified={finishLogin} onBack={() => setOtpVia(null)} />}
+          <div style={{ display: otpVia ? 'none' : 'flex', flexDirection: 'column', gap: 11 }}>
             <Field label="ИНН клиники">
               <input value={aInn} onChange={(e) => setAInn(e.target.value)} placeholder="10 или 12 цифр" style={monoInputStyle} />
             </Field>
@@ -218,6 +228,9 @@ export default function ExecutorCabinetPage() {
           <div style={{ fontSize: 12, fontWeight: 700, overflowWrap: 'anywhere' }}>{clinicName}</div>
           <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--sidebar-muted)' }}>ИНН {session.inn}</div>
         </div>
+        <button onClick={() => setShow2fa(true)} className="k785-tap-target" style={ghostDarkButtonStyle}>
+          {session.twoFactor ? '2FA: включена' : 'Включить 2FA'}
+        </button>
         <button onClick={doLogout} className="k785-tap-target" style={ghostDarkButtonStyle}>
           Выйти
         </button>
@@ -350,6 +363,7 @@ export default function ExecutorCabinetPage() {
         </div>
       </div>
 
+      {show2fa && <TwoFactorDialog state={session} onClose={() => setShow2fa(false)} onChanged={async () => { const r = await api.get<{ ok: true; session: SessionInfo | null }>('/api/auth/session'); if (r.ok && r.session) setSession(r.session); }} />}
       {toast && (
         <div style={{ position: 'fixed', left: '50%', bottom: 22, transform: 'translateX(-50%)', maxWidth: 520, background: 'var(--text-primary)', color: '#ffffff', padding: '12px 18px', borderRadius: 10, fontSize: 12.5, fontWeight: 600, lineHeight: 1.45, boxShadow: 'var(--shadow-toast)', zIndex: 40 }}>
           {toast}

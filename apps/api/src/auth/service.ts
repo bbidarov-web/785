@@ -1,3 +1,4 @@
+import { InviteStore } from './invites.js';
 import { normInn, normPhone, passwordIssues, validInn, innChecksum, isRole, isClinicRole, isPlatformRole, type Role } from '@kontur785/shared';
 import { OTP_TTL_MS, RESET_TTL_MS, SESSION_TTL_MS } from '@kontur785/shared';
 import type { Repos } from '../domain/ports.js';
@@ -36,6 +37,8 @@ export interface RegisterInput {
   email?: string;
   side: 'clinic' | 'operator';
   role?: Role;
+  /** Токен приглашения администратора клиники: роль и филиал берутся из него, доступ — сразу, без заявки. */
+  invite?: string;
 }
 
 /**
@@ -44,7 +47,11 @@ export interface RegisterInput {
  * никогда не возвращается вызывающему (SERVER.md §6.1, §7).
  */
 export class AuthService {
-  constructor(private repos: Repos) {}
+  readonly invites: InviteStore;
+
+  constructor(private repos: Repos) {
+    this.invites = new InviteStore(repos);
+  }
 
   async register(input: RegisterInput): Promise<Result<{ account: Account; pending: boolean; warn: string }>> {
     const inn = normInn(input.inn);
@@ -57,7 +64,12 @@ export class AuthService {
     if (await this.repos.accounts.findByInnLogin(inn, login)) {
       return { ok: false, error: 'Такой логин на этом ИНН уже зарегистрирован' };
     }
-    const side: 'platform' | 'clinic' = input.side === 'operator' ? 'platform' : 'clinic';
+    if (input.invite) {
+      // приглашение проверяем ДО создания записи и занимаем одноразово: ссылку нельзя использовать дважды
+      const preview = await this.invites.peek(input.invite);
+      if (!preview || preview.inn !== inn) return { ok: false, error: 'Приглашение недействительно или просрочено. Попросите администратора клиники выдать новое.' };
+    }
+    const side: 'platform' | 'clinic' = input.invite ? 'clinic' : input.side === 'operator' ? 'platform' : 'clinic';
     if (input.role && !isRole(input.role)) return { ok: false, error: 'Неизвестная роль' };
     const role: Role = input.role && isRole(input.role) ? input.role : side === 'platform' ? 'methodist' : 'clinic_admin';
     // Роль обязана соответствовать стороне регистрации — иначе саморегистрация
@@ -67,6 +79,8 @@ export class AuthService {
     if (side === 'clinic' && !isClinicRole(role)) return { ok: false, error: 'Эта роль не предназначена для клиники' };
     if (side === 'platform' && !isPlatformRole(role)) return { ok: false, error: 'Эта роль не предназначена для сотрудника платформы' };
     const passwordHash = await hashPassword(input.password);
+    const claimed = input.invite ? await this.invites.claim(input.invite) : null;
+    if (input.invite && (!claimed || claimed.inn !== inn)) return { ok: false, error: 'Приглашение уже использовано или отозвано' };
     // ИНН организации — публичные данные (ЕГРЮЛ/ФНС). Если клиника с этим ИНН
     // уже существует, саморегистрация не может дать НЕЗНАКОМЦУ немедленный
     // доступ к её данным просто потому, что он знает её ИНН — заявка ждёт
@@ -74,8 +88,8 @@ export class AuthService {
     // как и заявка сотрудника платформы ждёt администратора платформы. Только
     // первая регистрация на НОВЫЙ ИНН заводит клинику и пускает сразу.
     const existingTenant = side === 'clinic' ? await this.repos.tenants.findByInn(inn) : null;
-    const pending = side === 'platform' || !!existingTenant;
-    const account = await this.repos.accounts.create({
+    const pending = !claimed && (side === 'platform' || !!existingTenant);
+    let account = await this.repos.accounts.create({
       inn,
       login,
       org: input.org?.trim() || null,
@@ -85,16 +99,20 @@ export class AuthService {
       phone: input.phone ? normPhone(input.phone) : null,
       email: input.email?.trim() || null,
       side,
-      role,
+      role: claimed?.role ?? role,
       pending,
       requestedRole: pending ? role : null,
-      branchName: null, // назначается администратором клиники отдельно (approveClinicAccount/setAccountBranch)
+      branchName: claimed?.branchName ?? null, // без приглашения назначается администратором клиники отдельно (approveClinicAccount/setAccountBranch)
       passwordHash,
       twoFactor: false,
       twoFactorVia: 'sms',
       blocked: false,
       mustChange: false,
     });
+    if (claimed) {
+      account = await this.repos.accounts.update(account.id, { approvedById: claimed.createdById, approvedAt: this.repos.clock.now() });
+      await this.repos.auditLog.append({ actorId: account.id, actorRole: account.role, tenantInn: inn, action: 'invite:accepted', target: account.id, meta: { role: claimed.role }, allowed: true });
+    }
     // арендатор — клиника (SERVER.md §2); заводим её только на первой регистрации
     // (иначе саморегистрация в чужую клинику переписала бы её название в реестре);
     // сотрудник платформы тенантом не является, для него запись в tenants не заводится
@@ -268,17 +286,18 @@ export class AuthService {
       const who = acc.side === 'platform' ? 'администратора платформы' : 'администратора клиники';
       return { ok: false, error: `Заявка на доступ отправлена и ждёт подтверждения ${who}.` };
     }
-    if (acc.twoFactor) {
-      const code = generateOtp();
-      const codeHash = await hashCode(code);
-      await this.repos.otps.create(acc.id, 'login_2fa', codeHash, acc.twoFactorVia, OTP_TTL_MS);
-      const to = acc.twoFactorVia === 'email' ? acc.email ?? '' : acc.phone ?? '';
-      await this.repos.notifier.sendOtp(acc.twoFactorVia, to, code);
-      return { ok: true, needOtp: true, via: acc.twoFactorVia };
-    }
+    if (acc.twoFactor) return this.sendLoginOtp(acc);
     const session = await this.openSession(acc, meta);
     await this.repos.auditLog.append({ actorId: acc.id, actorRole: acc.role, tenantInn: acc.side === 'clinic' ? acc.inn : null, action: 'auth:login', target: acc.id, meta: null, allowed: true });
     return { ok: true, session };
+  }
+
+  private async sendLoginOtp(acc: Account): Promise<{ ok: true; needOtp: true; via: string }> {
+    const code = generateOtp();
+    await this.repos.otps.create(acc.id, 'login_2fa', await hashCode(code), acc.twoFactorVia, OTP_TTL_MS);
+    const to = acc.twoFactorVia === 'email' ? acc.email ?? '' : acc.phone ?? '';
+    await this.repos.notifier.sendOtp(acc.twoFactorVia, to, code);
+    return { ok: true, needOtp: true, via: acc.twoFactorVia };
   }
 
   async loginByPhone(
@@ -286,7 +305,7 @@ export class AuthService {
     phone: string,
     password: string,
     meta: { userAgent?: string | null; ip?: string | null },
-  ): Promise<Result<{ session: Session }>> {
+  ): Promise<Result<{ session: Session } | { needOtp: true; via: string }>> {
     const acc = await this.repos.accounts.findByInnPhone(normInn(inn), normPhone(phone));
     const valid = acc ? await verifyPassword(acc.passwordHash, password) : false;
     if (!acc || !valid) {
@@ -298,6 +317,7 @@ export class AuthService {
     if (acc.role !== 'nurse') {
       return { ok: false, error: 'Эта учётная запись — не исполнитель. Войдите в кабинет клиники.' };
     }
+    if (acc.twoFactor) return this.sendLoginOtp(acc);
     const session = await this.openSession(acc, meta);
     await this.repos.auditLog.append({ actorId: acc.id, actorRole: acc.role, tenantInn: acc.inn, action: 'auth:login-by-phone', target: acc.id, meta: null, allowed: true });
     return { ok: true, session };
@@ -317,12 +337,41 @@ export class AuthService {
   async resendOtp(accountId: string): Promise<Result<{ via: string }>> {
     const acc = await this.repos.accounts.findById(accountId);
     if (!acc) return { ok: false, error: 'Учётная запись не найдена' };
+    const r = await this.sendLoginOtp(acc);
+    return { ok: true, via: r.via };
+  }
+
+  /** Шаг 1 включения 2FA: код уходит на выбранный канал; включится только после ввода кода — так нельзя заблокировать себя опечаткой в контакте. */
+  async start2fa(accountId: string, via: 'sms' | 'email', password: string): Promise<Result<{ via: string }>> {
+    const acc = await this.repos.accounts.findById(accountId);
+    if (!acc) return { ok: false, error: 'Учётная запись не найдена' };
+    if (!(await verifyPassword(acc.passwordHash, password))) return { ok: false, error: 'Пароль неверен' };
+    const to = via === 'email' ? acc.email ?? '' : acc.phone ?? '';
+    if (!to) return { ok: false, error: via === 'email' ? 'В учётной записи не указана почта' : 'В учётной записи не указан телефон' };
     const code = generateOtp();
-    const codeHash = await hashCode(code);
-    await this.repos.otps.create(acc.id, 'login_2fa', codeHash, acc.twoFactorVia, OTP_TTL_MS);
-    const to = acc.twoFactorVia === 'email' ? acc.email ?? '' : acc.phone ?? '';
-    await this.repos.notifier.sendOtp(acc.twoFactorVia, to, code);
-    return { ok: true, via: acc.twoFactorVia };
+    await this.repos.otps.create(acc.id, 'enable_2fa', await hashCode(code), via, OTP_TTL_MS);
+    await this.repos.notifier.sendOtp(via, to, code);
+    return { ok: true, via };
+  }
+
+  /** Шаг 2: код подтверждён — 2FA включена на канале, куда он приходил. */
+  async confirm2fa(accountId: string, code: string): Promise<Result<Record<string, unknown>>> {
+    const rec = await this.repos.otps.findLatestActive(accountId, 'enable_2fa');
+    if (!rec) return { ok: false, error: 'Код не запрашивался или просрочен, запросите новый' };
+    if (!(await verifyCode(rec.codeHash, code))) return { ok: false, error: 'Код не совпадает' };
+    await this.repos.otps.consume(rec.id);
+    await this.repos.accounts.update(accountId, { twoFactor: true, twoFactorVia: rec.via });
+    await this.repos.auditLog.append({ actorId: accountId, actorRole: null, tenantInn: null, action: 'auth:2fa-enabled', target: accountId, meta: { via: rec.via }, allowed: true });
+    return { ok: true };
+  }
+
+  async disable2fa(accountId: string, password: string): Promise<Result<Record<string, unknown>>> {
+    const acc = await this.repos.accounts.findById(accountId);
+    if (!acc) return { ok: false, error: 'Учётная запись не найдена' };
+    if (!(await verifyPassword(acc.passwordHash, password))) return { ok: false, error: 'Пароль неверен' };
+    await this.repos.accounts.update(accountId, { twoFactor: false });
+    await this.repos.auditLog.append({ actorId: accountId, actorRole: null, tenantInn: null, action: 'auth:2fa-disabled', target: accountId, meta: null, allowed: true });
+    return { ok: true };
   }
 
   async requestReset(inn: string, login: string): Promise<{ ok: true; sent: true }> {

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
-import { RegisterClinicForm, ResetPasswordForm, ChangePasswordDialog, authLinkBtn } from '../AuthForms';
+import { RegisterClinicForm, ResetPasswordForm, ChangePasswordDialog, OtpStep, TwoFactorDialog, authLinkBtn, type TwoFactorState } from '../AuthForms';
 import {
   BranchesTab, CycleTab, EquipmentTab, SummaryTab, SelfAuditTab, ProfileTab, InventoryTab,
   type Branch, type CycleDirectionView, type EquipmentPosition, type EquipmentTypeDef, type EquipmentFormRow,
@@ -16,7 +16,7 @@ import {
  * README «Известные ограничения» про годовой цикл и филиалы.
  */
 
-interface SessionInfo {
+interface SessionInfo extends TwoFactorState {
   mustChange?: boolean;
   role: string;
   side: 'platform' | 'clinic';
@@ -54,6 +54,14 @@ interface ClinicAccount {
   fio: string;
   role: string;
   branchName: string | null;
+}
+
+interface InviteView {
+  id: string;
+  role: string;
+  branchName: string | null;
+  createdAt: string;
+  expiresAt: string;
 }
 
 interface PendingAccount {
@@ -164,6 +172,8 @@ export default function ClinicCabinetPage() {
   const [authError, setAuthError] = useState('');
   const [authMode, setAuthMode] = useState<'login' | 'register' | 'reset'>('login');
   const [showPw, setShowPw] = useState(false);
+  const [show2fa, setShow2fa] = useState(false);
+  const [otpVia, setOtpVia] = useState<string | null>(null);
   const [aInn, setAInn] = useState('');
   const [aLogin, setALogin] = useState('');
   const [aPass, setAPass] = useState('');
@@ -175,6 +185,8 @@ export default function ClinicCabinetPage() {
   const [stages, setStages] = useState<StageView[]>([]);
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [pendingAccounts, setPendingAccounts] = useState<PendingAccount[]>([]);
+  const [invites, setInvites] = useState<InviteView[]>([]);
+  const [inviteToken, setInviteToken] = useState('');
   const [assignments, setAssignments] = useState<Record<string, string>>({});
   const [docProgress, setDocProgress] = useState<Record<string, { fio: string; at: string }[]>>({});
   const [plan, setPlan] = useState<PlanItem[]>([]);
@@ -183,6 +195,7 @@ export default function ClinicCabinetPage() {
   const [readiness, setReadiness] = useState<{ percent: number; lines: { key: string; label: string; weight: number; earned: number; reason: string }[] } | null>(null);
   const [acts, setActs] = useState<WalkAct[]>([]);
   const [stdRecs, setStdRecs] = useState<StandardRec[]>([]);
+  const [stdCatalogs, setStdCatalogs] = useState<{ catalog: string; label: string; adopted: number | null; latest: number | null }[]>([]);
   const [showReadiness, setShowReadiness] = useState(false);
   const [clinicAccounts, setClinicAccounts] = useState<ClinicAccount[]>([]);
   const [capaTerms, setCapaTerms] = useState<CapaTerm[]>([]);
@@ -208,7 +221,7 @@ export default function ClinicCabinetPage() {
   const roleRef = useRef('');
   const loadAll = useCallback(async () => {
     const sessionRole = roleRef.current;
-    const [st, s, pend, acc, rd, ac, sr, a, p, f, c, br, cy, eqp, eqt, eqf, sm, sa, chk, pr, inv] = await Promise.all([
+    const [st, s, pend, acc, invs, rd, ac, sr, a, p, f, c, br, cy, eqp, eqt, eqf, sm, sa, chk, pr, inv] = await Promise.all([
       api.get<{ ok: true; stages: StageView[] }>('/api/clinic/stages'),
       api.get<{ ok: true; staff: StaffMember[] }>('/api/clinic/staff'),
       sessionRole === 'clinic_admin'
@@ -217,9 +230,12 @@ export default function ClinicCabinetPage() {
       sessionRole === 'clinic_admin'
         ? api.get<{ ok: true; accounts: ClinicAccount[] } | { ok: false; error: string }>('/api/clinic/accounts')
         : Promise.resolve({ ok: false as const, error: 'нет права' }),
+      sessionRole === 'clinic_admin'
+        ? api.get<{ ok: true; invites: InviteView[] } | { ok: false; error: string }>('/api/clinic/invites')
+        : Promise.resolve({ ok: false as const, error: 'нет права' }),
       api.get<{ ok: true; readiness: { percent: number; lines: { key: string; label: string; weight: number; earned: number; reason: string }[] } } | { ok: false; error: string }>('/api/clinic/readiness'),
       api.get<{ ok: true; acts: WalkAct[] } | { ok: false; error: string }>('/api/clinic/acts'),
-      api.get<{ ok: true; recommendations: StandardRec[] } | { ok: false; error: string }>('/api/clinic/standard'),
+      api.get<{ ok: true; recommendations: StandardRec[]; catalogs: { catalog: string; label: string; adopted: number | null; latest: number | null }[] } | { ok: false; error: string }>('/api/clinic/standard'),
       api.get<{ ok: true; assignments: Record<string, string>; progress?: Record<string, { fio: string; at: string }[]> }>('/api/clinic/assignments'),
       api.get<{ ok: true; plan: PlanItem[] }>('/api/clinic/plan'),
       api.get<{ ok: true; findings: Finding[] }>('/api/clinic/capa/findings'),
@@ -239,9 +255,11 @@ export default function ClinicCabinetPage() {
     if (s.ok) setStaff(s.staff);
     setPendingAccounts(pend.ok ? pend.pending : []); // 403 для ролей без staff:manage — не ошибка, просто нечего показывать
     setClinicAccounts(acc.ok ? acc.accounts : []);
+    setInvites(invs.ok ? invs.invites : []);
     if (rd.ok) setReadiness(rd.readiness);
     setActs(ac.ok ? ac.acts : []);
     setStdRecs(sr.ok ? sr.recommendations : []);
+    setStdCatalogs(sr.ok ? sr.catalogs : []);
     if (a.ok) { setAssignments(a.assignments); setDocProgress(a.progress ?? {}); }
     if (p.ok) setPlan(p.plan);
     if (f.ok) setFindings(f.findings);
@@ -259,6 +277,8 @@ export default function ClinicCabinetPage() {
   }, []);
 
   useEffect(() => {
+    const token = new URLSearchParams(window.location.search).get('invite');
+    if (token) { setInviteToken(token); setAuthMode('register'); }
     (async () => {
       const r = await api.get<{ ok: true; session: SessionInfo | null }>('/api/auth/session');
       const ok = r.ok && r.session && ALLOWED_ROLES.includes(r.session.role);
@@ -274,11 +294,17 @@ export default function ClinicCabinetPage() {
       setAuthError('Введите ИНН, логин и пароль');
       return;
     }
-    const r = await api.post<{ ok: true } | { ok: false; error: string }>('/api/auth/login', { inn: aInn, login: aLogin, password: aPass });
+    const r = await api.post<{ ok: true; needOtp?: boolean; via?: string } | { ok: false; error: string }>('/api/auth/login', { inn: aInn, login: aLogin, password: aPass });
     if (!r.ok) {
       setAuthError(r.error);
       return;
     }
+    if (r.needOtp) { setAuthError(''); setOtpVia(r.via ?? 'sms'); return; }
+    await finishLogin();
+  }
+
+  async function finishLogin() {
+    setOtpVia(null);
     const s = await api.get<{ ok: true; session: SessionInfo | null }>('/api/auth/session');
     if (!s.ok || !s.session || !ALLOWED_ROLES.includes(s.session.role)) {
       await api.post('/api/auth/logout');
@@ -307,7 +333,7 @@ export default function ClinicCabinetPage() {
             <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-caption)' }}>Контур 785</div>
             <div style={{ fontSize: 19, fontWeight: 800 }}>Личный кабинет ВКК</div>
           </div>
-          {authMode === 'register' ? <RegisterClinicForm onBack={() => setAuthMode('login')} /> : authMode === 'reset' ? <ResetPasswordForm onBack={() => setAuthMode('login')} /> : (
+          {otpVia ? <OtpStep via={otpVia} onVerified={finishLogin} onBack={() => setOtpVia(null)} /> : authMode === 'register' ? <RegisterClinicForm invite={inviteToken || undefined} onBack={() => { setInviteToken(''); setAuthMode('login'); if (window.location.search) window.history.replaceState(null, '', window.location.pathname); }} /> : authMode === 'reset' ? <ResetPasswordForm onBack={() => setAuthMode('login')} /> : (
             <>
               {authError && <div style={{ background: 'var(--error-bg)', border: '1px solid var(--error-border)', borderRadius: 9, padding: '11px 13px', fontSize: 12.5, fontWeight: 700, color: 'var(--error)' }}>{authError}</div>}
               <input value={aInn} onChange={(e) => setAInn(e.target.value)} placeholder="ИНН клиники" style={{ ...inputStyle, fontFamily: 'var(--font-mono)', padding: '12px 13px', fontSize: 15 }} />
@@ -353,6 +379,7 @@ export default function ClinicCabinetPage() {
     <div style={{ minHeight: '100vh', background: 'var(--bg-app)' }}>
       <div style={{ background: 'var(--sidebar-bg)', color: 'var(--sidebar-text)', padding: '14px 22px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <div style={{ fontSize: 13, fontWeight: 700, marginRight: 'auto' }}>{session.fio} · {session.role}</div>
+        <button onClick={() => setShow2fa(true)} className="k785-tap-target" style={{ padding: '8px 12px', borderRadius: 7, border: '1px solid #2c4442', background: 'transparent', color: 'var(--sidebar-text)', fontSize: 12, fontWeight: 700 }}>{session.twoFactor ? '2FA: включена' : 'Включить 2FA'}</button>
         <button onClick={() => setShowPw(true)} className="k785-tap-target" style={{ padding: '8px 12px', borderRadius: 7, border: '1px solid #2c4442', background: 'transparent', color: 'var(--sidebar-text)', fontSize: 12, fontWeight: 700 }}>Сменить пароль</button>
         <button onClick={doLogout} className="k785-tap-target" style={{ padding: '8px 12px', borderRadius: 7, border: '1px solid #2c4442', background: 'transparent', color: 'var(--sidebar-text)', fontSize: 12, fontWeight: 700 }}>Выйти</button>
       </div>
@@ -390,11 +417,20 @@ export default function ClinicCabinetPage() {
         </div>
 
         {tab === 'standard' && (
-          <StandardTab recs={stdRecs} canDecide={session.role === 'clinic_admin' || session.role === 'vkk_lead'}
+          <StandardTab recs={stdRecs} catalogs={stdCatalogs} canDecide={session.role === 'clinic_admin' || session.role === 'vkk_lead'}
             onAccept={async (catalog) => {
               const r = await api.post<{ ok: true } | { ok: false; error: string }>(`/api/clinic/standard/${catalog}/accept`, {});
               if (!r.ok) { say(r.error); return; }
               await loadAll(); say('Редакция принята — кабинет работает по новой версии');
+            }}
+            onRollback={async (catalog, label) => {
+              const t = await api.get<{ ok: true; targets: { no: number; publishedAt: string; changes: string[] }[] } | { ok: false; error: string }>(`/api/clinic/standard/${catalog}/rollback-targets`);
+              if (!t.ok || t.targets.length === 0) { say(t.ok ? 'Более ранних редакций нет' : t.error); return; }
+              const target = t.targets[t.targets.length - 1]!;
+              if (!window.confirm(`Вернуться на редакцию ${target.no} каталога «${label}»? Документы, обходы и план снова пойдут по ней; новая редакция не будет предлагаться повторно.`)) return;
+              const r = await api.post<{ ok: true } | { ok: false; error: string }>(`/api/clinic/standard/${catalog}/rollback`, { no: target.no });
+              if (!r.ok) { say(r.error); return; }
+              await loadAll(); say(`Вы вернулись на редакцию ${target.no}`);
             }}
             onDecline={async (catalog) => {
               const r = await api.post<{ ok: true } | { ok: false; error: string }>(`/api/clinic/standard/${catalog}/decline`, {});
@@ -427,6 +463,18 @@ export default function ClinicCabinetPage() {
         {tab === 'staff' && (
           <StaffTab staff={staff} assignments={assignments} canManageStaff={canManageStaff} canAssign={canAssign}
             pendingAccounts={pendingAccounts} branches={branches} docProgress={docProgress} clinicAccounts={clinicAccounts}
+            invites={invites}
+            onCreateInvite={async (role, branchName) => {
+              const r = await api.post<{ ok: true; token: string } | { ok: false; error: string }>('/api/clinic/invites', { role, branchName: branchName || null });
+              if (!r.ok) { say(r.error); return null; }
+              await loadAll(); say('Ссылка-приглашение создана');
+              return `${window.location.origin}/clinic?invite=${encodeURIComponent(r.token)}`;
+            }}
+            onRevokeInvite={async (id) => {
+              const r = await api.del<{ ok: true } | { ok: false; error: string }>(`/api/clinic/invites/${id}`);
+              if (!r.ok) { say(r.error); return; }
+              await loadAll(); say('Приглашение отозвано');
+            }}
             onSetBranch={async (id, branchName) => {
               const r = await api.put<{ ok: true } | { ok: false; error: string }>(`/api/clinic/accounts/${id}/branch`, { branchName: branchName || null });
               if (!r.ok) { say(r.error); return; }
@@ -634,6 +682,7 @@ export default function ClinicCabinetPage() {
       )}
 
       {showPw && <ChangePasswordDialog onClose={() => setShowPw(false)} />}
+      {show2fa && <TwoFactorDialog state={session} onClose={() => setShow2fa(false)} onChanged={async () => { const r = await api.get<{ ok: true; session: SessionInfo | null }>('/api/auth/session'); if (r.ok && r.session) setSession(r.session); }} />}
       {session.mustChange && <ChangePasswordDialog forced onClose={() => undefined} onChanged={async () => { const r = await api.get<{ ok: true; session: SessionInfo | null }>('/api/auth/session'); if (r.ok && r.session) { setSession(r.session); await loadAll(); } }} />}
 
       {toast && (
@@ -713,9 +762,10 @@ function StagesTab({ stages, canOrder, onOrder, onAcceptOffer, onOpen }: {
   );
 }
 
-function StaffTab({ staff, assignments, canManageStaff, canAssign, pendingAccounts, branches, docProgress, clinicAccounts, onSetBranch, onAddStaff, onRemoveStaff, onAssign, onApproveAccount, onRejectAccount }: {
+function StaffTab({ staff, assignments, canManageStaff, canAssign, pendingAccounts, branches, docProgress, clinicAccounts, invites, onCreateInvite, onRevokeInvite, onSetBranch, onAddStaff, onRemoveStaff, onAssign, onApproveAccount, onRejectAccount }: {
   staff: StaffMember[]; assignments: Record<string, string>; canManageStaff: boolean; canAssign: boolean;
   pendingAccounts: PendingAccount[]; branches: Branch[]; docProgress: Record<string, { fio: string; at: string }[]>; clinicAccounts: ClinicAccount[]; onSetBranch: (id: string, branchName: string) => void;
+  invites: InviteView[]; onCreateInvite: (role: string, branchName: string) => Promise<string | null>; onRevokeInvite: (id: string) => void;
   onAddStaff: (fio: string, pos: string) => void; onRemoveStaff: (fio: string) => void; onAssign: (doc: string, who: string) => void;
   onApproveAccount: (id: string, role: string, branchName: string) => void; onRejectAccount: (id: string) => void;
 }) {
@@ -725,9 +775,48 @@ function StaffTab({ staff, assignments, canManageStaff, canAssign, pendingAccoun
   const [docWho, setDocWho] = useState('');
   const [roleByRequest, setRoleByRequest] = useState<Record<string, string>>({});
   const [branchByRequest, setBranchByRequest] = useState<Record<string, string>>({});
+  const [inviteRole, setInviteRole] = useState('nurse');
+  const [inviteBranch, setInviteBranch] = useState('');
+  const [inviteLink, setInviteLink] = useState('');
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {canManageStaff && (
+        <div style={cardStyle}>
+          <div style={{ fontSize: 13.5, fontWeight: 800, marginBottom: 4 }}>Пригласить сотрудника ссылкой</div>
+          <div style={{ fontSize: 11.5, color: 'var(--text-muted)', fontWeight: 600, marginBottom: 10 }}>
+            Ссылка действует 7 дней и срабатывает один раз: человек сам задаёт логин и пароль и сразу получает выбранную роль и филиал — подтверждать заявку не нужно.
+          </div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+            <select value={inviteRole} onChange={(e) => setInviteRole(e.target.value)} style={{ ...inputStyle, width: 'auto' }} aria-label="Роль приглашённого">
+              {CLINIC_ROLE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+            <select value={inviteBranch} onChange={(e) => setInviteBranch(e.target.value)} style={{ ...inputStyle, width: 'auto' }} aria-label="Филиал приглашённого">
+              <option value="">все филиалы</option>
+              {branches.map((b) => <option key={b.id} value={b.name}>{b.name}</option>)}
+            </select>
+            <button onClick={async () => { const link = await onCreateInvite(inviteRole, inviteBranch); if (link) setInviteLink(link); }} style={primaryBtn}>Создать ссылку</button>
+          </div>
+          {inviteLink && (
+            <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
+              <input readOnly value={inviteLink} onFocus={(e) => e.target.select()} aria-label="Ссылка-приглашение" style={{ ...inputStyle, fontFamily: 'var(--font-mono)', fontSize: 11.5 }} />
+              <button onClick={() => { void navigator.clipboard?.writeText(inviteLink); }} style={outlineBtn}>Копировать</button>
+            </div>
+          )}
+          {inviteLink && <div style={{ fontSize: 11, color: 'var(--warn)', fontWeight: 700, marginTop: 4 }}>Ссылка показывается один раз — после закрытия страницы её не восстановить, только выдать новую.</div>}
+          {invites.length > 0 && (
+            <div style={{ marginTop: 10 }}>
+              {invites.map((i) => (
+                <div key={i.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '5px 0', borderBottom: '1px solid var(--border-3)', fontSize: 12, fontWeight: 600 }}>
+                  <span>{CLINIC_ROLE_OPTIONS.find((o) => o.value === i.role)?.label ?? i.role} · {i.branchName ?? 'все филиалы'} · до {i.expiresAt.slice(0, 10)}</span>
+                  <button onClick={() => onRevokeInvite(i.id)} style={outlineBtn}>Отозвать</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {canManageStaff && pendingAccounts.length > 0 && (
         <div style={{ ...cardStyle, borderColor: 'var(--error-border)' }}>
           <div style={{ fontSize: 13.5, fontWeight: 800, marginBottom: 4 }}>Заявки на доступ к клинике</div>
@@ -973,8 +1062,9 @@ function CapaTab({ items, myFio, canCheckEffectiveness, onClose, onReopen, onChe
   );
 }
 
-function StandardTab({ recs, canDecide, onAccept, onDecline }: {
-  recs: StandardRec[]; canDecide: boolean; onAccept: (catalog: string) => void; onDecline: (catalog: string) => void;
+function StandardTab({ recs, catalogs, canDecide, onAccept, onDecline, onRollback }: {
+  recs: StandardRec[]; catalogs: { catalog: string; label: string; adopted: number | null; latest: number | null }[]; canDecide: boolean;
+  onAccept: (catalog: string) => void; onDecline: (catalog: string) => void; onRollback: (catalog: string, label: string) => void;
 }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -983,6 +1073,17 @@ function StandardTab({ recs, canDecide, onAccept, onDecline }: {
         обходы, документы и план не меняются сами. Принять или оставить прежнюю можно в любой момент.
       </div>
       {recs.length === 0 && <EmptyState text="Обновлений стандарта нет — вы работаете по последним редакциям." />}
+      {canDecide && catalogs.filter((c) => (c.adopted ?? 0) > 1).length > 0 && (
+        <div style={cardStyle}>
+          <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 6 }}>Ваши редакции</div>
+          {catalogs.filter((c) => (c.adopted ?? 0) > 1).map((c) => (
+            <div key={c.catalog} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '5px 0', borderBottom: '1px solid var(--border-3)' }}>
+              <span style={{ fontSize: 12, fontWeight: 600 }}>{c.label} · ред. {c.adopted}</span>
+              <button onClick={() => onRollback(c.catalog, c.label)} style={outlineBtn}>Вернуться на предыдущую</button>
+            </div>
+          ))}
+        </div>
+      )}
       {recs.map((r) => (
         <div key={r.catalog} style={{ ...cardStyle, borderColor: r.status === 'pending' ? 'var(--warn)' : 'var(--border-2)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>

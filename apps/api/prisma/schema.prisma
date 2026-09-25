@@ -108,6 +108,7 @@ model Session {
 enum OtpPurpose {
   login_2fa
   password_reset
+  enable_2fa
 }
 
 /// Код 2FA / сброса пароля. Хранится только хеш кода — сам код уходит по смс/почте

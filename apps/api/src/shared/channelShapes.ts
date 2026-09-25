@@ -56,6 +56,8 @@ export interface WalkResultEntry {
   date: string;
   source: 'мобильный обход';
   items: WalkResultItem[];
+  /** Филиал проверки (из плана на момент обхода) — по нему находки и акты скрываются от сотрудников других филиалов. */
+  branch?: string;
   /** Номер акта «А-ГГГГ-NNN» — присваивается при завершении обхода, сквозная нумерация по клинике за год. */
   actNo?: string;
   finishedAt?: string;
@@ -108,6 +110,8 @@ export interface CapaItem {
   object: string;
   findingText: string;
   comment: string;
+  /** Филиал нарушения (из обхода); пусто — общеклиническое (самообследование), видно всем. */
+  branch?: string;
   who: string; // ответственный за устранение
   due: string; // ДД.ММ.ГГГГ, может быть пустым — задаётся позже
   /** Степень критичности из каталога методиста (`CycleMaster.capaTerms[].level`) — null, если не указана (срок тогда задаётся вручную). */

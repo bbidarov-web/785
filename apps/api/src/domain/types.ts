@@ -39,7 +39,7 @@ export interface Session {
   revokedAt: Date | null;
 }
 
-export type OtpPurpose = 'login_2fa' | 'password_reset';
+export type OtpPurpose = 'login_2fa' | 'password_reset' | 'enable_2fa';
 
 export interface OtpCode {
   id: string;

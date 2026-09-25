@@ -33,6 +33,8 @@ export interface EditionMeta {
   requestedBy: string | null;
   /** Что изменилось относительно предыдущей редакции — строками для рекомендации клинике. */
   changes: string[];
+  /** Пилотный тираж: редакция видна только этим клиникам, пока методист не выпустит её для всех. */
+  pilot?: string[];
 }
 
 interface AdoptionRecord {
@@ -61,6 +63,8 @@ export interface AdoptionReportRow {
   pending: number;
   declined: number;
   tenants: { inn: string; name: string; adopted: number; status: 'current' | 'pending' | 'declined' }[];
+  /** Редакция в пилоте (ещё не выпущена для всех): номер и клиники-участники. */
+  pilot: { no: number; inns: string[] } | null;
 }
 
 const idxKey = (k: CatalogKey) => `standard_edition_index:${k}`;
@@ -123,7 +127,7 @@ export class StandardEditionService {
     return (await this.repos.channels.get<T>('platform', null, dataKey(key, no), fallback)).data;
   }
 
-  private async writeEdition(key: CatalogKey, data: unknown, byId: string | null, requestedBy: string | null, changes: string[]): Promise<EditionMeta> {
+  private async writeEdition(key: CatalogKey, data: unknown, byId: string | null, requestedBy: string | null, changes: string[], pilot?: string[]): Promise<EditionMeta> {
     let bump = 0; // остаток от оборвавшейся публикации (данные есть, индекса нет) — берём следующий свободный номер
     for (let attempt = 0; attempt < 8; attempt++) {
       const idx = await this.repos.channels.get<EditionMeta[]>('platform', null, idxKey(key), []);
@@ -131,7 +135,7 @@ export class StandardEditionService {
       // данные редакции пишутся ОДИН раз (expectedVersion 0) — так изданная редакция неизменяема
       const d = await this.repos.channels.set('platform', null, dataKey(key, no), JSON.parse(JSON.stringify(data)), { expectedVersion: 0, updatedBy: byId });
       if (!d.ok) { bump++; continue; }
-      const meta: EditionMeta = { no, publishedAt: todayString(), byId, requestedBy, changes };
+      const meta: EditionMeta = { no, publishedAt: todayString(), byId, requestedBy, changes, ...(pilot?.length ? { pilot } : {}) };
       const res = await this.repos.channels.set('platform', null, idxKey(key), [...idx.data, meta], { expectedVersion: idx.version, updatedBy: byId });
       if (res.ok) return meta;
     }
@@ -139,7 +143,7 @@ export class StandardEditionService {
   }
 
   /** Выпуск редакции при подтверждении публикации (CatalogService.applyPublish). Возвращает null, если содержимое не изменилось. */
-  async publish(key: CatalogKey, data: unknown, byId: string | null, requestedBy: string | null): Promise<EditionMeta | null> {
+  async publish(key: CatalogKey, data: unknown, byId: string | null, requestedBy: string | null, pilot?: string[]): Promise<EditionMeta | null> {
     let idx = await this.index(key);
     if (idx.length === 0) {
       const live = await this.liveData(key);
@@ -154,7 +158,7 @@ export class StandardEditionService {
     const prevNo = idx.at(-1)?.no;
     const prev = prevNo ? await this.editionData(key, prevNo, null as unknown) : null;
     if (prevNo && JSON.stringify(prev) === JSON.stringify(data)) return null;
-    return this.writeEdition(key, data, byId, requestedBy, diffLines(key, prev, data));
+    return this.writeEdition(key, data, byId, requestedBy, diffLines(key, prev, data), pilot);
   }
 
   private async getAdoption(inn: string): Promise<{ data: Adoption; version: number }> {
@@ -171,21 +175,30 @@ export class StandardEditionService {
     throw new Error('Не удалось сохранить принятие редакции — повторите');
   }
 
-  /** Редакция, по которой РАБОТАЕТ клиника: принятая ею; у новой клиники (записи нет) — последняя, и она фиксируется. */
+  /** Последняя редакция, ДОСТУПНАЯ клинике: общая либо пилотная, в которую она включена. */
+  private visibleLatest(idx: EditionMeta[], inn: string): EditionMeta | null {
+    for (let i = idx.length - 1; i >= 0; i--) if (!idx[i]!.pilot || idx[i]!.pilot!.includes(inn)) return idx[i]!;
+    return null;
+  }
+
+  /** Редакция, по которой РАБОТАЕТ клиника: принятая ею; у новой клиники (записи нет) — последняя доступная ей, и она фиксируется. */
   async adoptedNo(inn: string, key: CatalogKey): Promise<number | null> {
     const idx = await this.index(key);
     if (idx.length === 0) return null;
     const rec = (await this.getAdoption(inn)).data[key];
     if (rec && idx.some((e) => e.no === rec.adopted)) return rec.adopted;
-    const latest = idx.at(-1)!.no;
-    await this.setAdoption(inn, key, { adopted: latest, declined: null, at: todayString(), byId: null });
-    return latest;
+    const latest = this.visibleLatest(idx, inn);
+    if (!latest) return null;
+    await this.setAdoption(inn, key, { adopted: latest.no, declined: null, at: todayString(), byId: null });
+    return latest.no;
   }
 
   /** Каталог для клиники: принятая редакция; пока редакций нет (данные только в живом канале) — живая версия. */
   async catalog<T>(inn: string, key: CatalogKey, fallback: T): Promise<T> {
     const no = await this.adoptedNo(inn, key);
     if (no === null) {
+      // редакции есть, но все — пилотные и клиника в них не входит: живой канал уже несёт пилотные данные, отдавать его нельзя
+      if ((await this.index(key)).length > 0) return fallback;
       const live = await this.liveData(key);
       return (live === null || live === undefined ? fallback : live) as T;
     }
@@ -199,14 +212,14 @@ export class StandardEditionService {
     for (const key of Object.keys(CATALOGS) as CatalogKey[]) {
       const idx = await this.index(key);
       const adopted = await this.adoptedNo(account.inn, key);
-      const latest = idx.at(-1)?.no ?? null;
+      const latest = this.visibleLatest(idx, account.inn)?.no ?? null;
       catalogs.push({ catalog: key, label: CATALOGS[key], adopted, latest });
       if (adopted === null || latest === null || latest <= adopted) continue;
       const rec = (await this.getAdoption(account.inn)).data[key];
       recommendations.push({
         catalog: key, label: CATALOGS[key], adopted, latest,
         status: rec?.declined === latest ? 'declined' : 'pending',
-        changes: idx.filter((e) => e.no > adopted).flatMap((e) => e.changes.map((c) => `ред. ${e.no}: ${c}`)),
+        changes: idx.filter((e) => e.no > adopted && e.no <= latest && (!e.pilot || e.pilot.includes(account.inn))).flatMap((e) => e.changes.map((c) => `ред. ${e.no}: ${c}`)),
       });
     }
     return { catalogs, recommendations };
@@ -214,7 +227,7 @@ export class StandardEditionService {
 
   async accept(account: Account, key: CatalogKey): Promise<{ ok: true; adopted: number } | { ok: false; error: string }> {
     await assertPermission(this.repos.auditLog, account, 'adoption:decide', 'standard:accept', key, account.inn);
-    const latest = (await this.index(key)).at(-1)?.no;
+    const latest = this.visibleLatest(await this.index(key), account.inn)?.no;
     if (!latest) return { ok: false, error: 'Редакций этого каталога ещё нет' };
     await this.setAdoption(account.inn, key, { adopted: latest, declined: null, at: todayString(), byId: account.id });
     await this.repos.auditLog.append({ actorId: account.id, actorRole: account.role, tenantInn: account.inn, action: 'standard:adopted', target: key, meta: { edition: latest }, allowed: true });
@@ -224,7 +237,7 @@ export class StandardEditionService {
   async decline(account: Account, key: CatalogKey): Promise<{ ok: true } | { ok: false; error: string }> {
     await assertPermission(this.repos.auditLog, account, 'adoption:decide', 'standard:decline', key, account.inn);
     const idx = await this.index(key);
-    const latest = idx.at(-1)?.no;
+    const latest = this.visibleLatest(idx, account.inn)?.no;
     const adopted = await this.adoptedNo(account.inn, key);
     if (!latest || adopted === null || latest <= adopted) return { ok: false, error: 'Нет непринятой редакции' };
     await this.setAdoption(account.inn, key, { adopted, declined: latest, at: todayString(), byId: account.id });
@@ -241,11 +254,13 @@ export class StandardEditionService {
       const idx = await this.index(key);
       const latest = idx.at(-1)?.no;
       if (!latest) continue;
-      const row: AdoptionReportRow = { catalog: key, label: CATALOGS[key], latest, accepted: 0, pending: 0, declined: 0, tenants: [] };
+      const pilotMeta = idx.find((e) => e.pilot);
+      const row: AdoptionReportRow = { catalog: key, label: CATALOGS[key], latest, accepted: 0, pending: 0, declined: 0, tenants: [], pilot: pilotMeta ? { no: pilotMeta.no, inns: pilotMeta.pilot! } : null };
       for (const t of tenants) {
         const rec = (await this.getAdoption(t.inn)).data[key];
-        const adopted = rec && idx.some((e) => e.no === rec.adopted) ? rec.adopted : latest; // без записи клиника получит последнюю при первом чтении
-        const status = adopted === latest ? 'current' : rec?.declined === latest ? 'declined' : 'pending';
+        const tenantLatest = this.visibleLatest(idx, t.inn)?.no ?? latest;
+        const adopted = rec && idx.some((e) => e.no === rec.adopted) ? rec.adopted : tenantLatest; // без записи клиника получит последнюю доступную при первом чтении
+        const status = adopted === tenantLatest ? 'current' : rec?.declined === tenantLatest ? 'declined' : 'pending';
         row[status === 'current' ? 'accepted' : status]++;
         row.tenants.push({ inn: t.inn, name: t.name, adopted, status });
       }
@@ -260,5 +275,47 @@ export class StandardEditionService {
     const out: { catalog: CatalogKey; label: string; editions: EditionMeta[] }[] = [];
     for (const key of Object.keys(CATALOGS) as CatalogKey[]) out.push({ catalog: key, label: CATALOGS[key], editions: await this.index(key) });
     return out;
+  }
+
+  /** Пилот прошёл — выпуск редакции для всех клиник (право публикации; клиники увидят её как обычную рекомендацию). */
+  async release(account: Account, key: CatalogKey, no: number): Promise<{ ok: true } | { ok: false; error: string }> {
+    await assertPermission(this.repos.auditLog, account, 'standard:publish', 'standard:release', `${key}:${no}`, null);
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const idx = await this.repos.channels.get<EditionMeta[]>('platform', null, idxKey(key), []);
+      const meta = idx.data.find((e) => e.no === no);
+      if (!meta) return { ok: false, error: 'Редакция не найдена' };
+      if (!meta.pilot) return { ok: false, error: 'Редакция уже выпущена для всех' };
+      const next = idx.data.map((e) => (e.no === no ? { ...e, pilot: undefined } : e));
+      const res = await this.repos.channels.set('platform', null, idxKey(key), JSON.parse(JSON.stringify(next)), { expectedVersion: idx.version, updatedBy: account.id });
+      if (res.ok) {
+        await this.repos.auditLog.append({ actorId: account.id, actorRole: account.role, tenantInn: null, action: 'standard:released', target: key, meta: { edition: no }, allowed: true });
+        return { ok: true };
+      }
+    }
+    return { ok: false, error: 'Не удалось выпустить — повторите' };
+  }
+
+  /**
+   * Откат клиники на предыдущую (уже принимавшуюся или общую) редакцию. Новая остаётся
+   * помеченной «отклонена» — не предлагается заново, пока не выйдет следующая.
+   */
+  async rollback(account: Account, key: CatalogKey, toNo: number): Promise<{ ok: true; adopted: number } | { ok: false; error: string }> {
+    await assertPermission(this.repos.auditLog, account, 'adoption:decide', 'standard:rollback', `${key}:${toNo}`, account.inn);
+    const idx = await this.index(key);
+    const adopted = await this.adoptedNo(account.inn, key);
+    const target = idx.find((e) => e.no === toNo);
+    if (adopted === null || !target || toNo >= adopted) return { ok: false, error: 'Откатиться можно только на более раннюю редакцию' };
+    if (target.pilot && !target.pilot.includes(account.inn)) return { ok: false, error: 'Эта редакция вам недоступна' };
+    await this.setAdoption(account.inn, key, { adopted: toNo, declined: this.visibleLatest(idx, account.inn)?.no ?? null, at: todayString(), byId: account.id });
+    await this.repos.auditLog.append({ actorId: account.id, actorRole: account.role, tenantInn: account.inn, action: 'standard:rolled-back', target: key, meta: { from: adopted, to: toNo }, allowed: true });
+    return { ok: true, adopted: toNo };
+  }
+
+  /** Редакции, на которые клиника может откатиться (раньше принятой и доступные ей). */
+  async rollbackTargets(account: Account, key: CatalogKey): Promise<EditionMeta[]> {
+    await assertPermission(this.repos.auditLog, account, 'doc:read', 'standard:rollback-targets', key, account.inn);
+    const adopted = await this.adoptedNo(account.inn, key);
+    if (adopted === null) return [];
+    return (await this.index(key)).filter((e) => e.no < adopted && (!e.pilot || e.pilot.includes(account.inn)));
   }
 }

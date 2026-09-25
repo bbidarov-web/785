@@ -1,7 +1,7 @@
 import { StandardEditionService } from '../standard/editions.js';
 import type { Repos } from '../domain/ports.js';
 import type { Account } from '../domain/types.js';
-import { assertPermission } from '../rbac/service.js';
+import { assertPermission, visibleToBranch } from '../rbac/service.js';
 import { todayString } from '../shared/date.js';
 import { buildStaffPositionMap, formatOwner, isMine, normalizeChecklistName } from '../shared/assignment.js';
 import { decodeDataUrl } from '../shared/fileUpload.js';
@@ -198,6 +198,7 @@ export class WalkService {
         walkId: planId,
         name: resolved.boundName || p.name || p.dir || 'Проверка',
         object: p.object || '',
+        branch: p.branch || '',
         kind: p.kind || 'плановая',
         who: formatOwner(p.who, owners),
         finished: current?.finished ?? false,
@@ -249,7 +250,7 @@ export class WalkService {
     await assertPermission(this.repos.auditLog, account, 'journal:read', 'walk:acts', null, account.inn);
     const rec = await this.repos.channels.get<Record<string, WalkResultEntry>>('tenant', account.inn, 'walk_results', {});
     return Object.values(rec.data)
-      .filter((e) => e.finished && e.actNo)
+      .filter((e) => e.finished && e.actNo && visibleToBranch(account, e.branch))
       .map((e) => ({ planId: e.planId, actNo: e.actNo!, name: e.name, object: e.object, date: e.finishedAt ?? e.date, bad: e.bad, total: e.total }))
       .sort((a, b) => b.actNo.localeCompare(a.actNo));
   }
@@ -259,7 +260,7 @@ export class WalkService {
     await assertPermission(this.repos.auditLog, account, 'journal:read', 'walk:act', planId, account.inn);
     const rec = await this.repos.channels.get<Record<string, WalkResultEntry>>('tenant', account.inn, 'walk_results', {});
     const e = rec.data[planId];
-    if (!e || !e.finished || !e.actNo) return { ok: false, error: 'Акт формируется только по завершённому обходу' };
+    if (!e || !e.finished || !e.actNo || !visibleToBranch(account, e.branch)) return { ok: false, error: 'Акт формируется только по завершённому обходу' };
     const tenant = await this.repos.tenants.findByInn(account.inn);
     const lines = [
       `Организация: ${tenant?.name ?? account.inn} · ИНН ${account.inn}`,
