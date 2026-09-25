@@ -281,6 +281,13 @@ describe('AuthService', () => {
     expect(login.ok).toBe(true);
   });
 
+  it('сброс пароля уходит на почту, если телефона нет', async () => {
+    const reg = await auth.register({ inn: '7712345671', login: 'mailonly', password: 'medplus2026', password2: 'medplus2026', fio: 'x', side: 'clinic', email: 'a@b.ru' });
+    if (!reg.ok) throw new Error('setup');
+    await auth.requestReset('7712345671', 'mailonly');
+    expect(repos.notifier.sentReset.at(-1)).toMatchObject({ via: 'email', to: 'a@b.ru' });
+  });
+
   it('requestReset отвечает одинаково для существующего и несуществующего логина', async () => {
     const a = await auth.requestReset('7712345671', 'ghost');
     const b = await auth.requestReset('7712345671', 'also-ghost');

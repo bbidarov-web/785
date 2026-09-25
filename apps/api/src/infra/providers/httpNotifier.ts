@@ -13,6 +13,7 @@ export class HttpNotifier implements Notifier {
   constructor(private smsApiKey: string | undefined, private emailApiKey: string | undefined, private emailFrom: string) {}
 
   private async sendSms(to: string, text: string): Promise<void> {
+    if (!to) return; // у учётной записи нет контакта для этого канала
     if (!this.smsApiKey) {
       // eslint-disable-next-line no-console
       console.warn(`[notifier] SMS_PROVIDER_API_KEY не задан — смс на ${to} не отправлено`);
@@ -28,6 +29,7 @@ export class HttpNotifier implements Notifier {
   }
 
   private async sendEmail(to: string, subject: string, text: string): Promise<void> {
+    if (!to) return;
     if (!this.emailApiKey) {
       // eslint-disable-next-line no-console
       console.warn(`[notifier] EMAIL_PROVIDER_API_KEY не задан — письмо на ${to} не отправлено`);

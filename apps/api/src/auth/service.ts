@@ -319,9 +319,12 @@ export class AuthService {
     if (!acc) return { ok: true, sent: true };
     const code = generateOtp();
     const codeHash = await hashCode(code);
-    await this.repos.otps.create(acc.id, 'password_reset', codeHash, acc.twoFactorVia, RESET_TTL_MS);
-    const to = acc.twoFactorVia === 'email' ? acc.email ?? '' : acc.phone ?? '';
-    await this.repos.notifier.sendPasswordReset(acc.twoFactorVia, to, code);
+    // канал — предпочтительный, но только если по нему есть куда слать: клиника,
+    // зарегистрированная с одной почтой, иначе никогда не получила бы код сброса
+    const via = acc.twoFactorVia === 'email' ? (acc.email ? 'email' : 'sms') : (acc.phone ? 'sms' : 'email');
+    await this.repos.otps.create(acc.id, 'password_reset', codeHash, via, RESET_TTL_MS);
+    const to = via === 'email' ? acc.email ?? '' : acc.phone ?? '';
+    await this.repos.notifier.sendPasswordReset(via, to, code);
     return { ok: true, sent: true };
   }
 

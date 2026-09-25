@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
+import { ResetPasswordForm, ChangePasswordDialog, authLinkBtn } from '../AuthForms';
 import {
   StageCatalogForm, CycleMasterForm, EquipTypesForm, SummaryMasterForm,
   type StageDraft, type CycleMasterDraft, type EquipTypeDraft, type SummaryRowDraft,
@@ -70,6 +71,8 @@ export function PlatformPanelShell({ allowedRoles, heading }: { allowedRoles: st
   const [ready, setReady] = useState(false);
   const [session, setSession] = useState<SessionInfo | null>(null);
   const [authError, setAuthError] = useState('');
+  const [authMode, setAuthMode] = useState<'login' | 'register' | 'reset'>('login');
+  const [showPw, setShowPw] = useState(false);
   const [aInn, setAInn] = useState('');
   const [aLogin, setALogin] = useState('');
   const [aPass, setAPass] = useState('');
@@ -212,11 +215,16 @@ export function PlatformPanelShell({ allowedRoles, heading }: { allowedRoles: st
             <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-caption)' }}>Контур 785</div>
             <div style={{ fontSize: 19, fontWeight: 800 }}>{heading}</div>
           </div>
-          {authError && <div style={{ background: 'var(--error-bg)', border: '1px solid var(--error-border)', borderRadius: 9, padding: '11px 13px', fontSize: 12.5, fontWeight: 700, color: 'var(--error)' }}>{authError}</div>}
-          <input value={aInn} onChange={(e) => setAInn(e.target.value)} placeholder="ИНН компании" style={{ ...inputStyle, fontFamily: 'var(--font-mono)', padding: '12px 13px', fontSize: 15 }} />
-          <input value={aLogin} onChange={(e) => setALogin(e.target.value)} placeholder="Логин" style={{ ...inputStyle, padding: '12px 13px', fontSize: 15 }} />
-          <input type="password" value={aPass} onChange={(e) => setAPass(e.target.value)} placeholder="Пароль" style={{ ...inputStyle, padding: '12px 13px', fontSize: 15 }} />
-          <button onClick={doLogin} className="k785-tap-target" style={{ ...primaryBtn, padding: 14, fontSize: 15 }}>Войти</button>
+          {authMode === 'reset' ? <ResetPasswordForm onBack={() => setAuthMode('login')} /> : (
+            <>
+              {authError && <div style={{ background: 'var(--error-bg)', border: '1px solid var(--error-border)', borderRadius: 9, padding: '11px 13px', fontSize: 12.5, fontWeight: 700, color: 'var(--error)' }}>{authError}</div>}
+              <input value={aInn} onChange={(e) => setAInn(e.target.value)} placeholder="ИНН компании" style={{ ...inputStyle, fontFamily: 'var(--font-mono)', padding: '12px 13px', fontSize: 15 }} />
+              <input value={aLogin} onChange={(e) => setALogin(e.target.value)} placeholder="Логин" style={{ ...inputStyle, padding: '12px 13px', fontSize: 15 }} />
+              <input type="password" value={aPass} onChange={(e) => setAPass(e.target.value)} placeholder="Пароль" style={{ ...inputStyle, padding: '12px 13px', fontSize: 15 }} />
+              <button onClick={doLogin} className="k785-tap-target" style={{ ...primaryBtn, padding: 14, fontSize: 15 }}>Войти</button>
+              <button onClick={() => setAuthMode('reset')} style={authLinkBtn}>Забыли пароль?</button>
+            </>
+          )}
           <a href="/" style={{ fontSize: 12.5, fontWeight: 700 }}>← на главную</a>
         </div>
       </div>
@@ -256,6 +264,7 @@ export function PlatformPanelShell({ allowedRoles, heading }: { allowedRoles: st
           <div style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 0.6, opacity: 0.7 }}>{heading}</div>
           <div style={{ fontSize: 13, fontWeight: 700 }}>{session.fio} · {session.role}</div>
         </div>
+        <button onClick={() => setShowPw(true)} className="k785-tap-target" style={{ padding: '8px 12px', borderRadius: 7, border: '1px solid #2c4442', background: 'transparent', color: 'var(--sidebar-text)', fontSize: 12, fontWeight: 700 }}>Сменить пароль</button>
         <button onClick={doLogout} className="k785-tap-target" style={{ padding: '8px 12px', borderRadius: 7, border: '1px solid #2c4442', background: 'transparent', color: 'var(--sidebar-text)', fontSize: 12, fontWeight: 700 }}>Выйти</button>
       </div>
 
@@ -500,6 +509,8 @@ export function PlatformPanelShell({ allowedRoles, heading }: { allowedRoles: st
           />
         )}
       </div>
+
+      {showPw && <ChangePasswordDialog onClose={() => setShowPw(false)} />}
 
       {toast && (
         <div style={{ position: 'fixed', left: '50%', bottom: 22, transform: 'translateX(-50%)', maxWidth: 560, background: 'var(--text-primary)', color: '#fff', padding: '12px 18px', borderRadius: 10, fontSize: 12.5, fontWeight: 600, boxShadow: 'var(--shadow-toast)', zIndex: 40 }}>

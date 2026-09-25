@@ -126,7 +126,8 @@ export async function clinicExtraRoutes(app: FastifyInstance): Promise<void> {
     if (!ctx) return;
     const r = await guarded(() => app.container.cycle.getMergedView(ctx.account), reply);
     if (r === undefined) return;
-    return reply.code(r.ok ? 200 : 400).send(r);
+    // «ещё не опубликован методистом» — штатное состояние, не ошибка запроса (400 засорял консоль каждой загрузки кабинета)
+    return reply.send(r);
   });
 
   app.put('/api/clinic/cycle/:name', async (req, reply) => {
