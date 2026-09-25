@@ -156,6 +156,18 @@ export class AuthService {
     return { ok: true };
   }
 
+  /** Действующие сотрудники платформы (без заявок) — экран «Сотрудники платформы», право `role:manage`. */
+  async listPlatformStaff(account: Account): Promise<Account[]> {
+    await assertPermission(this.repos.auditLog, account, 'role:manage', 'account:list-platform', null, null);
+    return (await this.repos.accounts.listBySide('platform')).filter((a) => !a.pending);
+  }
+
+  /** Действующие учётные записи СВОЕЙ клиники — экран закрепления за филиалом, право `staff:manage`. */
+  async listClinicAccounts(account: Account): Promise<Account[]> {
+    await assertPermission(this.repos.auditLog, account, 'staff:manage', 'account:list-clinic', null, account.inn);
+    return (await this.repos.accounts.listByInn(account.inn)).filter((a) => !a.pending);
+  }
+
   /** Заявки на доступ к СВОЕЙ клинике (README «Доступы и роли») — видит только администратор клиники (`staff:manage`). */
   async listPendingForClinic(account: Account): Promise<Account[]> {
     await assertPermission(this.repos.auditLog, account, 'staff:manage', 'account:list-pending', null, account.inn);

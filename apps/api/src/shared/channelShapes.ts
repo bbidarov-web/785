@@ -56,6 +56,9 @@ export interface WalkResultEntry {
   date: string;
   source: 'мобильный обход';
   items: WalkResultItem[];
+  /** Номер акта «А-ГГГГ-NNN» — присваивается при завершении обхода, сквозная нумерация по клинике за год. */
+  actNo?: string;
+  finishedAt?: string;
 }
 
 /** Каталог чек-листов методиста (`k785_checklists`, платформенный канал). */

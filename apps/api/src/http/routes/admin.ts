@@ -38,6 +38,13 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     return reply.send({ ok: true, pending: pending.map(toPublicAccount) });
   });
 
+  app.get('/api/admin/accounts', async (req, reply) => {
+    const ctx = await requireRoleManage(req, reply);
+    if (!ctx) return;
+    const accounts = await app.container.auth.listPlatformStaff(ctx.account);
+    return reply.send({ ok: true, accounts: accounts.map(toPublicAccount) });
+  });
+
   app.post('/api/admin/accounts/:id/approve', async (req, reply) => {
     const ctx = await requireRoleManage(req, reply);
     if (!ctx) return;

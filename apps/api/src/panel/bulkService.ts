@@ -90,6 +90,8 @@ export interface BulkJob {
 }
 
 const JOBS_KEY = 'bulk_jobs';
+const QUOTA_KEY = 'bulk_actor_quota';
+const QUOTA_WINDOW_MS = 24 * 60 * 60 * 1000;
 const MAX_JOBS = 50;
 
 /**
@@ -151,13 +153,49 @@ export class BulkOperationService {
     const skipped = rows.filter((r) => !r.ok).map((r) => ({ inn: r.inn, name: r.name, why: r.why }));
     if (!okInns.length) return { ok: false, error: 'Применять не к кому: все отмеченные клиники отсеяны проверкой' };
 
-    if (okInns.length > SECOND_BULK) {
+    // Порог считается НАКОПИТЕЛЬНО по сотруднику за сутки: иначе пачку в 60 клиник
+    // можно провести без второй руки тремя вызовами по 20.
+    const usedToday = await this.usedInWindow(account.id);
+    if (okInns.length > SECOND_BULK || usedToday + okInns.length > SECOND_BULK) {
       const secondHandRequest = await this.secondHand.request('bulk:clinics', { actionKey, tenantInns: okInns }, null, account.id);
       return { ok: true, secondHandRequest };
     }
 
     const report = await this.applyToTenants(actionKey, def, okInns, skipped, nameByInn, account.id);
+    await this.addToQuota(account.id, okInns.length);
     return { ok: true, report };
+  }
+
+  private async readQuota(): Promise<Record<string, { at: number; count: number }[]>> {
+    const cutoff = this.repos.clock.now().getTime() - QUOTA_WINDOW_MS;
+    const raw = (await this.repos.channels.get<Record<string, { at: number; count: number }[]>>('platform', null, QUOTA_KEY, {})).data;
+    return Object.fromEntries(Object.entries(raw).map(([id, list]) => [id, list.filter((e) => e.at >= cutoff)]));
+  }
+
+  private async usedInWindow(actorId: string): Promise<number> {
+    return ((await this.readQuota())[actorId] ?? []).reduce((sum, e) => sum + e.count, 0);
+  }
+
+  private async addToQuota(actorId: string, count: number): Promise<void> {
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const rec = await this.repos.channels.get<Record<string, { at: number; count: number }[]>>('platform', null, QUOTA_KEY, {});
+      const cutoff = this.repos.clock.now().getTime() - QUOTA_WINDOW_MS;
+      const cleaned = Object.fromEntries(Object.entries(rec.data).map(([id, list]) => [id, list.filter((e) => e.at >= cutoff)]));
+      const next = { ...cleaned, [actorId]: [...(cleaned[actorId] ?? []), { at: this.repos.clock.now().getTime(), count }] };
+      const res = await this.repos.channels.set('platform', null, QUOTA_KEY, next, { expectedVersion: rec.version, updatedBy: actorId });
+      if (res.ok) return;
+    }
+  }
+
+  /** При старте сервера: задачи, оставшиеся «выполняется» от прошлого процесса, уже никогда не завершатся сами. */
+  async failInterruptedJobs(): Promise<number> {
+    let n = 0;
+    await this.mutateJobs((all) => all.map((j) => {
+      if (j.status !== 'running') return j;
+      n++;
+      return { ...j, status: 'failed' as const, finishedAt: todayString(), error: 'Прервано перезапуском сервера — проверьте отчёт и повторите пачку' };
+    }));
+    return n;
   }
 
   /**

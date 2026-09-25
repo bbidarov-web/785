@@ -152,7 +152,7 @@ export class DashboardService {
       const [subscription, grants, walkResults] = await Promise.all([
         this.repos.channels.get<SubscriptionState>('tenant', t.inn, 'subscription', EMPTY_SUBSCRIPTION),
         this.documents.listActiveGrants(t.inn),
-        this.repos.channels.get<WalkResultEntry[]>('tenant', t.inn, 'walk_results', []),
+        this.repos.channels.get<Record<string, WalkResultEntry>>('tenant', t.inn, 'walk_results', {}),
       ]);
       const sub = subscription.data;
       if (sub.status === 'active' || sub.status === 'trial') {
@@ -160,7 +160,8 @@ export class DashboardService {
         if (tariff) mrr += tariff.period === 'annual' ? tariff.price / 12 : tariff.price;
       }
       readinessSum += catalogDocCount > 0 ? (Object.keys(grants).length / catalogDocCount) * 100 : 0;
-      auditsInPeriod += walkResults.data.filter((w) => parseDate(w.date).getTime() >= cutoff).length;
+      // канал результатов обхода — словарь planId → запись (WalkService), а не массив: .filter на нём давал 500 в портфеле
+      auditsInPeriod += Object.values(walkResults.data).filter((w) => parseDate(w.date).getTime() >= cutoff).length;
     }
 
     return {

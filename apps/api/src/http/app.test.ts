@@ -987,6 +987,23 @@ describe('HTTP: /api/auth и защита эндпоинтов правами', 
     expect(bad.statusCode).toBe(400);
   });
 
+  it('временный пароль (mustChange): все эндпоинты кроме /api/auth/* закрыты до смены пароля', async () => {
+    const reg = await container.auth.register({ inn: '7712345671', login: 'tmp', password: 'admin2026aa', password2: 'admin2026aa', fio: 'A', side: 'clinic', role: 'clinic_admin' });
+    if (!reg.ok) throw new Error('setup');
+    await repos.accounts.update(reg.account.id, { mustChange: true });
+    const login = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { inn: '7712345671', login: 'tmp', password: 'admin2026aa' } });
+    const cookie = extractCookie(login.headers['set-cookie'], 'k785_session')!;
+    const blocked = await app.inject({ method: 'GET', url: '/api/clinic/staff', cookies: { k785_session: cookie } });
+    expect(blocked.statusCode).toBe(403);
+    expect(blocked.json().mustChange).toBe(true);
+    const session = await app.inject({ method: 'GET', url: '/api/auth/session', cookies: { k785_session: cookie } });
+    expect(session.json().session.mustChange).toBe(true);
+    const change = await app.inject({ method: 'POST', url: '/api/auth/password/change', cookies: { k785_session: cookie }, payload: { oldPassword: 'admin2026aa', newPassword: 'newadmin2026', newPassword2: 'newadmin2026' } });
+    expect(change.json().ok).toBe(true);
+    const ok = await app.inject({ method: 'GET', url: '/api/clinic/staff', cookies: { k785_session: cookie } });
+    expect(ok.statusCode).toBe(200);
+  });
+
   it('logout отзывает cookie сессии — повторный запрос получает 401', async () => {
     await container.auth.register({ inn: '7712345671', login: 'medplus', password: 'medplus2026', password2: 'medplus2026', fio: 'x', side: 'clinic' });
     const login = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { inn: '7712345671', login: 'medplus', password: 'medplus2026' } });

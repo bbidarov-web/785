@@ -75,6 +75,14 @@ export async function clinicRoutes(app: FastifyInstance): Promise<void> {
     return reply.send({ ok: true, pending: pending.map(toPublicAccount) });
   });
 
+  app.get('/api/clinic/accounts', async (req, reply) => {
+    const ctx = requireAuth(req, reply);
+    if (!ctx) return;
+    const accounts = await guarded(() => app.container.auth.listClinicAccounts(ctx.account), reply);
+    if (accounts === undefined) return;
+    return reply.send({ ok: true, accounts: accounts.map(toPublicAccount) });
+  });
+
   app.post('/api/clinic/accounts/:id/approve', async (req, reply) => {
     const ctx = requireAuth(req, reply);
     if (!ctx) return;
@@ -232,6 +240,26 @@ export async function clinicRoutes(app: FastifyInstance): Promise<void> {
     const r = await guarded(() => app.container.stage.acceptOffer(ctx.account, code), reply);
     if (r === undefined) return;
     return reply.code(r.ok ? 200 : 400).send(r);
+  });
+
+  // Акты обходов (номер присваивается при завершении обхода, WalkService.finish)
+  app.get('/api/clinic/acts', async (req, reply) => {
+    const ctx = requireAuth(req, reply);
+    if (!ctx) return;
+    const acts = await guarded(() => app.container.walk.listActs(ctx.account), reply);
+    if (acts === undefined) return;
+    return reply.send({ ok: true, acts });
+  });
+
+  app.get('/api/clinic/acts/:planId/pdf', async (req, reply) => {
+    const ctx = requireAuth(req, reply);
+    if (!ctx) return;
+    const { planId } = z.object({ planId: z.string() }).parse(req.params);
+    const r = await guarded(() => app.container.walk.getActText(ctx.account, planId), reply);
+    if (r === undefined) return;
+    if (!r.ok) return reply.code(400).send(r);
+    const buf = await renderPdf(r.title, r.body);
+    return reply.header('Content-Type', 'application/pdf').header('Content-Disposition', `attachment; filename="act-${encodeURIComponent(planId)}.pdf"`).send(buf);
   });
 
   app.get('/api/clinic/documents/:name/content', async (req, reply) => {

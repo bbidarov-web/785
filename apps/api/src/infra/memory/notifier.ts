@@ -9,6 +9,7 @@ export class InMemoryNotifier implements Notifier {
   public sentOtp: { via: 'sms' | 'email'; to: string; code: string }[] = [];
   public sentReset: { via: 'sms' | 'email'; to: string; code: string }[] = [];
   public sentDigests: { to: string; subject: string; body: string }[] = [];
+  public sentReminders: { via: 'sms' | 'email'; to: string; subject: string; text: string }[] = [];
 
   async sendOtp(via: 'sms' | 'email', to: string, code: string): Promise<void> {
     this.sentOtp.push({ via, to, code });
@@ -20,6 +21,10 @@ export class InMemoryNotifier implements Notifier {
 
   async sendDigest(to: string, subject: string, body: string): Promise<void> {
     this.sentDigests.push({ to, subject, body });
+  }
+
+  async sendReminder(via: 'sms' | 'email', to: string, subject: string, text: string): Promise<void> {
+    this.sentReminders.push({ via, to, subject, text });
   }
 }
 
@@ -36,5 +41,9 @@ export class ConsoleNotifier implements Notifier {
   async sendDigest(to: string, subject: string, body: string): Promise<void> {
     // eslint-disable-next-line no-console
     console.log(`[DEV DIGEST] -> ${to}: ${subject}\n${body}`);
+  }
+  async sendReminder(via: 'sms' | 'email', to: string, subject: string, text: string): Promise<void> {
+    // eslint-disable-next-line no-console
+    console.log(`[DEV REMINDER] ${via} -> ${to}: ${subject} — ${text}`);
   }
 }

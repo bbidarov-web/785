@@ -150,4 +150,26 @@ describe('BulkOperationService — массовые операции по кат
     const reports = await svc.listReports(manager);
     expect(reports.map((r) => r.actionKey)).toEqual(['remind', 'touch-note']);
   });
+
+  it('порог второй руки считается накопительно: три вызова по 8 клиник за сутки — третий уходит на подтверждение', async () => {
+    const batch = (from: number) => Array.from({ length: 8 }, (_, i) => `acc-${from + i}`);
+    const r1 = await svc.commit(manager, 'touch-note', batch(0));
+    const r2 = await svc.commit(manager, 'touch-note', batch(8));
+    const r3 = await svc.commit(manager, 'touch-note', batch(16));
+    expect(r1.ok && r1.report).toBeTruthy();
+    expect(r2.ok && r2.report).toBeTruthy();
+    expect(r3.ok && r3.secondHandRequest).toBeTruthy(); // 8+8+8 = 24 > 20
+    expect(r3.ok && r3.report).toBeFalsy();
+    const other = await svc.commit(head, 'touch-note', batch(30)); // квота у каждого сотрудника своя
+    expect(other.ok && other.report).toBeTruthy();
+  });
+
+  it('прерванная перезапуском фоновая пачка помечается ошибкой, а не висит «выполняется»', async () => {
+    const many = Array.from({ length: 21 }, (_, i) => `job-${i}`);
+    const r = await svc.commit(manager, 'touch-note', many);
+    if (!r.ok || !r.secondHandRequest) throw new Error('setup');
+    await repos.channels.set('platform', null, 'bulk_jobs', [{ id: 'j1', actionKey: 'touch-note', status: 'running', total: 5, doneCount: 2, startedAt: '01.01.2026', finishedAt: null, reportId: null, error: null }], { updatedBy: null });
+    expect(await svc.failInterruptedJobs()).toBe(1);
+    expect((await svc.getJob(manager, 'j1'))?.status).toBe('failed');
+  });
 });

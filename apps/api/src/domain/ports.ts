@@ -28,6 +28,8 @@ export interface AccountRepo {
   /** Все учётные записи арендатора (клиники) — для «активности» в дашборде панели (последний вход среди сотрудников клиники). */
   listByInn(inn: string): Promise<Account[]>;
   listPending(): Promise<Account[]>;
+  /** Все учётные записи стороны — для экрана «Сотрудники платформы» (повышение роли второй рукой). */
+  listBySide(side: Account['side']): Promise<Account[]>;
   update(id: string, patch: Partial<Account>): Promise<Account>;
   delete(id: string): Promise<void>;
 }
@@ -115,6 +117,8 @@ export interface Notifier {
   sendPasswordReset(via: 'sms' | 'email', to: string, code: string): Promise<void>;
   /** Ежедневная сводка очереди работы панели (README «Очередь работы») — почта, реальный шлюз не подключён (см. README «Что дальше»). */
   sendDigest(to: string, subject: string, body: string): Promise<void>;
+  /** Напоминание исполнителю/руководителю клиники (сроки проверок и мероприятий) — тот же канал, что и коды, по контакту получателя. */
+  sendReminder(via: 'sms' | 'email', to: string, subject: string, text: string): Promise<void>;
 }
 
 export interface Clock {

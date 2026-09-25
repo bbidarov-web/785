@@ -23,7 +23,7 @@ declare module 'fastify' {
 export const sessionPlugin = fp(async (app: FastifyInstance) => {
   app.decorateRequest('auth', null);
 
-  app.addHook('onRequest', async (req: FastifyRequest) => {
+  app.addHook('onRequest', async (req: FastifyRequest, reply: FastifyReply) => {
     const raw = req.cookies[SESSION_COOKIE];
     if (!raw) {
       req.auth = null;
@@ -36,6 +36,11 @@ export const sessionPlugin = fp(async (app: FastifyInstance) => {
     }
     const ctx = await app.container.auth.getSessionContext(unsigned.value);
     req.auth = ctx;
+    // Временный пароль (createAdmin/adminSetPassword): пока он не сменён, кроме /api/auth/*
+    // (сессия, смена пароля, выход) сервер ничего не отдаёт — интерфейс это лишь показывает.
+    if (ctx?.account.mustChange && !req.url.startsWith('/api/auth/') && req.url.startsWith('/api/')) {
+      return reply.code(403).send({ ok: false, mustChange: true, error: 'Требуется сменить временный пароль' });
+    }
   });
 });
 

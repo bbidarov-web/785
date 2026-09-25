@@ -106,7 +106,7 @@ cp apps/api/.env.example apps/api/.env      # заполнить COOKIE_SECRET: 
 cp apps/web/.env.example apps/web/.env.local
 
 docker compose -f infra/docker-compose.yml up -d   # только Postgres
-npm run prisma:migrate                              # первая миграция схемы
+npm run prisma:migrate                              # новая миграция после правки schema.prisma (начальная — prisma/migrations/0001_init)
 
 npm run dev   # api на :4000, web на :3000
 ```
@@ -220,6 +220,18 @@ docker compose -f infra/docker-compose.prod.yml exec api node dist/scripts/seedS
 DOCX/PDF документов и печать описи (`documents/render.ts`), подпись цепочки
 журнала действий (`audit/chain.ts`, `AUDIT_LOG_SECRET`), изоляция доступа по
 филиалу внутри клиники (`Account.branchName`, `rbac/service.ts` → `visibleToBranch`).
+
+Закрыто следующим проходом: начальная миграция БД (`apps/api/prisma/migrations/0001_init`,
+сгенерирована `prisma migrate diff` без живой БД — применить `prisma migrate deploy`);
+напоминания и эскалация по срокам проверок и мероприятий (`clinic/reminderService.ts`:
+за 3 дня — исполнителю, в день срока — исполнителю и руководству, просрочка — руководству;
+получатель ищется по ФИО среди учётных записей клиники, повторов нет); показатель
+готовности к проверке с раскладкой по причинам (`clinic/readinessService.ts`,
+`GET /api/clinic/readiness`); акты обходов с номером `А-ГГГГ-NNN` и печатью в PDF;
+порог `SECOND_BULK` считается накопительно по сотруднику за сутки; фоновые пачки,
+прерванные перезапуском, помечаются ошибкой; принудительная смена временного пароля
+(`mustChange` проверяет сервер); экраны смены роли сотрудника платформы, закрепления
+сотрудника за филиалом и выбора филиала в плане и оборудовании.
 
 ## Панель платформы: тарифы, подписки, массовые операции
 

@@ -127,6 +127,32 @@ describe('WalkService — мобильный обход (README, SERVER.md §6.5
     expect(r.ok).toBe(false);
   });
 
+  it('акт обхода: номер А-ГГГГ-NNN присваивается при завершении, сквозной, не меняется при повторном finish', async () => {
+    await seedPlan([
+      { id: 'p1', check: 'Чек-лист аудита стерилизационной', who: 'Сидорова В. В.', object: 'Стерилизационная' },
+      { id: 'p2', check: 'Чек-лист аудита стерилизационной', who: 'Сидорова В. В.', object: 'Кабинет' },
+    ]);
+    for (const id of ['p1', 'p2']) {
+      await svc.answerItem(auditor, id, { index: 0, answer: 'ok' }, `${id}-a`);
+      await svc.answerItem(auditor, id, { index: 1, answer: 'bad', comment: 'Индикаторы не вклеены' }, `${id}-b`);
+    }
+    await svc.finish(auditor, 'p1', 'f1');
+    await svc.finish(auditor, 'p2', 'f2');
+    await svc.finish(auditor, 'p1', 'f1-retry');
+    const year = new Date().getFullYear();
+    const acts = await svc.listActs(auditor);
+    expect(acts.map((a) => a.actNo).sort()).toEqual([`А-${year}-001`, `А-${year}-002`]);
+    const act = await svc.getActText(auditor, 'p1');
+    expect(act.ok && act.title).toBe(`Акт № А-${year}-001`);
+    expect(act.ok && act.body).toContain('НАРУШЕНИЕ (Индикаторы не вклеены)');
+  });
+
+  it('акт не формируется по незавершённому обходу', async () => {
+    await seedPlan([{ id: 'p1', check: 'Чек-лист аудита стерилизационной', who: 'Сидорова В. В.' }]);
+    await svc.answerItem(auditor, 'p1', { index: 0, answer: 'ok' }, 'x');
+    expect((await svc.getActText(auditor, 'p1')).ok).toBe(false);
+  });
+
   it('finish завершает проверку и возвращает итоговый счёт нарушений', async () => {
     await seedPlan([{ id: 'p1', check: 'Чек-лист аудита процедурного кабинета', who: 'Сидорова В. В.' }]);
     await svc.answerItem(auditor, 'p1', { index: 0, answer: 'ok' }, 'op-1');

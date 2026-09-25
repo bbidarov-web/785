@@ -17,6 +17,7 @@ import {
  */
 
 interface SessionInfo {
+  mustChange?: boolean;
   role: string;
   side: 'platform' | 'clinic';
   fio: string;
@@ -26,6 +27,24 @@ interface SessionInfo {
 interface StaffMember {
   fio: string;
   pos: string;
+}
+
+interface WalkAct {
+  planId: string;
+  actNo: string;
+  name: string;
+  object: string;
+  date: string;
+  bad: number;
+  total: number;
+}
+
+interface ClinicAccount {
+  id: string;
+  login: string;
+  fio: string;
+  role: string;
+  branchName: string | null;
 }
 
 interface PendingAccount {
@@ -152,6 +171,10 @@ export default function ClinicCabinetPage() {
   const [plan, setPlan] = useState<PlanItem[]>([]);
   const [findings, setFindings] = useState<Finding[]>([]);
   const [capa, setCapa] = useState<CapaItem[]>([]);
+  const [readiness, setReadiness] = useState<{ percent: number; lines: { key: string; label: string; weight: number; earned: number; reason: string }[] } | null>(null);
+  const [acts, setActs] = useState<WalkAct[]>([]);
+  const [showReadiness, setShowReadiness] = useState(false);
+  const [clinicAccounts, setClinicAccounts] = useState<ClinicAccount[]>([]);
   const [capaTerms, setCapaTerms] = useState<CapaTerm[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [cycleYear, setCycleYear] = useState<number | null>(null);
@@ -175,12 +198,17 @@ export default function ClinicCabinetPage() {
   const roleRef = useRef('');
   const loadAll = useCallback(async () => {
     const sessionRole = roleRef.current;
-    const [st, s, pend, a, p, f, c, br, cy, eqp, eqt, eqf, sm, sa, chk, pr, inv] = await Promise.all([
+    const [st, s, pend, acc, rd, ac, a, p, f, c, br, cy, eqp, eqt, eqf, sm, sa, chk, pr, inv] = await Promise.all([
       api.get<{ ok: true; stages: StageView[] }>('/api/clinic/stages'),
       api.get<{ ok: true; staff: StaffMember[] }>('/api/clinic/staff'),
       sessionRole === 'clinic_admin'
         ? api.get<{ ok: true; pending: PendingAccount[] } | { ok: false; error: string }>('/api/clinic/accounts/pending')
         : Promise.resolve({ ok: false as const, error: 'нет права' }),
+      sessionRole === 'clinic_admin'
+        ? api.get<{ ok: true; accounts: ClinicAccount[] } | { ok: false; error: string }>('/api/clinic/accounts')
+        : Promise.resolve({ ok: false as const, error: 'нет права' }),
+      api.get<{ ok: true; readiness: { percent: number; lines: { key: string; label: string; weight: number; earned: number; reason: string }[] } } | { ok: false; error: string }>('/api/clinic/readiness'),
+      api.get<{ ok: true; acts: WalkAct[] } | { ok: false; error: string }>('/api/clinic/acts'),
       api.get<{ ok: true; assignments: Record<string, string>; progress?: Record<string, { fio: string; at: string }[]> }>('/api/clinic/assignments'),
       api.get<{ ok: true; plan: PlanItem[] }>('/api/clinic/plan'),
       api.get<{ ok: true; findings: Finding[] }>('/api/clinic/capa/findings'),
@@ -199,6 +227,9 @@ export default function ClinicCabinetPage() {
     if (st.ok) setStages(st.stages);
     if (s.ok) setStaff(s.staff);
     setPendingAccounts(pend.ok ? pend.pending : []); // 403 для ролей без staff:manage — не ошибка, просто нечего показывать
+    setClinicAccounts(acc.ok ? acc.accounts : []);
+    if (rd.ok) setReadiness(rd.readiness);
+    setActs(ac.ok ? ac.acts : []);
     if (a.ok) { setAssignments(a.assignments); setDocProgress(a.progress ?? {}); }
     if (p.ok) setPlan(p.plan);
     if (f.ok) setFindings(f.findings);
@@ -314,6 +345,28 @@ export default function ClinicCabinetPage() {
       </div>
 
       <div style={{ padding: '18px clamp(12px, 4vw, 22px) 40px', maxWidth: 960, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 14 }}>
+        {readiness && (
+          <div style={cardStyle}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--text-caption)' }}>Готовность к проверке</div>
+                <div style={{ fontSize: 26, fontWeight: 800, color: readiness.percent >= 80 ? 'var(--accent-hover)' : readiness.percent >= 50 ? 'var(--warn)' : 'var(--error)' }}>{readiness.percent}%</div>
+              </div>
+              <button onClick={() => setShowReadiness((v) => !v)} style={outlineBtn}>{showReadiness ? 'Скрыть раскладку' : 'Чего не хватает'}</button>
+            </div>
+            {showReadiness && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 10 }}>
+                {readiness.lines.map((l) => (
+                  <div key={l.key} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 12, fontWeight: 600, padding: '5px 0', borderBottom: '1px solid var(--border-3)' }}>
+                    <span>{l.label}{l.reason && <span style={{ color: 'var(--error)' }}> — {l.reason}</span>}</span>
+                    <span style={{ fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap', color: l.reason ? 'var(--warn)' : 'var(--accent-hover)' }}>{l.earned} / {l.weight}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
           {tabs.map((t) => (
             <button key={t.key} onClick={() => setTab(t.key)} className="k785-tap-target"
@@ -345,7 +398,12 @@ export default function ClinicCabinetPage() {
 
         {tab === 'staff' && (
           <StaffTab staff={staff} assignments={assignments} canManageStaff={canManageStaff} canAssign={canAssign}
-            pendingAccounts={pendingAccounts} branches={branches} docProgress={docProgress}
+            pendingAccounts={pendingAccounts} branches={branches} docProgress={docProgress} clinicAccounts={clinicAccounts}
+            onSetBranch={async (id, branchName) => {
+              const r = await api.put<{ ok: true } | { ok: false; error: string }>(`/api/clinic/accounts/${id}/branch`, { branchName: branchName || null });
+              if (!r.ok) { say(r.error); return; }
+              await loadAll(); say('Филиал сотрудника сохранён');
+            }}
             onAddStaff={async (fio, pos) => {
               const r = await api.post<{ ok: true } | { ok: false; error: string }>('/api/clinic/staff', { fio, pos });
               if (!r.ok) { say(r.error); return; }
@@ -375,7 +433,7 @@ export default function ClinicCabinetPage() {
         )}
 
         {tab === 'plan' && (
-          <PlanTab plan={plan} staff={staff} canManagePlan={canManagePlan}
+          <PlanTab plan={plan} staff={staff} branches={branches} canManagePlan={canManagePlan}
             onCreate={async (input) => {
               const r = await api.post<{ ok: true } | { ok: false; error: string }>('/api/clinic/plan', input);
               if (!r.ok) { say(r.error); return; }
@@ -387,6 +445,18 @@ export default function ClinicCabinetPage() {
               await loadAll(); say('Проверка удалена из плана');
             }}
           />
+        )}
+
+        {tab === 'findings' && acts.length > 0 && (
+          <div style={cardStyle}>
+            <div style={{ fontSize: 13.5, fontWeight: 800, marginBottom: 8 }}>Акты обходов</div>
+            {acts.map((a) => (
+              <div key={a.planId} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '6px 0', borderBottom: '1px solid var(--border-3)' }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700 }}>№ {a.actNo} · {a.name}{a.object ? ` · ${a.object}` : ''} <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>· {a.date} · нарушений {a.bad} из {a.total}</span></div>
+                <button onClick={() => window.open(`/api/clinic/acts/${encodeURIComponent(a.planId)}/pdf`, '_blank')} style={outlineBtn}>Акт (.pdf)</button>
+              </div>
+            ))}
+          </div>
         )}
 
         {tab === 'findings' && (
@@ -462,7 +532,7 @@ export default function ClinicCabinetPage() {
         )}
 
         {tab === 'equipment' && (
-          <EquipmentTab positions={equipPositions} types={equipTypes} forms={equipForms} canManage={canManageEquip}
+          <EquipmentTab positions={equipPositions} types={equipTypes} forms={equipForms} canManage={canManageEquip} branches={branches}
             onAddPosition={async (input) => {
               const r = await api.post<{ ok: true } | { ok: false; error: string }>('/api/clinic/equipment/positions', input);
               if (!r.ok) { say(r.error); return; }
@@ -536,6 +606,7 @@ export default function ClinicCabinetPage() {
       )}
 
       {showPw && <ChangePasswordDialog onClose={() => setShowPw(false)} />}
+      {session.mustChange && <ChangePasswordDialog forced onClose={() => undefined} onChanged={async () => { const r = await api.get<{ ok: true; session: SessionInfo | null }>('/api/auth/session'); if (r.ok && r.session) { setSession(r.session); await loadAll(); } }} />}
 
       {toast && (
         <div style={{ position: 'fixed', left: '50%', bottom: 22, transform: 'translateX(-50%)', maxWidth: 520, background: 'var(--text-primary)', color: '#fff', padding: '12px 18px', borderRadius: 10, fontSize: 12.5, fontWeight: 600, boxShadow: 'var(--shadow-toast)', zIndex: 40 }}>
@@ -614,9 +685,9 @@ function StagesTab({ stages, canOrder, onOrder, onAcceptOffer, onOpen }: {
   );
 }
 
-function StaffTab({ staff, assignments, canManageStaff, canAssign, pendingAccounts, branches, docProgress, onAddStaff, onRemoveStaff, onAssign, onApproveAccount, onRejectAccount }: {
+function StaffTab({ staff, assignments, canManageStaff, canAssign, pendingAccounts, branches, docProgress, clinicAccounts, onSetBranch, onAddStaff, onRemoveStaff, onAssign, onApproveAccount, onRejectAccount }: {
   staff: StaffMember[]; assignments: Record<string, string>; canManageStaff: boolean; canAssign: boolean;
-  pendingAccounts: PendingAccount[]; branches: Branch[]; docProgress: Record<string, { fio: string; at: string }[]>;
+  pendingAccounts: PendingAccount[]; branches: Branch[]; docProgress: Record<string, { fio: string; at: string }[]>; clinicAccounts: ClinicAccount[]; onSetBranch: (id: string, branchName: string) => void;
   onAddStaff: (fio: string, pos: string) => void; onRemoveStaff: (fio: string) => void; onAssign: (doc: string, who: string) => void;
   onApproveAccount: (id: string, role: string, branchName: string) => void; onRejectAccount: (id: string) => void;
 }) {
@@ -656,6 +727,24 @@ function StaffTab({ staff, assignments, canManageStaff, canAssign, pendingAccoun
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {canManageStaff && clinicAccounts.length > 0 && (
+        <div style={cardStyle}>
+          <div style={{ fontSize: 13.5, fontWeight: 800, marginBottom: 4 }}>Учётные записи и филиалы</div>
+          <div style={{ fontSize: 11.5, color: 'var(--text-muted)', fontWeight: 600, marginBottom: 10 }}>
+            Сотрудник, закреплённый за филиалом, видит план проверок и оборудование только своего филиала.
+          </div>
+          {clinicAccounts.map((a) => (
+            <div key={a.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '6px 0', borderBottom: '1px solid var(--border-3)' }}>
+              <div style={{ fontSize: 12.5, fontWeight: 700 }}>{a.fio || a.login} <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>· {CLINIC_ROLE_OPTIONS.find((o) => o.value === a.role)?.label ?? a.role}</span></div>
+              <select value={a.branchName ?? ''} onChange={(e) => onSetBranch(a.id, e.target.value)} style={{ ...inputStyle, width: 'auto' }} aria-label={`Филиал: ${a.fio || a.login}`}>
+                <option value="">все филиалы</option>
+                {branches.map((b) => <option key={b.id} value={b.name}>{b.name}</option>)}
+              </select>
+            </div>
+          ))}
         </div>
       )}
 
@@ -711,15 +800,16 @@ function StaffTab({ staff, assignments, canManageStaff, canAssign, pendingAccoun
   );
 }
 
-function PlanTab({ plan, staff, canManagePlan, onCreate, onDelete }: {
-  plan: PlanItem[]; staff: StaffMember[]; canManagePlan: boolean;
-  onCreate: (input: { date: string; dir: string; object: string; who: string; kind: 'плановая' | 'внеплановая' | 'целевая' }) => void;
+function PlanTab({ plan, staff, branches, canManagePlan, onCreate, onDelete }: {
+  plan: PlanItem[]; staff: StaffMember[]; branches: Branch[]; canManagePlan: boolean;
+  onCreate: (input: { date: string; dir: string; object: string; branch: string; who: string; kind: 'плановая' | 'внеплановая' | 'целевая' }) => void;
   onDelete: (id: string) => void;
 }) {
   const [date, setDate] = useState('');
   const [dir, setDir] = useState('');
   const [object, setObject] = useState('');
   const [who, setWho] = useState('');
+  const [branch, setBranch] = useState('');
   const [kind, setKind] = useState<'плановая' | 'внеплановая' | 'целевая'>('плановая');
 
   return (
@@ -741,6 +831,12 @@ function PlanTab({ plan, staff, canManagePlan, onCreate, onDelete }: {
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={inputStyle} />
             <input value={dir} onChange={(e) => setDir(e.target.value)} placeholder="Направление / чек-лист" style={inputStyle} />
             <input value={object} onChange={(e) => setObject(e.target.value)} placeholder="Объект проверки" style={inputStyle} />
+            {branches.length > 0 && (
+              <select value={branch} onChange={(e) => setBranch(e.target.value)} style={inputStyle}>
+                <option value="">Филиал: все</option>
+                {branches.map((b) => <option key={b.id} value={b.name}>{b.name}</option>)}
+              </select>
+            )}
             <select value={who} onChange={(e) => setWho(e.target.value)} style={inputStyle}>
               <option value="">Ответственный</option>
               {staff.map((s) => <option key={s.fio} value={s.fio}>{s.fio}</option>)}
@@ -752,7 +848,7 @@ function PlanTab({ plan, staff, canManagePlan, onCreate, onDelete }: {
             </select>
           </div>
           <button
-            onClick={() => { if (dir.trim() && who.trim()) { onCreate({ date, dir, object, who, kind }); setDate(''); setDir(''); setObject(''); setWho(''); } }}
+            onClick={() => { if (dir.trim() && who.trim()) { onCreate({ date, dir, object, branch, who, kind }); setDate(''); setDir(''); setObject(''); setWho(''); } }}
             disabled={!dir.trim() || !who.trim()}
             title={!dir.trim() || !who.trim() ? 'Укажите направление и ответственного' : undefined}
             style={{ ...primaryBtn, alignSelf: 'flex-start', opacity: !dir.trim() || !who.trim() ? 0.5 : 1 }}

@@ -94,7 +94,7 @@ export function ResetPasswordForm({ onBack, defaultInn = '' }: { onBack: () => v
   );
 }
 
-export function ChangePasswordDialog({ onClose }: { onClose: () => void }) {
+export function ChangePasswordDialog({ onClose, forced = false, onChanged }: { onClose: () => void; forced?: boolean; onChanged?: () => void }) {
   const [f, setF] = useState({ oldPassword: '', newPassword: '', newPassword2: '' });
   const [msg, setMsg] = useState<{ kind: 'err' | 'ok'; text: string } | null>(null);
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement>) => setF((s) => ({ ...s, [k]: e.target.value }));
@@ -102,20 +102,21 @@ export function ChangePasswordDialog({ onClose }: { onClose: () => void }) {
   async function submit() {
     const r = await api.post<Result>('/api/auth/password/change', f);
     setMsg(r.ok ? { kind: 'ok', text: 'Пароль изменён' } : { kind: 'err', text: r.error });
-    if (r.ok) setF({ oldPassword: '', newPassword: '', newPassword2: '' });
+    if (r.ok) { setF({ oldPassword: '', newPassword: '', newPassword2: '' }); onChanged?.(); }
   }
 
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(16,32,31,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, zIndex: 50 }}>
+    <div onClick={forced ? undefined : onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(16,32,31,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, zIndex: 50 }}>
       <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 14, padding: 22, maxWidth: 380, width: '100%', display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <div style={{ fontSize: 15, fontWeight: 800 }}>Смена пароля</div>
+        <div style={{ fontSize: 15, fontWeight: 800 }}>{forced ? 'Смените временный пароль' : 'Смена пароля'}</div>
+        {forced && <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)' }}>Пароль выдан администратором. Пока вы его не смените, кабинет недоступен.</div>}
         {msg && <div style={msg.kind === 'err' ? errBox : okBox}>{msg.text}</div>}
         <input type="password" value={f.oldPassword} onChange={set('oldPassword')} placeholder="Текущий пароль" style={inputStyle} />
         <input type="password" value={f.newPassword} onChange={set('newPassword')} placeholder="Новый пароль" style={inputStyle} />
         <input type="password" value={f.newPassword2} onChange={set('newPassword2')} placeholder="Повторите новый пароль" style={inputStyle} />
         <div style={{ display: 'flex', gap: 8 }}>
           <button onClick={submit} style={{ ...primaryBtn, padding: '10px 14px', fontSize: 13 }}>Сменить</button>
-          <button onClick={onClose} style={{ ...linkBtn, marginLeft: 'auto' }}>Закрыть</button>
+          {!forced && <button onClick={onClose} style={{ ...linkBtn, marginLeft: 'auto' }}>Закрыть</button>}
         </div>
       </div>
     </div>

@@ -22,7 +22,14 @@ export function startScheduler(container: Container): () => void {
       // eslint-disable-next-line no-console
       console.error('[scheduler] сбой автоматической отправки дайджеста:', err);
     }
+    try {
+      await container.reminders.run();
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[scheduler] сбой рассылки напоминаний по срокам:', err);
+    }
   };
+  container.bulk.failInterruptedJobs().catch((err) => console.error('[scheduler] не удалось пометить прерванные пачки:', err));
   void tick(); // не ждать первый час на свежем сервере
   const timer = setInterval(tick, TICK_MS);
   return () => clearInterval(timer);

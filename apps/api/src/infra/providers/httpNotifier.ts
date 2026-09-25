@@ -59,4 +59,9 @@ export class HttpNotifier implements Notifier {
   async sendDigest(to: string, subject: string, body: string): Promise<void> {
     await this.sendEmail(to, subject, body);
   }
+
+  async sendReminder(via: 'sms' | 'email', to: string, subject: string, text: string): Promise<void> {
+    if (via === 'sms') await this.sendSms(to, `Контур 785: ${subject}. ${text}`);
+    else await this.sendEmail(to, `Контур 785 — ${subject}`, text);
+  }
 }

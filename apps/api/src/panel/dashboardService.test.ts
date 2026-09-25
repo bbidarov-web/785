@@ -59,6 +59,13 @@ describe('DashboardService — каталог клиентов', () => {
     expect(rows[0]).toMatchObject({ inn: '7712345671', name: 'ООО «Медицина Плюс»', staffCount: 1, stagesPaid: 1, openCapa: 1 });
   });
 
+  it('портфель считает обходы из реального формата канала (словарь planId → запись), а не падает', async () => {
+    await repos.tenants.upsert('7712345671', 'Клиника');
+    await repos.channels.set('tenant', '7712345671', 'walk_results', { p1: { planId: 'p1', date: todayString(), finished: true, items: [] } }, { updatedBy: null });
+    const r = await svc.getPortfolio(methodist, 30);
+    expect(r.auditsInPeriod).toBe(1);
+  });
+
   it('несколько клиник — несколько строк', async () => {
     await repos.tenants.upsert('7712345671', 'ООО «Медицина Плюс»');
     await repos.tenants.upsert('5001007322', 'ИП Кузнецова');

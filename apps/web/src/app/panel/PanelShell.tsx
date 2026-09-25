@@ -32,9 +32,18 @@ import { WorkQueueTab, type QueueTask, type DigestSettings } from './queueForms'
  */
 
 interface SessionInfo {
+  mustChange?: boolean;
+  accountId?: string;
   role: string;
   side: 'platform' | 'clinic';
   fio: string;
+}
+
+interface StaffAccount {
+  id: string;
+  login: string;
+  fio: string;
+  role: string;
 }
 
 interface PendingAccount {
@@ -64,6 +73,8 @@ const cardStyle: React.CSSProperties = { background: 'var(--bg-card)', border: '
 const inputStyle: React.CSSProperties = { padding: '9px 11px', border: '1px solid var(--border-1)', borderRadius: 8, fontSize: 12.5, fontWeight: 600, width: '100%' };
 const primaryBtn: React.CSSProperties = { padding: '9px 14px', borderRadius: 8, border: 'none', background: 'var(--accent)', color: '#fff', fontSize: 12.5, fontWeight: 700, whiteSpace: 'nowrap' };
 const outlineBtn: React.CSSProperties = { padding: '7px 11px', borderRadius: 7, border: '1px solid var(--border-1)', background: 'transparent', fontSize: 11.5, fontWeight: 700, whiteSpace: 'nowrap' };
+
+const ROLE_LABELS: Record<string, string> = { methodist: 'методист', sales_manager: 'менеджер по продажам', sales_head: 'руководитель продаж', platform_admin: 'администратор платформы' };
 
 type Tab = 'accounts' | 'checklists' | 'stages' | 'cycle' | 'equip' | 'summary' | 'tariffs' | 'subscriptions' | 'payments' | 'bulk' | 'queue' | 'secondhand' | 'clients' | 'grants';
 
@@ -95,6 +106,7 @@ export function PlatformPanelShell({ allowedRoles, heading }: { allowedRoles: st
   const [subscriptionSummary, setSubscriptionSummary] = useState<SubscriptionSummary | null>(null);
   const [bulkReports, setBulkReports] = useState<BulkReport[]>([]);
   const [bulkJob, setBulkJob] = useState<BulkJob | null>(null);
+  const [platformStaff, setPlatformStaff] = useState<StaffAccount[]>([]);
   const [stagePayments, setStagePayments] = useState<StagePaymentRow[]>([]);
 
   const refreshBulkJob = useCallback(async (jobId: string) => {
@@ -119,7 +131,7 @@ export function PlatformPanelShell({ allowedRoles, heading }: { allowedRoles: st
   }, []);
 
   const loadAll = useCallback(async () => {
-    const [p, c, sd, cy, eq, sm, sh, cl, tf, sb, ss, br, fin, qt, ds, sp] = await Promise.all([
+    const [p, c, sd, cy, eq, sm, sh, cl, tf, sb, ss, br, fin, qt, ds, sp, ps] = await Promise.all([
       isAdminRef.current
         ? api.get<{ ok: true; pending: PendingAccount[] } | { ok: false; error: string }>('/api/admin/accounts/pending')
         : Promise.resolve({ ok: false as const, error: 'нет права' }),
@@ -138,6 +150,9 @@ export function PlatformPanelShell({ allowedRoles, heading }: { allowedRoles: st
       api.get<{ ok: true; tasks: QueueTask[] } | { ok: false; error: string }>('/api/panel/queue'),
       api.get<{ ok: true; settings: DigestSettings } | { ok: false; error: string }>('/api/panel/queue/digest-settings'),
       api.get<{ ok: true; payments: StagePaymentRow[] } | { ok: false; error: string }>('/api/panel/stage-payments'),
+      isAdminRef.current
+        ? api.get<{ ok: true; accounts: StaffAccount[] } | { ok: false; error: string }>('/api/admin/accounts')
+        : Promise.resolve({ ok: false as const, error: 'нет права' }),
     ]);
     if (p.ok) setPending(p.pending);
     if (c.ok) setChecklists(c.checklists);
@@ -155,6 +170,7 @@ export function PlatformPanelShell({ allowedRoles, heading }: { allowedRoles: st
     if (qt.ok) setQueueTasks(qt.tasks);
     if (ds.ok) setDigestSettings(ds.settings);
     if (sp.ok) setStagePayments(sp.payments);
+    setPlatformStaff(ps.ok ? ps.accounts : []);
     await loadPortfolio(periodDays);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadPortfolio]);
@@ -279,7 +295,12 @@ export function PlatformPanelShell({ allowedRoles, heading }: { allowedRoles: st
         </div>
 
         {tab === 'accounts' && (
-          <AccountsTab pending={pending} canManageRoles={canManageRoles}
+          <AccountsTab pending={pending} canManageRoles={canManageRoles} staff={platformStaff} myId={session.accountId}
+            onElevate={async (accountId, newRole) => {
+              const r = await api.post<{ ok: true } | { ok: false; error: string }>('/api/admin/role-elevation/request', { accountId, newRole });
+              if (!r.ok) { say(r.error); return; }
+              await loadAll(); say('Запрос на смену роли отправлен — его подтверждает другой администратор (вкладка «Вторая рука»)');
+            }}
             onApprove={async (id, role) => {
               const r = await api.post<{ ok: true } | { ok: false; error: string }>(`/api/admin/accounts/${id}/approve`, { role });
               if (!r.ok) { say(r.error); return; }
@@ -511,6 +532,7 @@ export function PlatformPanelShell({ allowedRoles, heading }: { allowedRoles: st
       </div>
 
       {showPw && <ChangePasswordDialog onClose={() => setShowPw(false)} />}
+      {session.mustChange && <ChangePasswordDialog forced onClose={() => undefined} onChanged={async () => { const r = await api.get<{ ok: true; session: SessionInfo | null }>('/api/auth/session'); if (r.ok && r.session) { setSession(r.session); await loadAll(); } }} />}
 
       {toast && (
         <div style={{ position: 'fixed', left: '50%', bottom: 22, transform: 'translateX(-50%)', maxWidth: 560, background: 'var(--text-primary)', color: '#fff', padding: '12px 18px', borderRadius: 10, fontSize: 12.5, fontWeight: 600, boxShadow: 'var(--shadow-toast)', zIndex: 40 }}>
@@ -521,11 +543,32 @@ export function PlatformPanelShell({ allowedRoles, heading }: { allowedRoles: st
   );
 }
 
-function AccountsTab({ pending, canManageRoles, onApprove, onReject }: {
-  pending: PendingAccount[]; canManageRoles: boolean; onApprove: (id: string, role: string) => void; onReject: (id: string) => void;
+function AccountsTab({ pending, canManageRoles, staff, myId, onElevate, onApprove, onReject }: {
+  pending: PendingAccount[]; canManageRoles: boolean; staff: StaffAccount[]; myId?: string; onElevate: (accountId: string, role: string) => void;
+  onApprove: (id: string, role: string) => void; onReject: (id: string) => void;
 }) {
+  const [target, setTarget] = useState<Record<string, string>>({});
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {canManageRoles && staff.length > 0 && (
+        <div style={cardStyle}>
+          <div style={{ fontSize: 13.5, fontWeight: 800, marginBottom: 4 }}>Сотрудники платформы</div>
+          <div style={{ fontSize: 11.5, color: 'var(--text-muted)', fontWeight: 600, marginBottom: 10 }}>
+            Смена роли — необратимая операция второй руки: запрос подтверждает другой администратор.
+          </div>
+          {staff.map((a) => (
+            <div key={a.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '6px 0', borderBottom: '1px solid var(--border-3)' }}>
+              <div style={{ fontSize: 12.5, fontWeight: 700 }}>{a.fio || a.login} <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>· {ROLE_LABELS[a.role] ?? a.role}{a.id === myId ? ' · это вы' : ''}</span></div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <select value={target[a.id] ?? a.role} onChange={(e) => setTarget((m) => ({ ...m, [a.id]: e.target.value }))} style={{ ...inputStyle, width: 'auto' }} aria-label={`Новая роль: ${a.fio || a.login}`}>
+                  {Object.entries(ROLE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                </select>
+                <button disabled={(target[a.id] ?? a.role) === a.role} onClick={() => onElevate(a.id, target[a.id] ?? a.role)} style={{ ...outlineBtn, opacity: (target[a.id] ?? a.role) === a.role ? 0.5 : 1 }}>Запросить смену роли</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
       {pending.length === 0 && <EmptyState text="Открытых заявок нет." />}
       {pending.map((p) => (
         <AccountRow key={p.id} account={p} canManageRoles={canManageRoles} onApprove={onApprove} onReject={onReject} />

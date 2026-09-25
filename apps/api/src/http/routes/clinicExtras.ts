@@ -64,6 +64,15 @@ export async function clinicExtraRoutes(app: FastifyInstance): Promise<void> {
     return reply.code(r.ok ? 200 : 400).send(r);
   });
 
+  // --- Готовность к проверке ---
+  app.get('/api/clinic/readiness', async (req, reply) => {
+    const ctx = requireAuth(req, reply);
+    if (!ctx) return;
+    const readiness = await guarded(() => app.container.readiness.get(ctx.account), reply);
+    if (readiness === undefined) return;
+    return reply.send({ ok: true, readiness });
+  });
+
   // --- Опись документов ---
   app.get('/api/clinic/documents/inventory', async (req, reply) => {
     const ctx = requireAuth(req, reply);

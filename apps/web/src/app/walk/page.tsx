@@ -396,7 +396,7 @@ export default function MobileWalkPage() {
         <TopBar fio={session.fio} online={online} queueLen={queue.length} onBack={() => setView('sections')} onFlush={flushQueue} />
         <div style={{ padding: '16px clamp(12px, 4vw, 22px) 32px', maxWidth: 680, width: '100%', margin: '0 auto' }}>
           <EquipmentTab
-            positions={equipPositions} types={equipTypes} forms={equipForms} canManage={canManageEquipment}
+            positions={equipPositions} types={equipTypes} forms={equipForms} canManage={canManageEquipment} branches={[]}
             onAddPosition={async (input) => {
               const r = await api.post<{ ok: true } | { ok: false; error: string }>('/api/clinic/equipment/positions', input);
               if (!r.ok) { say(r.error); return; }

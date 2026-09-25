@@ -1,6 +1,7 @@
 import type { Repos } from '../domain/ports.js';
 import type { Account } from '../domain/types.js';
 import { assertPermission } from '../rbac/service.js';
+import { todayString } from '../shared/date.js';
 import { buildStaffPositionMap, formatOwner, isMine, normalizeChecklistName } from '../shared/assignment.js';
 import { decodeDataUrl } from '../shared/fileUpload.js';
 import type { AuditPlanItem, ChecklistDef, ClientStateShape, StaffMember, WalkResultEntry } from '../shared/channelShapes.js';
@@ -229,7 +230,11 @@ export class WalkService {
       const current = rec.data[planId];
       if (!current) return { ok: false, error: 'Нечего завершать — сначала отметьте хотя бы один пункт' };
       if (current.answered < current.total) return { ok: false, error: 'Остались неотмеченные пункты — прокрутите список вверх' };
-      const entry: WalkResultEntry = { ...current, finished: true };
+      // повторное завершение (ретрай офлайн-очереди) не должно менять уже присвоенный номер акта
+      const year = new Date().getFullYear();
+      const used = Object.values(rec.data).map((e) => /^А-(\d{4})-(\d+)$/.exec(e.actNo ?? '')).filter((m): m is RegExpExecArray => !!m && Number(m[1]) === year).map((m) => Number(m[2]));
+      const actNo = current.actNo ?? `А-${year}-${String(Math.max(0, ...used) + 1).padStart(3, '0')}`;
+      const entry: WalkResultEntry = { ...current, finished: true, actNo, finishedAt: current.finishedAt ?? todayString() };
       const next = { ...rec.data, [planId]: entry };
       const res = await this.repos.channels.set('tenant', inn, 'walk_results', next, { expectedVersion: rec.version, updatedBy: account.id, opId });
       if (res.ok) return { ok: true, bad: entry.bad, total: entry.total };
@@ -237,5 +242,36 @@ export class WalkService {
     }
     return { ok: false, error: 'Не удалось завершить проверку — слишком много параллельных правок, повторите' };
   }
-}
 
+  /** Реестр актов обходов клиники — завершённые обходы с присвоенным номером. */
+  async listActs(account: Account): Promise<{ planId: string; actNo: string; name: string; object: string; date: string; bad: number; total: number }[]> {
+    await assertPermission(this.repos.auditLog, account, 'journal:read', 'walk:acts', null, account.inn);
+    const rec = await this.repos.channels.get<Record<string, WalkResultEntry>>('tenant', account.inn, 'walk_results', {});
+    return Object.values(rec.data)
+      .filter((e) => e.finished && e.actNo)
+      .map((e) => ({ planId: e.planId, actNo: e.actNo!, name: e.name, object: e.object, date: e.finishedAt ?? e.date, bad: e.bad, total: e.total }))
+      .sort((a, b) => b.actNo.localeCompare(a.actNo));
+  }
+
+  /** Текст акта обхода для печати (PDF собирает маршрут) — только завершённый обход СВОЕЙ клиники. */
+  async getActText(account: Account, planId: string): Promise<WalkOpResult<{ title: string; body: string }>> {
+    await assertPermission(this.repos.auditLog, account, 'journal:read', 'walk:act', planId, account.inn);
+    const rec = await this.repos.channels.get<Record<string, WalkResultEntry>>('tenant', account.inn, 'walk_results', {});
+    const e = rec.data[planId];
+    if (!e || !e.finished || !e.actNo) return { ok: false, error: 'Акт формируется только по завершённому обходу' };
+    const tenant = await this.repos.tenants.findByInn(account.inn);
+    const lines = [
+      `Организация: ${tenant?.name ?? account.inn} · ИНН ${account.inn}`,
+      `Проверка: ${e.name}`,
+      `Объект: ${e.object || 'не указан'} · вид: ${e.kind}`,
+      `Проверяющий: ${e.who || 'не указан'}`,
+      `Дата завершения: ${e.finishedAt ?? e.date}`,
+      `Результат: пунктов ${e.total}, нарушений ${e.bad}`,
+      '',
+      ...e.items.map((it, i) => `${i + 1}. ${it.text} — ${it.answer === 'ok' ? 'соответствует' : it.answer === 'bad' ? 'НАРУШЕНИЕ' : 'не отмечено'}${it.answer === 'bad' && it.comment ? ` (${it.comment})` : ''}${it.photoFileId ? ' [фото в системе]' : ''}`),
+      '',
+      'Проверяющий: ______________________    Ответственный за ВКК: ______________________',
+    ];
+    return { ok: true, title: `Акт № ${e.actNo}`, body: lines.join('\n') };
+  }
+}

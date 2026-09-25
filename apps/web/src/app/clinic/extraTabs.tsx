@@ -231,6 +231,7 @@ export interface EquipmentPosition {
   uid: string;
   name: string;
   room?: string;
+  branch?: string;
   type?: string;
   logWho?: Record<string, string>;
 }
@@ -253,15 +254,16 @@ export interface EquipmentFormRow {
   lastFill: { date?: string; value?: string; note?: string } | null;
 }
 
-export function EquipmentTab({ positions, types, forms, canManage, onAddPosition, onRemovePosition, onFill }: {
-  positions: EquipmentPosition[]; types: EquipmentTypeDef[]; forms: EquipmentFormRow[]; canManage: boolean;
-  onAddPosition: (input: { name: string; room: string; type: string }) => void;
+export function EquipmentTab({ positions, types, forms, canManage, branches, onAddPosition, onRemovePosition, onFill }: {
+  positions: EquipmentPosition[]; types: EquipmentTypeDef[]; forms: EquipmentFormRow[]; canManage: boolean; branches: Branch[];
+  onAddPosition: (input: { name: string; room: string; type: string; branch: string }) => void;
   onRemovePosition: (uid: string) => void;
   onFill: (posUid: string, formName: string, value: string, note: string) => void;
 }) {
   const [name, setName] = useState('');
   const [room, setRoom] = useState('');
   const [type, setType] = useState(types[0]?.key ?? '');
+  const [branch, setBranch] = useState('');
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -273,7 +275,7 @@ export function EquipmentTab({ positions, types, forms, canManage, onAddPosition
             <div key={p.uid} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border-3)' }}>
               <div>
                 <div style={{ fontSize: 12.5, fontWeight: 700 }}>{p.name}</div>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>{p.room} · {types.find((t) => t.key === p.type)?.name ?? p.type}</div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>{p.room} · {types.find((t) => t.key === p.type)?.name ?? p.type}{p.branch ? ` · ${p.branch}` : ''}</div>
               </div>
               {canManage && <button onClick={() => onRemovePosition(p.uid)} style={outlineBtn}>Удалить</button>}
             </div>
@@ -286,7 +288,13 @@ export function EquipmentTab({ positions, types, forms, canManage, onAddPosition
             <select value={type} onChange={(e) => setType(e.target.value)} style={{ ...inputStyle, flex: '1 1 200px' }}>
               {types.map((t) => <option key={t.key} value={t.key}>{t.name}</option>)}
             </select>
-            <button onClick={() => { if (name.trim()) { onAddPosition({ name, room, type }); setName(''); setRoom(''); } }} style={primaryBtn}>Добавить</button>
+            {branches.length > 0 && (
+              <select value={branch} onChange={(e) => setBranch(e.target.value)} style={{ ...inputStyle, flex: '1 1 160px' }}>
+                <option value="">все филиалы</option>
+                {branches.map((b) => <option key={b.id} value={b.name}>{b.name}</option>)}
+              </select>
+            )}
+            <button onClick={() => { if (name.trim()) { onAddPosition({ name, room, type, branch }); setName(''); setRoom(''); } }} style={primaryBtn}>Добавить</button>
           </div>
         )}
       </div>

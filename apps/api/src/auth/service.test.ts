@@ -185,6 +185,15 @@ describe('AuthService', () => {
     await expect(auth.setAccountBranch(adminA.account, adminB.account.id, 'Филиал 1')).rejects.toThrow('tenant:scope');
   });
 
+  it('списки учётных записей: клиники — только свои и без заявок; платформы — только для role:manage', async () => {
+    const adminA = await auth.register({ inn: '7712345671', login: 'adminA', password: 'admin2026aa', password2: 'admin2026aa', fio: 'A', side: 'clinic', role: 'clinic_admin' });
+    await auth.register({ inn: '7712345671', login: 'pendingP', password: 'admin2026aa', password2: 'admin2026aa', fio: 'P', side: 'clinic', role: 'nurse' });
+    await auth.register({ inn: '5001007322', login: 'adminB', password: 'admin2026bb', password2: 'admin2026bb', fio: 'B', side: 'clinic', role: 'clinic_admin' });
+    if (!adminA.ok) throw new Error('setup');
+    expect((await auth.listClinicAccounts(adminA.account)).map((a) => a.login)).toEqual(['admina']);
+    await expect(auth.listPlatformStaff(adminA.account)).rejects.toThrow();
+  });
+
   it('администратор клиники отклоняет заявку — учётная запись удаляется и вход становится невозможен', async () => {
     const admin = await auth.register({
       inn: '7712345671', login: 'clinicadmin', password: 'admin2026aa', password2: 'admin2026aa',

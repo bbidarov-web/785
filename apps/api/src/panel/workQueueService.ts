@@ -80,7 +80,7 @@ export class WorkQueueService {
       const [stagePaid, subscription, walkResults] = await Promise.all([
         this.repos.channels.get<Record<number, StagePaymentState>>('tenant', t.inn, 'stage_paid', {}),
         this.repos.channels.get<SubscriptionState>('tenant', t.inn, 'subscription', EMPTY_SUBSCRIPTION),
-        this.repos.channels.get<WalkResultEntry[]>('tenant', t.inn, 'walk_results', []),
+        this.repos.channels.get<Record<string, WalkResultEntry>>('tenant', t.inn, 'walk_results', {}),
       ]);
 
       for (const [code, p] of Object.entries(stagePaid.data)) {
@@ -109,7 +109,7 @@ export class WorkQueueService {
         }
       }
 
-      if (walkResults.data.length === 0) {
+      if (Object.keys(walkResults.data).length === 0) {
         const id = `no-audit:${t.inn}`;
         const v = this.resolveViewState(id, stateMap);
         if (v.state !== 'closed') {

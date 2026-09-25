@@ -38,6 +38,10 @@ export class InMemoryAccountRepo implements AccountRepo {
     return this.rows.filter((a) => a.inn === inn);
   }
 
+  async listBySide(side: Account['side']): Promise<Account[]> {
+    return this.rows.filter((a) => a.side === side);
+  }
+
   async listPending(): Promise<Account[]> {
     return this.rows.filter((a) => a.pending);
   }
