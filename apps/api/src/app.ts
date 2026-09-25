@@ -29,9 +29,20 @@ export interface AppOptions {
 export async function buildApp(container: Container, opts: AppOptions) {
   const app = Fastify({ logger: opts.logger ?? true, trustProxy: true });
 
+  // Пустое тело при Content-Type: application/json (DELETE/POST без payload) — не ошибка:
+  // по умолчанию Fastify отвечает 400, и «Удалить» в кабинетах молча не работало.
+  app.addContentTypeParser('application/json', { parseAs: 'string' }, (_req, body, done) => {
+    const text = String(body ?? '');
+    if (!text.trim()) return done(null, undefined);
+    try { done(null, JSON.parse(text)); } catch (err) { (err as { statusCode?: number }).statusCode = 400; done(err as Error, undefined); }
+  });
+
   await app.register(cors, { origin: opts.corsOrigin, credentials: true });
   await app.register(cookie, { secret: opts.cookieSecret });
-  await app.register(rateLimit, { max: 100, timeWindow: '1 minute' });
+  // Общий лимит рассчитан на кабинет, который после каждого действия перечитывает
+  // ~20 эндпоинтов (loadAll); 100/мин упирались в 429 уже после пяти нажатий кнопок.
+  // Подбор пароля/кодов защищён отдельно — строгим лимитом на самих auth-маршрутах.
+  await app.register(rateLimit, { max: 600, timeWindow: '1 minute' });
 
   app.decorate('container', container);
   await app.register(sessionPlugin);

@@ -38,6 +38,13 @@ describe('PlanService — план проверок', () => {
     await expect(svc.create(auditor, { date: '01.03.2026', dir: 'X', object: 'Y', who: 'Z', kind: 'плановая' })).rejects.toThrow();
   });
 
+  it('дата из <input type=date> (ГГГГ-ММ-ДД) хранится как ДД.ММ.ГГГГ; мусорная — ошибка', async () => {
+    const ok = await svc.create(vkk, { date: '2026-03-15', dir: 'ЧЛ', object: 'Y', who: 'Z', kind: 'плановая' });
+    expect(ok.ok && ok.item.date).toBe('15.03.2026');
+    const bad = await svc.create(vkk, { date: 'завтра', dir: 'ЧЛ', object: 'Y', who: 'Z', kind: 'плановая' });
+    expect(bad.ok).toBe(false);
+  });
+
   it('пустое направление контроля отклоняется', async () => {
     const r = await svc.create(vkk, { date: '01.03.2026', dir: '  ', object: 'Y', who: 'Z', kind: 'плановая' });
     expect(r.ok).toBe(false);

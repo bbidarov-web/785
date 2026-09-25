@@ -145,6 +145,7 @@ export default function ClinicCabinetPage() {
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [pendingAccounts, setPendingAccounts] = useState<PendingAccount[]>([]);
   const [assignments, setAssignments] = useState<Record<string, string>>({});
+  const [docProgress, setDocProgress] = useState<Record<string, { fio: string; at: string }[]>>({});
   const [plan, setPlan] = useState<PlanItem[]>([]);
   const [findings, setFindings] = useState<Finding[]>([]);
   const [capa, setCapa] = useState<CapaItem[]>([]);
@@ -168,12 +169,16 @@ export default function ClinicCabinetPage() {
     toastTimer.current = setTimeout(() => setToast(''), 3200);
   }, []);
 
+  const roleRef = useRef('');
   const loadAll = useCallback(async () => {
+    const sessionRole = roleRef.current;
     const [st, s, pend, a, p, f, c, br, cy, eqp, eqt, eqf, sm, sa, chk, pr, inv] = await Promise.all([
       api.get<{ ok: true; stages: StageView[] }>('/api/clinic/stages'),
       api.get<{ ok: true; staff: StaffMember[] }>('/api/clinic/staff'),
-      api.get<{ ok: true; pending: PendingAccount[] } | { ok: false; error: string }>('/api/clinic/accounts/pending'),
-      api.get<{ ok: true; assignments: Record<string, string> }>('/api/clinic/assignments'),
+      sessionRole === 'clinic_admin'
+        ? api.get<{ ok: true; pending: PendingAccount[] } | { ok: false; error: string }>('/api/clinic/accounts/pending')
+        : Promise.resolve({ ok: false as const, error: 'нет права' }),
+      api.get<{ ok: true; assignments: Record<string, string>; progress?: Record<string, { fio: string; at: string }[]> }>('/api/clinic/assignments'),
       api.get<{ ok: true; plan: PlanItem[] }>('/api/clinic/plan'),
       api.get<{ ok: true; findings: Finding[] }>('/api/clinic/capa/findings'),
       api.get<{ ok: true; items: CapaItem[] }>('/api/clinic/capa'),
@@ -191,7 +196,7 @@ export default function ClinicCabinetPage() {
     if (st.ok) setStages(st.stages);
     if (s.ok) setStaff(s.staff);
     setPendingAccounts(pend.ok ? pend.pending : []); // 403 для ролей без staff:manage — не ошибка, просто нечего показывать
-    if (a.ok) setAssignments(a.assignments);
+    if (a.ok) { setAssignments(a.assignments); setDocProgress(a.progress ?? {}); }
     if (p.ok) setPlan(p.plan);
     if (f.ok) setFindings(f.findings);
     if (c.ok) setCapa(c.items);
@@ -212,6 +217,7 @@ export default function ClinicCabinetPage() {
       const r = await api.get<{ ok: true; session: SessionInfo | null }>('/api/auth/session');
       const ok = r.ok && r.session && ALLOWED_ROLES.includes(r.session.role);
       setSession(ok ? r.session : null);
+      roleRef.current = ok && r.session ? r.session.role : '';
       setReady(true);
       if (ok) await loadAll();
     })();
@@ -234,6 +240,7 @@ export default function ClinicCabinetPage() {
       return;
     }
     setSession(s.session);
+    roleRef.current = s.session.role;
     setAuthError('');
     setAPass('');
     await loadAll();
@@ -328,7 +335,7 @@ export default function ClinicCabinetPage() {
 
         {tab === 'staff' && (
           <StaffTab staff={staff} assignments={assignments} canManageStaff={canManageStaff} canAssign={canAssign}
-            pendingAccounts={pendingAccounts} branches={branches}
+            pendingAccounts={pendingAccounts} branches={branches} docProgress={docProgress}
             onAddStaff={async (fio, pos) => {
               const r = await api.post<{ ok: true } | { ok: false; error: string }>('/api/clinic/staff', { fio, pos });
               if (!r.ok) { say(r.error); return; }
@@ -595,9 +602,9 @@ function StagesTab({ stages, canOrder, onOrder, onAcceptOffer, onOpen }: {
   );
 }
 
-function StaffTab({ staff, assignments, canManageStaff, canAssign, pendingAccounts, branches, onAddStaff, onRemoveStaff, onAssign, onApproveAccount, onRejectAccount }: {
+function StaffTab({ staff, assignments, canManageStaff, canAssign, pendingAccounts, branches, docProgress, onAddStaff, onRemoveStaff, onAssign, onApproveAccount, onRejectAccount }: {
   staff: StaffMember[]; assignments: Record<string, string>; canManageStaff: boolean; canAssign: boolean;
-  pendingAccounts: PendingAccount[]; branches: Branch[];
+  pendingAccounts: PendingAccount[]; branches: Branch[]; docProgress: Record<string, { fio: string; at: string }[]>;
   onAddStaff: (fio: string, pos: string) => void; onRemoveStaff: (fio: string) => void; onAssign: (doc: string, who: string) => void;
   onApproveAccount: (id: string, role: string, branchName: string) => void; onRejectAccount: (id: string) => void;
 }) {
@@ -670,7 +677,10 @@ function StaffTab({ staff, assignments, canManageStaff, canAssign, pendingAccoun
           {Object.entries(assignments).map(([doc, who]) => (
             <div key={doc} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border-3)' }}>
               <div style={{ fontSize: 12.5, fontWeight: 700 }}>{doc}</div>
-              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>{who}</div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>
+                {who}
+                {(docProgress[doc] ?? []).map((d) => <span key={d.fio} style={{ marginLeft: 8, color: 'var(--accent-hover)', fontWeight: 700 }}>✓ {d.fio} {d.at}</span>)}
+              </div>
             </div>
           ))}
         </div>
@@ -731,7 +741,9 @@ function PlanTab({ plan, staff, canManagePlan, onCreate, onDelete }: {
           </div>
           <button
             onClick={() => { if (dir.trim() && who.trim()) { onCreate({ date, dir, object, who, kind }); setDate(''); setDir(''); setObject(''); setWho(''); } }}
-            style={{ ...primaryBtn, alignSelf: 'flex-start' }}
+            disabled={!dir.trim() || !who.trim()}
+            title={!dir.trim() || !who.trim() ? 'Укажите направление и ответственного' : undefined}
+            style={{ ...primaryBtn, alignSelf: 'flex-start', opacity: !dir.trim() || !who.trim() ? 0.5 : 1 }}
           >
             Добавить в план проверок
           </button>
@@ -790,7 +802,7 @@ function CapaTab({ items, myFio, canCheckEffectiveness, onClose, onReopen, onChe
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       {items.length === 0 && <EmptyState text="Открытых мероприятий нет. Заведите их в разделе «Находки»." />}
       {items.map((c) => {
-        const isMine = c.who === myFio;
+        const isMine = c.who.split('+').some((w) => w.split('·')[0]!.trim() === myFio);
         return (
           <div key={c.id} style={cardStyle}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>

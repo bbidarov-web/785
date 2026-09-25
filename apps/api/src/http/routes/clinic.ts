@@ -112,7 +112,9 @@ export async function clinicRoutes(app: FastifyInstance): Promise<void> {
     if (!ctx) return;
     const assignments = await guarded(() => app.container.staff.listAssignments(ctx.account), reply);
     if (assignments === undefined) return;
-    return reply.send({ ok: true, assignments });
+    const progress = await guarded(() => app.container.staff.listDocProgress(ctx.account), reply);
+    if (progress === undefined) return;
+    return reply.send({ ok: true, assignments, progress });
   });
 
   app.put('/api/clinic/assignments/:code', async (req, reply) => {

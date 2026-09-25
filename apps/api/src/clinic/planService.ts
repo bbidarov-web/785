@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { Repos } from '../domain/ports.js';
 import type { Account } from '../domain/types.js';
 import { assertPermission, visibleToBranch } from '../rbac/service.js';
+import { normalizeDateInput } from '../shared/date.js';
 import type { AuditPlanItem } from '../shared/channelShapes.js';
 
 export type PlanResult<T> = { ok: true } & T | { ok: false; error: string };
@@ -39,6 +40,8 @@ export class PlanService {
   async create(account: Account, input: PlanInput): Promise<PlanResult<{ item: AuditPlanItem }>> {
     await assertPermission(this.repos.auditLog, account, 'plan:write', 'plan:create', null, account.inn);
     if (!input.dir.trim()) return { ok: false, error: 'Направление контроля обязательно' };
+    const date = normalizeDateInput(input.date);
+    if (date === null) return { ok: false, error: 'Дата проверки не распознана — нужен формат ДД.ММ.ГГГГ' };
     const item: AuditPlanItem = {
       id: randomUUID(),
       name: input.dir.trim(),
@@ -47,7 +50,7 @@ export class PlanService {
       object: input.object.trim(),
       branch: input.branch?.trim() || '',
       kind: input.kind,
-      date: input.date,
+      date,
       who: input.who.trim(),
     };
     for (let attempt = 0; attempt < 5; attempt++) {
@@ -61,6 +64,8 @@ export class PlanService {
 
   async update(account: Account, id: string, patch: Partial<PlanInput>): Promise<PlanResult<{ item: AuditPlanItem }>> {
     await assertPermission(this.repos.auditLog, account, 'plan:write', 'plan:update', id, account.inn);
+    const patchDate = patch.date === undefined ? undefined : normalizeDateInput(patch.date);
+    if (patchDate === null) return { ok: false, error: 'Дата проверки не распознана — нужен формат ДД.ММ.ГГГГ' };
     for (let attempt = 0; attempt < 5; attempt++) {
       const rec = await this.repos.channels.get<AuditPlanItem[]>('tenant', account.inn, 'audit_plan', []);
       const idx = rec.data.findIndex((p) => p.id === id);
@@ -74,7 +79,7 @@ export class PlanService {
         object: patch.object?.trim() ?? current.object,
         branch: patch.branch?.trim() ?? current.branch,
         kind: patch.kind ?? current.kind,
-        date: patch.date ?? current.date,
+        date: patchDate ?? current.date,
         who: patch.who?.trim() ?? current.who,
       };
       const next = rec.data.slice();

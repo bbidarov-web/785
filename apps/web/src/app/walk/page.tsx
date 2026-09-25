@@ -281,6 +281,10 @@ export default function MobileWalkPage() {
         <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', lineHeight: 1.55 }}>
           Вход в обход выполняется через кабинет клиники. Обратитесь к ответственному за ВКК за назначением на проверку.
         </p>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 12 }}>
+          <a href="/clinic" style={{ fontSize: 13, fontWeight: 700 }}>Войти в кабинет клиники (ответственный, аудитор)</a>
+          <a href="/executor" style={{ fontSize: 13, fontWeight: 700 }}>Войти как исполнитель (по телефону)</a>
+        </div>
       </Shell>
     );
   }

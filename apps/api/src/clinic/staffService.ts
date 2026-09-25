@@ -2,6 +2,7 @@ import type { Repos } from '../domain/ports.js';
 import type { Account } from '../domain/types.js';
 import { assertPermission } from '../rbac/service.js';
 import type { StaffMember } from '../shared/channelShapes.js';
+import { assignees } from '../shared/assignment.js';
 
 export type StaffResult<T> = { ok: true } & T | { ok: false; error: string };
 
@@ -48,6 +49,30 @@ export class StaffService {
   async listAssignments(account: Account): Promise<Record<string, string>> {
     await assertPermission(this.repos.auditLog, account, 'doc:read', 'docasg:list', null, account.inn);
     return (await this.repos.channels.get<Record<string, string>>('tenant', account.inn, 'docasg', {})).data;
+  }
+
+  /**
+   * Отметки «Выполнено» из кабинета исполнителя, увиденные администрацией клиники
+   * (документ → кто из назначенных и когда отметил) — раньше отметка исполнителя
+   * не была видна нигде, кроме его собственного кабинета.
+   */
+  async listDocProgress(account: Account): Promise<Record<string, { fio: string; at: string }[]>> {
+    await assertPermission(this.repos.auditLog, account, 'doc:read', 'docasg:progress', null, account.inn);
+    const [asg, accounts] = await Promise.all([
+      this.repos.channels.get<Record<string, string>>('tenant', account.inn, 'docasg', {}).then((r) => r.data),
+      this.repos.accounts.listByInn(account.inn),
+    ]);
+    const marks = new Map<string, Record<string, string>>();
+    for (const a of accounts) if (a.role === 'nurse') marks.set(a.fio, await this.repos.executorMarks.listForAccount(a.id));
+    const out: Record<string, { fio: string; at: string }[]> = {};
+    for (const [doc, who] of Object.entries(asg)) {
+      const done = assignees(who).flatMap((fio) => {
+        const at = marks.get(fio)?.['doc|' + doc];
+        return at ? [{ fio, at }] : [];
+      });
+      if (done.length) out[doc] = done;
+    }
+    return out;
   }
 
   /** `who` — ФИО через " + " (несколько исполнителей на один документ), пусто — снять назначение. */

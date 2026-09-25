@@ -79,4 +79,17 @@ describe('StaffService — сотрудники и матрица ответст
     const otherAdmin = { ...admin, inn: '5001007322' };
     expect(await svc.list(otherAdmin)).toEqual([]);
   });
+
+  it('отметка «Выполнено» исполнителя видна администрации клиники в прогрессе по документам', async () => {
+    const acc = await repos.accounts.create({
+      inn, login: 'petrova', phone: null, email: null, org: null, fio: 'Петрова В. В.', side: 'clinic', role: 'nurse',
+      pending: false, requestedRole: null, branchName: null, passwordHash: 'h', twoFactor: false, twoFactorVia: 'sms', blocked: false, mustChange: false,
+    });
+    await repos.channels.set('tenant', inn, 'docasg', { 'Положение о ВКК': 'Петрова В. В. + Другая Д. Д.' }, { updatedBy: null });
+    expect(await svc.listDocProgress(admin)).toEqual({});
+    await repos.executorMarks.markDone(acc.id, 'doc|Положение о ВКК', 'Положение о ВКК');
+    const progress = await svc.listDocProgress(admin);
+    expect(progress['Положение о ВКК']).toHaveLength(1);
+    expect(progress['Положение о ВКК']![0]!.fio).toBe('Петрова В. В.');
+  });
 });

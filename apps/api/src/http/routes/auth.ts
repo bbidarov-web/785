@@ -32,14 +32,14 @@ const changePasswordSchema = z.object({ oldPassword: z.string(), newPassword: z.
 export async function authRoutes(app: FastifyInstance): Promise<void> {
   const secureCookies = process.env.NODE_ENV === 'production';
 
-  app.post('/api/auth/register', async (req, reply) => {
+  app.post('/api/auth/register', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req, reply) => {
     const body = registerSchema.parse(req.body);
     const r = await app.container.auth.register(body as Parameters<typeof app.container.auth.register>[0]);
     if (!r.ok) return reply.code(400).send(r);
     return reply.send({ ok: true, pending: r.pending, warn: r.warn });
   });
 
-  app.post('/api/auth/login', async (req, reply) => {
+  app.post('/api/auth/login', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req, reply) => {
     const body = loginSchema.parse(req.body);
     const r = await app.container.auth.login(body.inn, body.login, body.password, {
       userAgent: req.headers['user-agent'] ?? null,
@@ -57,7 +57,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     return reply.send({ ok: true });
   });
 
-  app.post('/api/auth/login-by-phone', async (req, reply) => {
+  app.post('/api/auth/login-by-phone', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req, reply) => {
     const body = loginByPhoneSchema.parse(req.body);
     const r = await app.container.auth.loginByPhone(body.inn, body.phone, body.password, {
       userAgent: req.headers['user-agent'] ?? null,
@@ -68,7 +68,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     return reply.send({ ok: true });
   });
 
-  app.post('/api/auth/otp/verify', async (req, reply) => {
+  app.post('/api/auth/otp/verify', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req, reply) => {
     const accountId = readOtpPendingCookie(req);
     if (!accountId) return reply.code(400).send({ ok: false, error: 'Код не запрашивался' });
     const { code } = otpVerifySchema.parse(req.body);
@@ -79,20 +79,20 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     return reply.send({ ok: true });
   });
 
-  app.post('/api/auth/otp/resend', async (req, reply) => {
+  app.post('/api/auth/otp/resend', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req, reply) => {
     const accountId = readOtpPendingCookie(req);
     if (!accountId) return reply.code(400).send({ ok: false, error: 'Сначала введите логин и пароль' });
     const r = await app.container.auth.resendOtp(accountId);
     return reply.send(r);
   });
 
-  app.post('/api/auth/password/request-reset', async (req, reply) => {
+  app.post('/api/auth/password/request-reset', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req, reply) => {
     const body = requestResetSchema.parse(req.body);
     const r = await app.container.auth.requestReset(body.inn, body.login);
     return reply.send(r);
   });
 
-  app.post('/api/auth/password/confirm-reset', async (req, reply) => {
+  app.post('/api/auth/password/confirm-reset', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req, reply) => {
     const body = confirmResetSchema.parse(req.body);
     const acc = await app.container.repos.accounts.findByInnLogin(body.inn.replace(/\D/g, ''), body.login);
     if (!acc) return reply.code(400).send({ ok: false, error: 'Код не запрашивался' });

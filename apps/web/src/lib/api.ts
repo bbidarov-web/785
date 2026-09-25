@@ -6,7 +6,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     ...init,
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
+    // Content-Type: application/json без тела Fastify отвергает (400) — из-за этого
+    // не работали все «Удалить» и выход без payload; заголовок нужен только с телом.
+    headers: { ...(init?.body ? { 'Content-Type': 'application/json' } : {}), ...(init?.headers ?? {}) },
   });
   const body = (await res.json().catch(() => ({}))) as T;
   return body;

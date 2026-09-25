@@ -11,6 +11,7 @@ import {
   type TariffDraft, type SubscriptionRow, type SubscriptionSummary, type BulkPreviewRow, type BulkReport, type BulkJob,
   type FinancialSummary, type PortfolioSummary, type RichClientRow,
 } from './salesForms';
+import { StagePaymentsList, DocumentGrantsTab, type StagePaymentRow } from './linkForms';
 import { WorkQueueTab, type QueueTask, type DigestSettings } from './queueForms';
 
 /**
@@ -63,7 +64,7 @@ const inputStyle: React.CSSProperties = { padding: '9px 11px', border: '1px soli
 const primaryBtn: React.CSSProperties = { padding: '9px 14px', borderRadius: 8, border: 'none', background: 'var(--accent)', color: '#fff', fontSize: 12.5, fontWeight: 700, whiteSpace: 'nowrap' };
 const outlineBtn: React.CSSProperties = { padding: '7px 11px', borderRadius: 7, border: '1px solid var(--border-1)', background: 'transparent', fontSize: 11.5, fontWeight: 700, whiteSpace: 'nowrap' };
 
-type Tab = 'accounts' | 'checklists' | 'stages' | 'cycle' | 'equip' | 'summary' | 'tariffs' | 'subscriptions' | 'payments' | 'bulk' | 'queue' | 'secondhand' | 'clients';
+type Tab = 'accounts' | 'checklists' | 'stages' | 'cycle' | 'equip' | 'summary' | 'tariffs' | 'subscriptions' | 'payments' | 'bulk' | 'queue' | 'secondhand' | 'clients' | 'grants';
 
 export function PlatformPanelShell({ allowedRoles, heading }: { allowedRoles: string[]; heading: string }) {
   const [ready, setReady] = useState(false);
@@ -75,6 +76,8 @@ export function PlatformPanelShell({ allowedRoles, heading }: { allowedRoles: st
   const [tab, setTab] = useState<Tab>('accounts');
   const [toast, setToast] = useState('');
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // «Заявки на доступ» — только у администратора платформы (role:manage); остальным ни вкладки, ни запроса (был 403 на каждой загрузке)
+  const isAdminRef = useRef(false);
 
   const [pending, setPending] = useState<PendingAccount[]>([]);
   const [checklists, setChecklists] = useState<ChecklistDef[]>([]);
@@ -89,6 +92,7 @@ export function PlatformPanelShell({ allowedRoles, heading }: { allowedRoles: st
   const [subscriptionSummary, setSubscriptionSummary] = useState<SubscriptionSummary | null>(null);
   const [bulkReports, setBulkReports] = useState<BulkReport[]>([]);
   const [bulkJob, setBulkJob] = useState<BulkJob | null>(null);
+  const [stagePayments, setStagePayments] = useState<StagePaymentRow[]>([]);
 
   const refreshBulkJob = useCallback(async (jobId: string) => {
     const r = await api.get<{ ok: true; job: BulkJob } | { ok: false; error: string }>(`/api/panel/bulk/jobs/${jobId}`);
@@ -112,8 +116,10 @@ export function PlatformPanelShell({ allowedRoles, heading }: { allowedRoles: st
   }, []);
 
   const loadAll = useCallback(async () => {
-    const [p, c, sd, cy, eq, sm, sh, cl, tf, sb, ss, br, fin, qt, ds] = await Promise.all([
-      api.get<{ ok: true; pending: PendingAccount[] } | { ok: false; error: string }>('/api/admin/accounts/pending'),
+    const [p, c, sd, cy, eq, sm, sh, cl, tf, sb, ss, br, fin, qt, ds, sp] = await Promise.all([
+      isAdminRef.current
+        ? api.get<{ ok: true; pending: PendingAccount[] } | { ok: false; error: string }>('/api/admin/accounts/pending')
+        : Promise.resolve({ ok: false as const, error: 'нет права' }),
       api.get<{ ok: true; checklists: ChecklistDef[] }>('/api/panel/checklists'),
       api.get<{ ok: true; stages: StageDraft[] }>('/api/panel/stage-docs'),
       api.get<{ ok: true; cycle: CycleMasterDraft | null }>('/api/panel/cycle'),
@@ -128,6 +134,7 @@ export function PlatformPanelShell({ allowedRoles, heading }: { allowedRoles: st
       api.get<{ ok: true; financials: FinancialSummary } | { ok: false; error: string }>('/api/panel/financials'),
       api.get<{ ok: true; tasks: QueueTask[] } | { ok: false; error: string }>('/api/panel/queue'),
       api.get<{ ok: true; settings: DigestSettings } | { ok: false; error: string }>('/api/panel/queue/digest-settings'),
+      api.get<{ ok: true; payments: StagePaymentRow[] } | { ok: false; error: string }>('/api/panel/stage-payments'),
     ]);
     if (p.ok) setPending(p.pending);
     if (c.ok) setChecklists(c.checklists);
@@ -144,6 +151,7 @@ export function PlatformPanelShell({ allowedRoles, heading }: { allowedRoles: st
     if (fin.ok) setFinancials(fin.financials);
     if (qt.ok) setQueueTasks(qt.tasks);
     if (ds.ok) setDigestSettings(ds.settings);
+    if (sp.ok) setStagePayments(sp.payments);
     await loadPortfolio(periodDays);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadPortfolio]);
@@ -153,6 +161,7 @@ export function PlatformPanelShell({ allowedRoles, heading }: { allowedRoles: st
       const r = await api.get<{ ok: true; session: SessionInfo | null }>('/api/auth/session');
       const ok = r.ok && r.session && allowedRoles.includes(r.session.role);
       setSession(ok ? r.session : null);
+      if (ok && r.session) { isAdminRef.current = r.session.role === 'platform_admin'; setTab(isAdminRef.current ? 'accounts' : 'clients'); }
       setReady(true);
       if (ok) await loadAll();
     })();
@@ -181,6 +190,8 @@ export function PlatformPanelShell({ allowedRoles, heading }: { allowedRoles: st
       return;
     }
     setSession(s.session);
+    isAdminRef.current = s.session.role === 'platform_admin';
+    setTab(isAdminRef.current ? 'accounts' : 'clients');
     setAuthError('');
     setAPass('');
     await loadAll();
@@ -222,7 +233,7 @@ export function PlatformPanelShell({ allowedRoles, heading }: { allowedRoles: st
   const activeQueueCount = queueTasks.filter((t) => t.state === 'new' || t.state === 'in_progress').length;
 
   const tabs: { key: Tab; label: string }[] = [
-    { key: 'accounts', label: `Заявки на доступ · ${pending.length}` },
+    ...(canManageRoles ? [{ key: 'accounts' as Tab, label: `Заявки на доступ · ${pending.length}` }] : []),
     { key: 'checklists', label: `Чек-листы · ${checklists.length}` },
     { key: 'stages', label: 'Каталог этапов' },
     { key: 'cycle', label: 'Годовой цикл' },
@@ -230,7 +241,8 @@ export function PlatformPanelShell({ allowedRoles, heading }: { allowedRoles: st
     { key: 'summary', label: 'Сводный отчёт' },
     { key: 'tariffs', label: `Тарифы · ${tariffs.length}` },
     { key: 'subscriptions', label: `Подписки · ${subscriptions.length}` },
-    { key: 'payments', label: 'Оплата этапов' },
+    { key: 'payments', label: `Оплата этапов · ${stagePayments.filter((r) => r.payment.status === 'pending' || !r.payment.accepted).length}` },
+    { key: 'grants', label: 'Выдача документов' },
     { key: 'bulk', label: 'Массовые операции' },
     { key: 'queue', label: `Очередь работы · ${activeQueueCount}` },
     { key: 'secondhand', label: `Вторая рука · ${secondHand.length}` },
@@ -430,7 +442,7 @@ export function PlatformPanelShell({ allowedRoles, heading }: { allowedRoles: st
         )}
 
         {tab === 'payments' && (
-          <PaymentsTab canConfirm={canConfirmMoney} canAccept={canAcceptStage}
+          <PaymentsTab canConfirm={canConfirmMoney} canAccept={canAcceptStage} rows={stagePayments}
             onConfirm={async (inn, code) => {
               const r = await api.post<{ ok: true; payment?: unknown; secondHandRequest?: unknown } | { ok: false; error: string }>(`/api/panel/stage-payments/${inn}/${code}/confirm`, {});
               if (!r.ok) { say(r.error); return; }
@@ -443,6 +455,26 @@ export function PlatformPanelShell({ allowedRoles, heading }: { allowedRoles: st
               if (!r.ok) { say(r.error); return; }
               say('Этап принят — следующий этап разблокирован в кабинете клиники');
               await loadAll();
+            }}
+          />
+        )}
+
+        {tab === 'grants' && (
+          <DocumentGrantsTab clients={clients} stages={stages} payments={stagePayments}
+            onLoadGrants={async (inn) => {
+              const r = await api.get<{ ok: true; grants: Record<string, { paid: boolean; byRole: string | null }> } | { ok: false; error: string }>(`/api/tenants/${inn}/documents/grants`);
+              return r.ok ? r.grants : {};
+            }}
+            onGrant={async (inn, stage, name, paid) => {
+              const r = await api.post<{ ok: true; secondHandRequest?: unknown } | { ok: false; error: string }>('/api/documents/grant', { tenantInn: inn, stage: String(stage), code: name, name, paid });
+              if (!r.ok) { say(r.error); return; }
+              say(r.secondHandRequest ? 'Выдача без оплаты — запрос ушёл на подтверждение второй рукой (вкладка «Вторая рука»)' : 'Документ выдан клинике');
+              await loadAll();
+            }}
+            onRevoke={async (inn, stage, name) => {
+              const r = await api.post<{ ok: true } | { ok: false; error: string }>('/api/documents/revoke', { tenantInn: inn, stage: String(stage), code: name, name });
+              if (!r.ok) { say(r.error); return; }
+              say('Выдача документа отозвана');
             }}
           />
         )}
@@ -553,8 +585,8 @@ function ChecklistsTab({ checklists, canPublish, onPublish }: { checklists: Chec
   );
 }
 
-function PaymentsTab({ canConfirm, canAccept, onConfirm, onAccept }: {
-  canConfirm: boolean; canAccept: boolean; onConfirm: (inn: string, code: number) => void; onAccept: (inn: string, code: number) => void;
+function PaymentsTab({ canConfirm, canAccept, rows, onConfirm, onAccept }: {
+  canConfirm: boolean; canAccept: boolean; rows: StagePaymentRow[]; onConfirm: (inn: string, code: number) => void; onAccept: (inn: string, code: number) => void;
 }) {
   const [inn, setInn] = useState('');
   const [code, setCode] = useState('1');
@@ -563,6 +595,7 @@ function PaymentsTab({ canConfirm, canAccept, onConfirm, onAccept }: {
   if (!canConfirm && !canAccept) return <EmptyState text="Подтверждение оплаты и приёмка этапа доступны сотрудникам платформы." />;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <StagePaymentsList rows={rows} canConfirm={canConfirm} canAccept={canAccept} onConfirm={onConfirm} onAccept={onAccept} />
       {canConfirm && (
         <div style={cardStyle}>
           <div style={{ fontSize: 13.5, fontWeight: 800, marginBottom: 4 }}>Подтвердить оплату этапа по счёту</div>

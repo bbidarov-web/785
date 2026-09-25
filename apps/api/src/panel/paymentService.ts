@@ -47,6 +47,30 @@ export class PaymentService {
     throw new Error('Не удалось сохранить — слишком много параллельных правок, повторите');
   }
 
+  /**
+   * Сводка счетов ВСЕХ клиник (стороны платформы) — то, что оператор раньше
+   * должен был знать наизусть (ИНН + номер этапа). Только этапы, по которым
+   * клиника уже заказала оплату; читает `money:read`, действия — как и прежде
+   * `money:write` (подтверждение) и `doc:grant` (приёмка).
+   */
+  async listAll(account: Account): Promise<{ tenantInn: string; tenantName: string; stageCode: number; stageName: string; payment: StagePaymentState }[]> {
+    await assertPermission(this.repos.auditLog, account, 'money:read', 'stage-payment:list', null, null);
+    const [tenants, catalog] = await Promise.all([
+      this.repos.tenants.listAll(),
+      this.repos.channels.get<{ code: number; name: string }[]>('platform', null, 'stage_docs', []).then((r) => r.data),
+    ]);
+    const stageName = new Map(catalog.map((st) => [st.code, st.name]));
+    const rows: { tenantInn: string; tenantName: string; stageCode: number; stageName: string; payment: StagePaymentState }[] = [];
+    for (const t of tenants) {
+      const rec = await this.repos.channels.get<Record<number, StagePaymentState>>('tenant', t.inn, 'stage_paid', {});
+      for (const [code, payment] of Object.entries(rec.data)) {
+        if (payment.status === 'none') continue;
+        rows.push({ tenantInn: t.inn, tenantName: t.name, stageCode: Number(code), stageName: stageName.get(Number(code)) ?? `Этап ${code}`, payment });
+      }
+    }
+    return rows;
+  }
+
   async confirm(account: Account, tenantInn: string, stageCode: number): Promise<PaymentResult<{ payment?: StagePaymentState; secondHandRequest?: SecondHandRequest }>> {
     await assertPermission(this.repos.auditLog, account, 'money:write', 'stage-payment:confirm', String(stageCode), tenantInn);
     const rec = await this.repos.channels.get<Record<number, StagePaymentState>>('tenant', tenantInn, 'stage_paid', {});

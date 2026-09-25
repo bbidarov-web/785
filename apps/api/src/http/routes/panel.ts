@@ -93,6 +93,14 @@ export async function panelRoutes(app: FastifyInstance): Promise<void> {
     return reply.code(r.ok ? 200 : 409).send(r);
   });
 
+  app.get('/api/panel/stage-payments', async (req, reply) => {
+    const ctx = requireAuth(req, reply);
+    if (!ctx) return;
+    const payments = await guarded(() => app.container.payment.listAll(ctx.account), reply);
+    if (payments === undefined) return;
+    return reply.send({ ok: true, payments });
+  });
+
   app.post('/api/panel/stage-payments/:tenantInn/:code/confirm', async (req, reply) => {
     const ctx = requireAuth(req, reply);
     if (!ctx) return;

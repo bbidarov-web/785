@@ -4,7 +4,8 @@ import type { Repos } from '../domain/ports.js';
 import type { Account } from '../domain/types.js';
 import { assertPermission, PermissionDeniedError } from '../rbac/service.js';
 import type { CapaItem, CycleMaster, WalkResultEntry } from '../shared/channelShapes.js';
-import { addDays } from '../shared/date.js';
+import { addDays, normalizeDateInput } from '../shared/date.js';
+import { assignees, isMine } from '../shared/assignment.js';
 
 export type CapaResult<T> = { ok: true } & T | { ok: false; error: string };
 
@@ -65,7 +66,10 @@ export class CapaService {
    * честного отказа).
    */
   private async resolveDue(opts: { due?: string; severity?: string }): Promise<CapaResult<{ due: string }>> {
-    if (!opts.severity) return { ok: true, due: opts.due?.trim() || '' };
+    if (!opts.severity) {
+      const due = normalizeDateInput(opts.due);
+      return due === null ? { ok: false, error: 'Срок не распознан — нужен формат ДД.ММ.ГГГГ' } : { ok: true, due };
+    }
     const master = (await this.repos.channels.get<CycleMaster | null>('platform', null, 'cycle_master', null)).data;
     const term = master?.capaTerms.find((t) => t.level === opts.severity);
     if (!term) return { ok: false, error: 'Неизвестная степень критичности — уточните каталог у методиста' };
@@ -97,7 +101,9 @@ export class CapaService {
         object: entry.object,
         findingText: found.text,
         comment: found.comment,
-        who: opts.who?.trim() || entry.who || 'не назначен',
+        // в результате обхода «who» хранится как «ФИО · должность» (formatOwner) — в мероприятие
+        // берём чистые ФИО, иначе исполнитель не совпадёт с account.fio и не сможет его закрыть (capa:own)
+        who: opts.who?.trim() || assignees(entry.who).join(' + ') || 'не назначен',
         due: dueResult.due,
         severity: opts.severity ?? null,
         status: 'planned',
@@ -173,7 +179,7 @@ export class CapaService {
       const idx = rec.data.findIndex((c) => c.id === id);
       if (idx === -1) return { ok: false, error: 'Мероприятие не найдено' };
       const current = rec.data[idx]!;
-      if (!canFull && canOwn && current.who !== account.fio) {
+      if (!canFull && canOwn && !isMine(current.who, account.fio)) {
         throw new PermissionDeniedError('capa:own');
       }
       if (!canFull && status !== 'done') {

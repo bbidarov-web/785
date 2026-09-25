@@ -975,6 +975,18 @@ describe('HTTP: /api/auth и защита эндпоинтов правами', 
     expect(strangerLoginAfter.statusCode).toBe(200);
   });
 
+  it('DELETE/POST без тела, но с Content-Type: application/json, не падает 400 (регресс: не работали все «Удалить»)', async () => {
+    await container.auth.register({ inn: '7712345671', login: 'clinicadmin', password: 'admin2026aa', password2: 'admin2026aa', fio: 'A', side: 'clinic', role: 'clinic_admin' });
+    const login = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { inn: '7712345671', login: 'clinicadmin', password: 'admin2026aa' } });
+    const cookie = extractCookie(login.headers['set-cookie'], 'k785_session')!;
+    const add = await app.inject({ method: 'POST', url: '/api/clinic/branches', cookies: { k785_session: cookie }, payload: { name: 'Филиал 1' } });
+    const id = add.json().branch.id;
+    const del = await app.inject({ method: 'DELETE', url: `/api/clinic/branches/${id}`, cookies: { k785_session: cookie }, headers: { 'content-type': 'application/json' } });
+    expect(del.statusCode).toBe(200);
+    const bad = await app.inject({ method: 'POST', url: '/api/clinic/branches', cookies: { k785_session: cookie }, headers: { 'content-type': 'application/json' }, payload: '{oops' });
+    expect(bad.statusCode).toBe(400);
+  });
+
   it('logout отзывает cookie сессии — повторный запрос получает 401', async () => {
     await container.auth.register({ inn: '7712345671', login: 'medplus', password: 'medplus2026', password2: 'medplus2026', fio: 'x', side: 'clinic' });
     const login = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { inn: '7712345671', login: 'medplus', password: 'medplus2026' } });

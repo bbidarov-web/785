@@ -34,3 +34,22 @@ export function daysSince(s: string): number {
 export function daysUntil(s: string): number {
   return -daysSince(s);
 }
+
+/**
+ * Дата из формы → ДД.ММ.ГГГГ (единственный формат хранения, reference/CLAUDE.md).
+ * Браузерный `<input type="date">` отдаёт ГГГГ-ММ-ДД — без нормализации ручные
+ * проверки плана и сроки CAPA ломали сортировку обхода и расчёт просрочки
+ * (везде дальше даты разбираются как ДД.ММ.ГГГГ). Пустое значение — пустая
+ * строка (срок не задан); нераспознанное — null (вызывающий отвечает ошибкой).
+ */
+export function normalizeDateInput(value: string | undefined | null): string | null {
+  const v = (value ?? '').trim();
+  if (!v) return '';
+  const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v);
+  const dmy = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(v);
+  const [y, m, d] = iso ? [iso[1]!, iso[2]!, iso[3]!] : dmy ? [dmy[3]!, dmy[2]!, dmy[1]!] : [null, null, null];
+  if (!y) return null;
+  const dt = new Date(Number(y), Number(m) - 1, Number(d));
+  if (dt.getFullYear() !== Number(y) || dt.getMonth() !== Number(m) - 1 || dt.getDate() !== Number(d)) return null;
+  return `${d}.${m}.${y}`;
+}

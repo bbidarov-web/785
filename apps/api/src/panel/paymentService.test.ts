@@ -35,6 +35,17 @@ describe('PaymentService — подтверждение оплаты этапа'
     svc = new PaymentService(repos, secondHand);
   });
 
+  it('сводка счетов: оператор видит заказанные этапы клиник (ИНН, название этапа, статус); клиника — нет', async () => {
+    await repos.tenants.upsert(inn, 'Клиника 1');
+    await repos.channels.set('platform', null, 'stage_docs', [{ code: 1, name: 'Базовая система', price: 68000, blocks: [] }], { updatedBy: null });
+    await seedPending(repos, 68000);
+    const rows = await svc.listAll(methodist); // money:read есть у всех ролей платформы, в т.ч. у методиста
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ tenantInn: inn, tenantName: 'Клиника 1', stageCode: 1, stageName: 'Базовая система' });
+    expect(rows[0]!.payment.status).toBe('pending');
+    await expect(svc.listAll(makeAccount('clinic_admin', 'clinic'))).rejects.toThrow();
+  });
+
   it('менеджер подтверждает оплату ниже порога второй руки напрямую', async () => {
     await seedPending(repos, 68000);
     const r = await svc.confirm(manager, inn, 1);

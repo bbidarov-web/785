@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addDays, daysSince, daysUntil, formatDate, isBeforeToday, parseDate, todayString } from './date.js';
+import { normalizeDateInput, addDays, daysSince, daysUntil, formatDate, isBeforeToday, parseDate, todayString } from './date.js';
 
 describe('shared/date — разбор и арифметика дат в формате ДД.ММ.ГГГГ', () => {
   it('formatDate/parseDate — туда и обратно без потерь', () => {
@@ -55,5 +55,14 @@ describe('shared/date — разбор и арифметика дат в фор�
     expect(isBeforeToday(addDays(todayString(), -1))).toBe(true);
     expect(isBeforeToday(todayString())).toBe(false);
     expect(isBeforeToday(addDays(todayString(), 1))).toBe(false);
+  });
+
+  it('normalizeDateInput: ISO из <input type=date> → ДД.ММ.ГГГГ, пусто → пусто, мусор и 31.02 → null', () => {
+    expect(normalizeDateInput('2026-03-15')).toBe('15.03.2026');
+    expect(normalizeDateInput('15.03.2026')).toBe('15.03.2026');
+    expect(normalizeDateInput('')).toBe('');
+    expect(normalizeDateInput(undefined)).toBe('');
+    expect(normalizeDateInput('завтра')).toBeNull();
+    expect(normalizeDateInput('2026-02-31')).toBeNull();
   });
 });

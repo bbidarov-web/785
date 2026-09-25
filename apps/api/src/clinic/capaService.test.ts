@@ -74,6 +74,15 @@ describe('CapaService — нарушения и корректирующие м�
     expect(r.ok && r.item.who).toBe('Сидорова В. В.');
   });
 
+  it('«ФИО · должность» из результата обхода не мешает исполнителю закрыть своё мероприятие', async () => {
+    await repos.channels.set('tenant', inn, 'walk_results', { p1: { ...FINISHED_RESULT, who: 'Петрова В. В. · Медсестра' } }, { updatedBy: null });
+    const created = await svc.createFromFinding(vkk, 'p1', 1, {});
+    if (!created.ok) throw new Error('setup');
+    expect(created.item.who).toBe('Петрова В. В.');
+    const r = await svc.updateStatus(nurse, created.item.id, 'done');
+    expect(r.ok).toBe(true);
+  });
+
   it('исполнитель отмечает выполненным СВОЁ мероприятие (capa:own)', async () => {
     const created = await svc.createFromFinding(vkk, 'p1', 1, { who: 'Петрова В. В.' });
     if (!created.ok) throw new Error('setup');
@@ -142,6 +151,11 @@ describe('CapaService — нарушения и корректирующие м�
     it('неизвестная степень отклоняется явной ошибкой, а не произвольным сроком', async () => {
       const r = await svc.createFromFinding(vkk, 'p1', 1, { severity: 'несуществующая' });
       expect(r.ok).toBe(false);
+    });
+
+    it('срок из <input type=date> нормализуется в ДД.ММ.ГГГГ, мусор отклоняется', async () => {
+      const r = await svc.createFromFinding(vkk, 'p1', 1, { due: '2026-03-15' });
+      expect(r.ok && r.item.due).toBe('15.03.2026');
     });
 
     it('степень не указана — работает как раньше, срок вручную', async () => {
