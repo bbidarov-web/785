@@ -31,6 +31,62 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     return ctx;
   }
 
+  // Сети клиник: заводит администратор платформы, свой стандарт ведёт головная клиника (routes/clinic.ts).
+  app.get('/api/admin/networks', async (req, reply) => {
+    const ctx = await requireRoleManage(req, reply);
+    if (!ctx) return;
+    return reply.send({ ok: true, networks: await app.container.network.listAll(ctx.account) });
+  });
+
+  app.post('/api/admin/networks', async (req, reply) => {
+    const ctx = await requireRoleManage(req, reply);
+    if (!ctx) return;
+    const { name, headInn } = z.object({ name: z.string(), headInn: z.string() }).parse(req.body);
+    const r = await app.container.network.create(ctx.account, name, headInn);
+    return reply.code(r.ok ? 200 : 400).send(r);
+  });
+
+  app.post('/api/admin/networks/:id/members', async (req, reply) => {
+    const ctx = await requireRoleManage(req, reply);
+    if (!ctx) return;
+    const { id } = z.object({ id: z.string() }).parse(req.params);
+    const { inn } = z.object({ inn: z.string() }).parse(req.body);
+    const r = await app.container.network.addMember(ctx.account, id, inn);
+    return reply.code(r.ok ? 200 : 400).send(r);
+  });
+
+  app.delete('/api/admin/networks/:id/members/:inn', async (req, reply) => {
+    const ctx = await requireRoleManage(req, reply);
+    if (!ctx) return;
+    const { id, inn } = z.object({ id: z.string(), inn: z.string() }).parse(req.params);
+    const r = await app.container.network.removeMember(ctx.account, id, inn);
+    return reply.code(r.ok ? 200 : 400).send(r);
+  });
+
+  app.delete('/api/admin/networks/:id', async (req, reply) => {
+    const ctx = await requireRoleManage(req, reply);
+    if (!ctx) return;
+    const { id } = z.object({ id: z.string() }).parse(req.params);
+    const r = await app.container.network.remove(ctx.account, id);
+    return reply.code(r.ok ? 200 : 400).send(r);
+  });
+
+  // «Ответственный менеджер» — закрепление sales_manager за конкретными клиниками (panel/managerAssignments.ts).
+  app.get('/api/admin/manager-assignments', async (req, reply) => {
+    const ctx = await requireRoleManage(req, reply);
+    if (!ctx) return;
+    return reply.send({ ok: true, assignments: await app.container.managerAssignments.list(ctx.account) });
+  });
+
+  app.put('/api/admin/manager-assignments/:managerId', async (req, reply) => {
+    const ctx = await requireRoleManage(req, reply);
+    if (!ctx) return;
+    const { managerId } = z.object({ managerId: z.string() }).parse(req.params);
+    const { inns } = z.object({ inns: z.array(z.string()) }).parse(req.body);
+    const r = await app.container.managerAssignments.setForManager(ctx.account, managerId, inns);
+    return reply.code(r.ok ? 200 : 400).send(r);
+  });
+
   app.get('/api/admin/accounts/pending', async (req, reply) => {
     const ctx = await requireRoleManage(req, reply);
     if (!ctx) return;

@@ -22,6 +22,7 @@ export async function documentRoutes(app: FastifyInstance): Promise<void> {
     const body = grantSchema.parse(req.body);
     try {
       await assertPermission(app.container.repos.auditLog, ctx.account, 'doc:grant', 'document:grant', body.code, body.tenantInn);
+      await app.container.managerAssignments.assertTenantVisible(ctx.account, body.tenantInn);
     } catch (err) {
       if (err instanceof PermissionDeniedError) return reply.code(403).send({ ok: false, error: err.message });
       throw err;
@@ -48,6 +49,7 @@ export async function documentRoutes(app: FastifyInstance): Promise<void> {
     const body = revokeSchema.parse(req.body);
     try {
       await assertPermission(app.container.repos.auditLog, ctx.account, 'doc:grant', 'document:revoke', body.code, body.tenantInn);
+      await app.container.managerAssignments.assertTenantVisible(ctx.account, body.tenantInn);
     } catch (err) {
       if (err instanceof PermissionDeniedError) return reply.code(403).send({ ok: false, error: err.message });
       throw err;

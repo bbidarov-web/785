@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
+import Link from 'next/link';
 import { ResetPasswordForm, ChangePasswordDialog, OtpStep, TwoFactorDialog, authLinkBtn, type TwoFactorState } from '../AuthForms';
 import {
   StageCatalogForm, CycleMasterForm, EquipTypesForm, SummaryMasterForm,
@@ -37,6 +38,19 @@ interface SessionInfo extends TwoFactorState {
   role: string;
   side: 'platform' | 'clinic';
   fio: string;
+}
+
+interface ManagerAssignmentRow {
+  managerId: string;
+  managerFio: string;
+  clinics: { inn: string; name: string }[];
+}
+
+interface NetworkRow {
+  id: string;
+  name: string;
+  headInn: string;
+  members: { inn: string; name: string }[];
 }
 
 interface AdoptionRow {
@@ -87,7 +101,7 @@ const outlineBtn: React.CSSProperties = { padding: '7px 11px', borderRadius: 7, 
 
 const ROLE_LABELS: Record<string, string> = { methodist: 'методист', sales_manager: 'менеджер по продажам', sales_head: 'руководитель продаж', platform_admin: 'администратор платформы' };
 
-type Tab = 'accounts' | 'checklists' | 'stages' | 'cycle' | 'equip' | 'summary' | 'tariffs' | 'subscriptions' | 'payments' | 'bulk' | 'queue' | 'secondhand' | 'clients' | 'grants' | 'adoption';
+type Tab = 'accounts' | 'checklists' | 'stages' | 'cycle' | 'equip' | 'summary' | 'tariffs' | 'subscriptions' | 'payments' | 'bulk' | 'queue' | 'secondhand' | 'clients' | 'grants' | 'adoption' | 'networks' | 'managers';
 
 export function PlatformPanelShell({ allowedRoles, heading }: { allowedRoles: string[]; heading: string }) {
   const [ready, setReady] = useState(false);
@@ -121,6 +135,8 @@ export function PlatformPanelShell({ allowedRoles, heading }: { allowedRoles: st
   const [bulkJob, setBulkJob] = useState<BulkJob | null>(null);
   const [pilotInns, setPilotInns] = useState('');
   const pilotQs = () => (pilotInns.trim() ? `?pilot=${encodeURIComponent(pilotInns.trim())}` : '');
+  const [networks, setNetworks] = useState<NetworkRow[]>([]);
+  const [managerAssignments, setManagerAssignments] = useState<ManagerAssignmentRow[]>([]);
   const [adoption, setAdoption] = useState<AdoptionRow[]>([]);
   const [platformStaff, setPlatformStaff] = useState<StaffAccount[]>([]);
   const [stagePayments, setStagePayments] = useState<StagePaymentRow[]>([]);
@@ -147,7 +163,7 @@ export function PlatformPanelShell({ allowedRoles, heading }: { allowedRoles: st
   }, []);
 
   const loadAll = useCallback(async () => {
-    const [p, c, sd, cy, eq, sm, sh, cl, tf, sb, ss, br, fin, qt, ds, sp, ps, ad] = await Promise.all([
+    const [p, c, sd, cy, eq, sm, sh, cl, tf, sb, ss, br, fin, qt, ds, sp, ps, ad, nw, ma] = await Promise.all([
       isAdminRef.current
         ? api.get<{ ok: true; pending: PendingAccount[] } | { ok: false; error: string }>('/api/admin/accounts/pending')
         : Promise.resolve({ ok: false as const, error: 'нет права' }),
@@ -170,6 +186,12 @@ export function PlatformPanelShell({ allowedRoles, heading }: { allowedRoles: st
         ? api.get<{ ok: true; accounts: StaffAccount[] } | { ok: false; error: string }>('/api/admin/accounts')
         : Promise.resolve({ ok: false as const, error: 'нет права' }),
       api.get<{ ok: true; report: AdoptionRow[] } | { ok: false; error: string }>('/api/panel/standard/adoption'),
+      isAdminRef.current
+        ? api.get<{ ok: true; networks: NetworkRow[] } | { ok: false; error: string }>('/api/admin/networks')
+        : Promise.resolve({ ok: false as const, error: 'нет права' }),
+      isAdminRef.current
+        ? api.get<{ ok: true; assignments: ManagerAssignmentRow[] } | { ok: false; error: string }>('/api/admin/manager-assignments')
+        : Promise.resolve({ ok: false as const, error: 'нет права' }),
     ]);
     if (p.ok) setPending(p.pending);
     if (c.ok) setChecklists(c.checklists);
@@ -189,6 +211,8 @@ export function PlatformPanelShell({ allowedRoles, heading }: { allowedRoles: st
     if (sp.ok) setStagePayments(sp.payments);
     setPlatformStaff(ps.ok ? ps.accounts : []);
     setAdoption(ad.ok ? ad.report : []);
+    setNetworks(nw.ok ? nw.networks : []);
+    setManagerAssignments(ma.ok ? ma.assignments : []);
     await loadPortfolio(periodDays);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadPortfolio]);
@@ -265,7 +289,7 @@ export function PlatformPanelShell({ allowedRoles, heading }: { allowedRoles: st
               <button onClick={() => setAuthMode('reset')} style={authLinkBtn}>Забыли пароль?</button>
             </>
           )}
-          <a href="/" style={{ fontSize: 12.5, fontWeight: 700 }}>← на главную</a>
+          <Link href="/" style={{ fontSize: 12.5, fontWeight: 700 }}>← на главную</Link>
         </div>
       </div>
     );
@@ -281,7 +305,7 @@ export function PlatformPanelShell({ allowedRoles, heading }: { allowedRoles: st
   const activeQueueCount = queueTasks.filter((t) => t.state === 'new' || t.state === 'in_progress').length;
 
   const tabs: { key: Tab; label: string }[] = [
-    ...(canManageRoles ? [{ key: 'accounts' as Tab, label: `Заявки на доступ · ${pending.length}` }] : []),
+    ...(canManageRoles ? [{ key: 'accounts' as Tab, label: `Заявки на доступ · ${pending.length}` }, { key: 'networks' as Tab, label: `Сети клиник · ${networks.length}` }, { key: 'managers' as Tab, label: 'Ответственные менеджеры' }] : []),
     { key: 'checklists', label: `Чек-листы · ${checklists.length}` },
     { key: 'stages', label: 'Каталог этапов' },
     { key: 'cycle', label: 'Годовой цикл' },
@@ -319,6 +343,41 @@ export function PlatformPanelShell({ allowedRoles, heading }: { allowedRoles: st
             </button>
           ))}
         </div>
+
+        {tab === 'networks' && (
+          <NetworksTab networks={networks}
+            onCreate={async (name, headInn) => {
+              const r = await api.post<{ ok: true } | { ok: false; error: string }>('/api/admin/networks', { name, headInn });
+              if (!r.ok) { say(r.error); return false; }
+              await loadAll(); say('Сеть создана'); return true;
+            }}
+            onAddMember={async (id, inn) => {
+              const r = await api.post<{ ok: true } | { ok: false; error: string }>(`/api/admin/networks/${id}/members`, { inn });
+              if (!r.ok) { say(r.error); return false; }
+              await loadAll(); say('Клиника добавлена в сеть'); return true;
+            }}
+            onRemoveMember={async (id, inn) => {
+              const r = await api.del<{ ok: true } | { ok: false; error: string }>(`/api/admin/networks/${id}/members/${inn}`);
+              if (!r.ok) { say(r.error); return; }
+              await loadAll(); say('Клиника убрана из сети');
+            }}
+            onRemove={async (id) => {
+              const r = await api.del<{ ok: true } | { ok: false; error: string }>(`/api/admin/networks/${id}`);
+              if (!r.ok) { say(r.error); return; }
+              await loadAll(); say('Сеть удалена');
+            }}
+          />
+        )}
+
+        {tab === 'managers' && (
+          <ManagersTab assignments={managerAssignments} staff={platformStaff}
+            onSave={async (managerId, inns) => {
+              const r = await api.put<{ ok: true } | { ok: false; error: string }>(`/api/admin/manager-assignments/${managerId}`, { inns });
+              if (!r.ok) { say(r.error); return; }
+              await loadAll(); say(inns.length ? 'Закрепление сохранено' : 'Закрепление снято — менеджер снова видит все клиники');
+            }}
+          />
+        )}
 
         {tab === 'accounts' && (
           <AccountsTab pending={pending} canManageRoles={canManageRoles} staff={platformStaff} myId={session.accountId}
@@ -596,8 +655,8 @@ function AccountsTab({ pending, canManageRoles, staff, myId, onElevate, onApprov
           {staff.map((a) => (
             <div key={a.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '6px 0', borderBottom: '1px solid var(--border-3)' }}>
               <div style={{ fontSize: 12.5, fontWeight: 700 }}>{a.fio || a.login} <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>· {ROLE_LABELS[a.role] ?? a.role}{a.id === myId ? ' · это вы' : ''}</span></div>
-              <div style={{ display: 'flex', gap: 6 }}>
-                <select value={target[a.id] ?? a.role} onChange={(e) => setTarget((m) => ({ ...m, [a.id]: e.target.value }))} style={{ ...inputStyle, width: 'auto' }} aria-label={`Новая роль: ${a.fio || a.login}`}>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                <select value={target[a.id] ?? a.role} onChange={(e) => setTarget((m) => ({ ...m, [a.id]: e.target.value }))} style={{ ...inputStyle, width: 'auto', maxWidth: '100%' }} aria-label={`Новая роль: ${a.fio || a.login}`}>
                   {Object.entries(ROLE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                 </select>
                 <button disabled={(target[a.id] ?? a.role) === a.role} onClick={() => onElevate(a.id, target[a.id] ?? a.role)} style={{ ...outlineBtn, opacity: (target[a.id] ?? a.role) === a.role ? 0.5 : 1 }}>Запросить смену роли</button>
@@ -625,8 +684,8 @@ function AccountRow({ account, canManageRoles, onApprove, onReject }: {
         <div style={{ fontSize: 11.5, color: 'var(--text-muted)', fontWeight: 600 }}>ИНН {account.inn} · запрошена роль: {account.requestedRole || 'не указана'}</div>
       </div>
       {canManageRoles && (
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <select value={role} onChange={(e) => setRole(e.target.value)} style={inputStyle}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <select value={role} onChange={(e) => setRole(e.target.value)} style={{ ...inputStyle, width: 'auto', maxWidth: '100%' }}>
             <option value="methodist">методист</option>
             <option value="sales_manager">менеджер по продажам</option>
             <option value="sales_head">руководитель продаж</option>
@@ -667,11 +726,87 @@ function ChecklistsTab({ checklists, canPublish, onPublish }: { checklists: Chec
         </div>
       ))}
       {canPublish && (
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button onClick={() => setDraft((d) => d.concat([{ name: 'Новый чек-лист', items: [] }]))} style={outlineBtn}>+ чек-лист</button>
           <button onClick={() => onPublish(draft)} style={primaryBtn}>Опубликовать каталог</button>
         </div>
       )}
+    </div>
+  );
+}
+
+function ManagersTab({ assignments, staff, onSave }: {
+  assignments: ManagerAssignmentRow[]; staff: StaffAccount[]; onSave: (managerId: string, inns: string[]) => void;
+}) {
+  const managers = staff.filter((s) => s.role === 'sales_manager');
+  const [draft, setDraft] = useState<Record<string, string>>({});
+  const current = (id: string) => draft[id] ?? assignments.find((a) => a.managerId === id)?.clinics.map((c) => c.inn).join(', ') ?? '';
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600, lineHeight: 1.5 }}>
+        Без закрепления менеджер по продажам видит каталог клиентов, финансы и портфель по всей платформе — как раньше.
+        Указав список ИНН через запятую, вы сужаете его обзор и право выдавать документы только этими клиниками;
+        пустое поле снимает ограничение целиком.
+      </div>
+      {managers.length === 0 && <EmptyState text="Среди сотрудников платформы нет менеджеров по продажам." />}
+      {managers.map((m) => (
+        <div key={m.id} style={cardStyle}>
+          <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 2 }}>{m.fio || m.login}</div>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, marginBottom: 8 }}>
+            {assignments.find((a) => a.managerId === m.id)?.clinics.length ? `закреплено клиник: ${assignments.find((a) => a.managerId === m.id)!.clinics.length}` : 'ограничений нет — видит все клиники'}
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <input value={current(m.id)} onChange={(e) => setDraft((d) => ({ ...d, [m.id]: e.target.value }))} placeholder="ИНН клиник через запятую" style={{ ...inputStyle, fontFamily: 'var(--font-mono)', flex: '1 1 260px' }} />
+            <button onClick={() => onSave(m.id, current(m.id).split(',').map((s) => s.trim()).filter(Boolean))} style={primaryBtn}>Сохранить</button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function NetworksTab({ networks, onCreate, onAddMember, onRemoveMember, onRemove }: {
+  networks: NetworkRow[]; onCreate: (name: string, headInn: string) => Promise<boolean>; onAddMember: (id: string, inn: string) => Promise<boolean>;
+  onRemoveMember: (id: string, inn: string) => void; onRemove: (id: string) => void;
+}) {
+  const [name, setName] = useState('');
+  const [headInn, setHeadInn] = useState('');
+  const [addInn, setAddInn] = useState<Record<string, string>>({});
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600, lineHeight: 1.5 }}>
+        Сеть объединяет клиники под одной головной: данные клиник остаются раздельными, но собственные чек-листы сети (их ведёт администратор головной клиники)
+        ложатся поверх эталона методиста у всех участниц. Клиника состоит не более чем в одной сети.
+      </div>
+      <div style={cardStyle}>
+        <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 8 }}>Новая сеть</div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Название сети" style={{ ...inputStyle, flex: '1 1 200px', width: 'auto' }} />
+          <input value={headInn} onChange={(e) => setHeadInn(e.target.value)} placeholder="ИНН головной клиники" style={{ ...inputStyle, flex: '1 1 180px', width: 'auto', fontFamily: 'var(--font-mono)' }} />
+          <button onClick={async () => { if (await onCreate(name, headInn)) { setName(''); setHeadInn(''); } }} style={primaryBtn}>Создать сеть</button>
+        </div>
+      </div>
+      {networks.length === 0 && <EmptyState text="Сетей пока нет." />}
+      {networks.map((n) => (
+        <div key={n.id} style={cardStyle}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
+            <div style={{ fontSize: 13.5, fontWeight: 800 }}>{n.name} <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>· клиник: {n.members.length}</span></div>
+            <button onClick={() => { if (window.confirm(`Удалить сеть «${n.name}»? Клиники потеряют сетевые чек-листы.`)) onRemove(n.id); }} style={outlineBtn}>Удалить сеть</button>
+          </div>
+          <div style={{ marginTop: 8 }}>
+            {n.members.map((m) => (
+              <div key={m.inn} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '5px 0', borderBottom: '1px solid var(--border-3)', fontSize: 12, fontWeight: 600 }}>
+                <span>{m.name} <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>{m.inn}</span>{m.inn === n.headInn ? ' · головная' : ''}</span>
+                {m.inn !== n.headInn && <button onClick={() => onRemoveMember(n.id, m.inn)} style={outlineBtn}>Убрать</button>}
+              </div>
+            ))}
+          </div>
+          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+            <input value={addInn[n.id] ?? ''} onChange={(e) => setAddInn((a) => ({ ...a, [n.id]: e.target.value }))} placeholder="ИНН клиники для добавления" aria-label={`ИНН для сети ${n.name}`} style={{ ...inputStyle, fontFamily: 'var(--font-mono)' }} />
+            <button onClick={async () => { if (await onAddMember(n.id, addInn[n.id] ?? '')) setAddInn((a) => ({ ...a, [n.id]: '' })); }} style={outlineBtn}>Добавить</button>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

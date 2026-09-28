@@ -3,6 +3,7 @@ import type { Account } from '../domain/types.js';
 import { assertPermission } from '../rbac/service.js';
 import { daysUntil, formatDate, parseDate, todayString } from '../shared/date.js';
 import { DocumentService } from '../documents/service.js';
+import type { ManagerAssignmentService } from './managerAssignments.js';
 import type { Branch, CapaItem, StaffMember, Stage, StagePaymentState, SubscriptionState, TariffDef, WalkResultEntry } from '../shared/channelShapes.js';
 
 export interface ClientRow {
@@ -66,6 +67,7 @@ export class DashboardService {
   constructor(
     private repos: Repos,
     private documents: DocumentService,
+    private managerAssignments: ManagerAssignmentService,
   ) {}
 
   private async getCatalogDocCount(): Promise<number> {
@@ -86,11 +88,15 @@ export class DashboardService {
 
   async listClients(account: Account): Promise<ClientRow[]> {
     await assertPermission(this.repos.auditLog, account, 'clinic:read', 'dashboard:clients', null, null);
-    const [tenants, tariffByKey, catalogDocCount] = await Promise.all([
+    const [allTenants, scope, tariffByKey, catalogDocCount] = await Promise.all([
       this.repos.tenants.listAll(),
+      this.managerAssignments.visibleInns(account),
       this.getTariffByKey(),
       this.getCatalogDocCount(),
     ]);
+    // менеджер с закреплением («ответственный менеджер») видит только свои клиники;
+    // без закрепления и для всех остальных ролей — как раньше, весь каталог
+    const tenants = scope ? allTenants.filter((t) => scope.includes(t.inn)) : allTenants;
     const rows: ClientRow[] = [];
     for (const t of tenants) {
       const [staff, stagePaid, capa, branches, subscription, grants, accounts] = await Promise.all([
@@ -138,11 +144,13 @@ export class DashboardService {
   /** Карточки «Портфель» — reference/prototype/Админ-панель.dc.html «Дашборд». */
   async getPortfolio(account: Account, periodDays: number): Promise<PortfolioSummary> {
     await assertPermission(this.repos.auditLog, account, 'money:read', 'dashboard:portfolio', null, null);
-    const [tenants, tariffByKey, catalogDocCount] = await Promise.all([
+    const [allTenants, scope, tariffByKey, catalogDocCount] = await Promise.all([
       this.repos.tenants.listAll(),
+      this.managerAssignments.visibleInns(account),
       this.getTariffByKey(),
       this.getCatalogDocCount(),
     ]);
+    const tenants = scope ? allTenants.filter((t) => scope.includes(t.inn)) : allTenants;
     const cutoff = parseDate(todayString()).getTime() - periodDays * 86_400_000;
 
     let mrr = 0;
@@ -180,7 +188,10 @@ export class DashboardService {
    */
   async getFinancials(account: Account): Promise<FinancialSummary> {
     await assertPermission(this.repos.auditLog, account, 'money:read', 'dashboard:financials', null, null);
-    const tenants = await this.repos.tenants.listAll();
+    const [allTenants, scope] = await Promise.all([this.repos.tenants.listAll(), this.managerAssignments.visibleInns(account)]);
+    // закреплённый менеджер видит финансовую сводку по своим клиникам, а не по всей платформе —
+    // иначе ограничение каталога клиентов ничего бы не стоило: цифры утекали бы через агрегат
+    const tenants = scope ? allTenants.filter((t) => scope.includes(t.inn)) : allTenants;
     const tariffByKey = await this.getTariffByKey();
 
     let mrr = 0;

@@ -83,6 +83,24 @@ export async function clinicRoutes(app: FastifyInstance): Promise<void> {
     return reply.send({ ok: true, accounts: accounts.map(toPublicAccount) });
   });
 
+  // Сеть клиники и её собственный стандарт поверх эталона (network/service.ts).
+  app.get('/api/clinic/network', async (req, reply) => {
+    const ctx = requireAuth(req, reply);
+    if (!ctx) return;
+    const mine = await guarded(() => app.container.network.mine(ctx.account), reply);
+    if (mine === undefined) return;
+    return reply.send({ ok: true, network: mine });
+  });
+
+  app.put('/api/clinic/network/checklists', async (req, reply) => {
+    const ctx = requireAuth(req, reply);
+    if (!ctx) return;
+    const { checklists } = z.object({ checklists: z.array(z.object({ name: z.string(), items: z.array(z.string()) })) }).parse(req.body);
+    const r = await guarded(() => app.container.network.setChecklists(ctx.account, checklists), reply);
+    if (r === undefined) return;
+    return reply.code(r.ok ? 200 : 400).send(r);
+  });
+
   app.get('/api/clinic/invites', async (req, reply) => {
     const ctx = requireAuth(req, reply);
     if (!ctx) return;

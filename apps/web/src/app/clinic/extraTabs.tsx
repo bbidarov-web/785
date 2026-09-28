@@ -26,6 +26,9 @@ export interface ClinicProfile {
 
 export function ProfileTab({ profile, canManage, onSave }: { profile: ClinicProfile; canManage: boolean; onSave: (next: ClinicProfile) => void }) {
   const [draft, setDraft] = useState<ClinicProfile>(profile);
+  // Зависимость — отдельные поля, а не весь объект profile: он может приходить новым по ссылке
+  // при каждой загрузке данных кабинета с теми же значениями, и полная зависимость гоняла бы эффект зря.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => setDraft(profile), [profile.orgFull, profile.orgShort, profile.license, profile.chiefDoctor, profile.city]);
 
   const fields: { key: keyof ClinicProfile; label: string; tag: string }[] = [

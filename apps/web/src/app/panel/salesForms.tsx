@@ -522,7 +522,7 @@ export function ClientCatalogTab({ clients, financials, portfolio, periodDays, o
   });
   const filtered = byFilter.filter((c) => !q.trim() || c.inn.includes(q.trim()) || c.name.toLowerCase().includes(q.trim().toLowerCase()));
 
-  const chip = (key: ClientFilter, label: string): React.CSSProperties => ({
+  const chip = (key: ClientFilter): React.CSSProperties => ({
     padding: '8px 13px', borderRadius: 8, fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap',
     background: filter === key ? 'var(--text-primary)' : 'var(--bg-card)',
     color: key === 'churn-risk' && filter !== key ? 'var(--error)' : filter === key ? '#fff' : 'var(--text-primary)',
@@ -543,10 +543,10 @@ export function ClientCatalogTab({ clients, financials, portfolio, periodDays, o
       <FinancialSummaryCards financials={financials} />
 
       <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
-        <button onClick={() => setFilter('all')} style={chip('all', '')}>Все клиники · {counts.all}</button>
-        <button onClick={() => setFilter('trial')} style={chip('trial', '')}>Trial · {counts.trial}</button>
-        <button onClick={() => setFilter('churn-risk')} style={chip('churn-risk', '')}>Риск оттока · {counts['churn-risk']}</button>
-        <button onClick={() => setFilter('branches')} style={chip('branches', '')}>Сети с филиалами · {counts.branches}</button>
+        <button onClick={() => setFilter('all')} style={chip('all')}>Все клиники · {counts.all}</button>
+        <button onClick={() => setFilter('trial')} style={chip('trial')}>Trial · {counts.trial}</button>
+        <button onClick={() => setFilter('churn-risk')} style={chip('churn-risk')}>Риск оттока · {counts['churn-risk']}</button>
+        <button onClick={() => setFilter('branches')} style={chip('branches')}>Сети с филиалами · {counts.branches}</button>
       </div>
 
       <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Поиск по ИНН, названию или городу" style={inputStyle} />

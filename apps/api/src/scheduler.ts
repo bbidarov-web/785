@@ -29,6 +29,7 @@ export function startScheduler(container: Container): () => void {
       console.error('[scheduler] сбой рассылки напоминаний по срокам:', err);
     }
   };
+  // eslint-disable-next-line no-console
   container.bulk.failInterruptedJobs().catch((err) => console.error('[scheduler] не удалось пометить прерванные пачки:', err));
   void tick(); // не ждать первый час на свежем сервере
   const timer = setInterval(tick, TICK_MS);

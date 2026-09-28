@@ -12,6 +12,17 @@ const schema = z.object({
   SMS_PROVIDER_API_KEY: z.string().optional(),
   EMAIL_PROVIDER_API_KEY: z.string().optional(),
   EMAIL_FROM: z.string().default('Контур 785 <noreply@standart-kachestva.ru>'),
+  // Файловое хранилище (README «Что дальше», п.1): `local` — диск сервера (годится для
+  // одного инстанса, дев/первый VPS), `s3` — любой S3-совместимый провайдер (не только
+  // AWS — Selectel/Yandex Object Storage/VK Cloud для хостинга в РФ, тоже подходят).
+  FILES_DRIVER: z.enum(['local', 's3']).default('local'),
+  FILES_DIR: z.string().default('./var/uploads'),
+  FILES_S3_BUCKET: z.string().optional(),
+  FILES_S3_REGION: z.string().optional(),
+  FILES_S3_ENDPOINT: z.string().optional(),
+  FILES_S3_ACCESS_KEY_ID: z.string().optional(),
+  FILES_S3_SECRET_ACCESS_KEY: z.string().optional(),
+  FILES_S3_FORCE_PATH_STYLE: z.coerce.boolean().optional(),
 });
 
 export type Env = z.infer<typeof schema>;
@@ -20,7 +31,13 @@ let cached: Env | null = null;
 
 export function loadEnv(): Env {
   if (cached) return cached;
-  const parsed = schema.safeParse(process.env);
+  const parsed = schema
+    .superRefine((env, ctx) => {
+      if (env.FILES_DRIVER === 's3' && !env.FILES_S3_BUCKET) {
+        ctx.addIssue({ code: 'custom', path: ['FILES_S3_BUCKET'], message: 'обязателен, когда FILES_DRIVER=s3' });
+      }
+    })
+    .safeParse(process.env);
   if (!parsed.success) {
     const issues = parsed.error.issues.map((i) => `  - ${i.path.join('.')}: ${i.message}`).join('\n');
     throw new Error(`Некорректная конфигурация окружения:\n${issues}`);

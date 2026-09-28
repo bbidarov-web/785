@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
+import Link from 'next/link';
 import { RegisterClinicForm, ResetPasswordForm, ChangePasswordDialog, OtpStep, TwoFactorDialog, authLinkBtn, type TwoFactorState } from '../AuthForms';
 import {
   BranchesTab, CycleTab, EquipmentTab, SummaryTab, SelfAuditTab, ProfileTab, InventoryTab,
@@ -54,6 +55,14 @@ interface ClinicAccount {
   fio: string;
   role: string;
   branchName: string | null;
+}
+
+interface MyNetwork {
+  network: { id: string; name: string; headInn: string; headName: string; memberCount: number };
+  isHead: boolean;
+  members: { inn: string; name: string }[] | null;
+  overlay: { checklists: { name: string; items: string[] }[]; updatedAt: string | null };
+  shadowed: string[];
 }
 
 interface InviteView {
@@ -156,7 +165,7 @@ interface CapaTerm {
   days: number;
 }
 
-type Tab = 'standard' | 'stages' | 'staff' | 'plan' | 'findings' | 'capa' | 'profile' | 'inventory' | 'branches' | 'cycle' | 'equipment' | 'summary' | 'selfaudit';
+type Tab = 'network' | 'standard' | 'stages' | 'staff' | 'plan' | 'findings' | 'capa' | 'profile' | 'inventory' | 'branches' | 'cycle' | 'equipment' | 'summary' | 'selfaudit';
 const EMPTY_PROFILE: ClinicProfile = { orgFull: '', orgShort: '', license: '', chiefDoctor: '', city: '' };
 const EMPTY_INVENTORY_SUMMARY: InventorySummary = { total: 0, filled: 0, notFilled: 0 };
 const ALLOWED_ROLES = ['clinic_admin', 'vkk_lead', 'auditor', 'observer'];
@@ -186,6 +195,7 @@ export default function ClinicCabinetPage() {
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [pendingAccounts, setPendingAccounts] = useState<PendingAccount[]>([]);
   const [invites, setInvites] = useState<InviteView[]>([]);
+  const [myNetwork, setMyNetwork] = useState<MyNetwork | null>(null);
   const [inviteToken, setInviteToken] = useState('');
   const [assignments, setAssignments] = useState<Record<string, string>>({});
   const [docProgress, setDocProgress] = useState<Record<string, { fio: string; at: string }[]>>({});
@@ -221,7 +231,7 @@ export default function ClinicCabinetPage() {
   const roleRef = useRef('');
   const loadAll = useCallback(async () => {
     const sessionRole = roleRef.current;
-    const [st, s, pend, acc, invs, rd, ac, sr, a, p, f, c, br, cy, eqp, eqt, eqf, sm, sa, chk, pr, inv] = await Promise.all([
+    const [st, s, pend, acc, invs, rd, ac, sr, a, p, f, c, br, cy, eqp, eqt, eqf, sm, sa, chk, pr, inv, nw] = await Promise.all([
       api.get<{ ok: true; stages: StageView[] }>('/api/clinic/stages'),
       api.get<{ ok: true; staff: StaffMember[] }>('/api/clinic/staff'),
       sessionRole === 'clinic_admin'
@@ -250,12 +260,14 @@ export default function ClinicCabinetPage() {
       api.get<{ ok: true; checklists: { name: string }[] }>('/api/panel/checklists'),
       api.get<{ ok: true; profile: ClinicProfile } | { ok: false; error: string }>('/api/clinic/profile'),
       api.get<{ ok: true; rows: InventoryRow[]; summary: InventorySummary } | { ok: false; error: string }>('/api/clinic/documents/inventory'),
+      api.get<{ ok: true; network: MyNetwork | null } | { ok: false; error: string }>('/api/clinic/network'),
     ]);
     if (st.ok) setStages(st.stages);
     if (s.ok) setStaff(s.staff);
     setPendingAccounts(pend.ok ? pend.pending : []); // 403 для ролей без staff:manage — не ошибка, просто нечего показывать
     setClinicAccounts(acc.ok ? acc.accounts : []);
     setInvites(invs.ok ? invs.invites : []);
+    setMyNetwork(nw.ok ? nw.network : null);
     if (rd.ok) setReadiness(rd.readiness);
     setActs(ac.ok ? ac.acts : []);
     setStdRecs(sr.ok ? sr.recommendations : []);
@@ -344,7 +356,7 @@ export default function ClinicCabinetPage() {
               <button onClick={() => setAuthMode('register')} style={authLinkBtn}>Зарегистрировать клинику</button>
             </>
           )}
-          <a href="/" style={{ fontSize: 12.5, fontWeight: 700 }}>← на главную</a>
+          <Link href="/" style={{ fontSize: 12.5, fontWeight: 700 }}>← на главную</Link>
         </div>
       </div>
     );
@@ -360,6 +372,7 @@ export default function ClinicCabinetPage() {
   const canManageProfile = session.role === 'clinic_admin';
 
   const tabs: { key: Tab; label: string }[] = [
+    ...(myNetwork ? [{ key: 'network' as Tab, label: `Сеть · ${myNetwork.network.name}` }] : []),
     { key: 'standard', label: stdRecs.some((r) => r.status === 'pending') ? `Стандарт · обновлений ${stdRecs.filter((r) => r.status === 'pending').length}` : 'Стандарт' },
     { key: 'stages', label: `Этапы и документы · ${stages.length}` },
     { key: 'staff', label: pendingAccounts.length ? `Сотрудники · ${staff.length} · заявок ${pendingAccounts.length}` : `Сотрудники · ${staff.length}` },
@@ -415,6 +428,16 @@ export default function ClinicCabinetPage() {
             </button>
           ))}
         </div>
+
+        {tab === 'network' && myNetwork && (
+          <NetworkTab data={myNetwork} canEdit={myNetwork.isHead && session.role === 'clinic_admin'}
+            onSave={async (checklists) => {
+              const r = await api.put<{ ok: true } | { ok: false; error: string }>('/api/clinic/network/checklists', { checklists });
+              if (!r.ok) { say(r.error); return; }
+              await loadAll(); say('Стандарт сети сохранён — он уже действует во всех клиниках сети');
+            }}
+          />
+        )}
 
         {tab === 'standard' && (
           <StandardTab recs={stdRecs} catalogs={stdCatalogs} canDecide={session.role === 'clinic_admin' || session.role === 'vkk_lead'}
@@ -1103,6 +1126,62 @@ function StandardTab({ recs, catalogs, canDecide, onAccept, onDecline, onRollbac
           )}
         </div>
       ))}
+    </div>
+  );
+}
+
+function NetworkTab({ data, canEdit, onSave }: { data: MyNetwork; canEdit: boolean; onSave: (checklists: { name: string; items: string[] }[]) => void }) {
+  const toDraft = (list: MyNetwork['overlay']['checklists']) => list.map((c) => ({ name: c.name, text: c.items.join('\n') }));
+  const [draft, setDraft] = useState(toDraft(data.overlay.checklists));
+  useEffect(() => { setDraft(toDraft(data.overlay.checklists)); }, [data.overlay.updatedAt]); // eslint-disable-line react-hooks/exhaustive-deps
+  const { network } = data;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={cardStyle}>
+        <div style={{ fontSize: 14, fontWeight: 800 }}>{network.name}</div>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600, marginTop: 2 }}>
+          Головная клиника: {network.headName} · клиник в сети: {network.memberCount}{data.isHead ? '' : ' · стандарт сети ведёт головная клиника'}
+        </div>
+        {data.members && (
+          <div style={{ fontSize: 11.5, fontWeight: 600, marginTop: 6 }}>{data.members.map((m) => `${m.name} (${m.inn})`).join(' · ')}</div>
+        )}
+      </div>
+      <div style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600, lineHeight: 1.5 }}>
+        Стандарт сети — свои чек-листы поверх эталона методиста. Они появляются у всех клиник сети в самообследовании, годовом цикле и обходах.
+        Название не может совпадать с эталонным: эталон главнее.
+      </div>
+      {data.shadowed.length > 0 && (
+        <div style={{ ...cardStyle, borderColor: 'var(--warn)', fontSize: 12, fontWeight: 700 }}>
+          Скрыты одноимённым эталонным чек-листом (методист выпустил такой же): {data.shadowed.join(', ')}. Переименуйте или удалите.
+        </div>
+      )}
+      {draft.length === 0 && !canEdit && <EmptyState text="Головная клиника пока не добавила чек-листов сети." />}
+      {draft.map((c, i) => (
+        <div key={i} style={cardStyle}>
+          {canEdit ? (
+            <>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input value={c.name} onChange={(e) => setDraft((d) => d.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))} placeholder="Название чек-листа" style={inputStyle} />
+                <button onClick={() => setDraft((d) => d.filter((_, j) => j !== i))} style={outlineBtn}>Удалить</button>
+              </div>
+              <textarea value={c.text} onChange={(e) => setDraft((d) => d.map((x, j) => (j === i ? { ...x, text: e.target.value } : x)))} placeholder="Пункты — по одному в строке" rows={5} style={{ ...inputStyle, marginTop: 8, fontFamily: 'inherit', resize: 'vertical' }} />
+            </>
+          ) : (
+            <>
+              <div style={{ fontSize: 13, fontWeight: 800 }}>{c.name}</div>
+              <ul style={{ margin: '6px 0 0', paddingLeft: 18, fontSize: 12, fontWeight: 600, lineHeight: 1.6 }}>
+                {c.text.split('\n').map((t, k) => <li key={k}>{t}</li>)}
+              </ul>
+            </>
+          )}
+        </div>
+      ))}
+      {canEdit && (
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={() => setDraft((d) => d.concat([{ name: '', text: '' }]))} style={outlineBtn}>+ чек-лист сети</button>
+          <button onClick={() => onSave(draft.map((c) => ({ name: c.name, items: c.text.split('\n') })))} style={primaryBtn}>Сохранить стандарт сети</button>
+        </div>
+      )}
     </div>
   );
 }

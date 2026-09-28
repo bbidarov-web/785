@@ -109,7 +109,7 @@ export function StageCatalogForm({ stages, canPublish, onPublish }: { stages: St
         </div>
       ))}
       {canPublish && (
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button onClick={() => setDraft((d) => d.concat([{ code: d.length ? Math.max(...d.map((s) => s.code)) + 1 : 1, name: 'Новый этап', price: 0, blocks: [] }]))} style={outlineBtn}>
             + этап
           </button>
@@ -268,7 +268,7 @@ export function EquipTypesForm({ types, canPublish, onPublish }: { types: EquipT
         </div>
       ))}
       {canPublish && (
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button onClick={() => setDraft((d) => d.concat([{ key: '', name: '', logs: [] }]))} style={outlineBtn}>+ тип оборудования</button>
           <button onClick={() => onPublish(draft)} style={primaryBtn}>Опубликовать типы оборудования</button>
         </div>
@@ -309,7 +309,7 @@ export function SummaryMasterForm({ rows, canPublish, onPublish }: { rows: Summa
         </div>
       ))}
       {canPublish && (
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button onClick={() => setDraft((d) => d.concat([{ name: '', note: '', req: true }]))} style={outlineBtn}>+ строка</button>
           <button onClick={() => onPublish(draft)} style={primaryBtn}>Опубликовать состав отчёта</button>
         </div>

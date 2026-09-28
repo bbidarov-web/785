@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
+import Link from 'next/link';
 import {
   EquipmentTab, SummaryTab,
   type EquipmentPosition, type EquipmentTypeDef, type EquipmentFormRow, type SummaryRow,
@@ -346,7 +347,7 @@ export default function MobileWalkPage() {
             </div>
           ))}
         </div>
-        <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, padding: '12px clamp(12px, 4vw, 22px)', background: 'var(--bg-app)', borderTop: '1px solid var(--border-1)' }}>
+        <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, padding: '12px clamp(12px, 4vw, 22px) calc(12px + env(safe-area-inset-bottom))', background: 'var(--bg-app)', borderTop: '1px solid var(--border-1)' }}>
           <button
             className="k785-tap-target"
             onClick={finishWalk}
@@ -523,7 +524,7 @@ function Shell({ title, children }: { title: string; children: React.ReactNode }
         <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-caption)' }}>Контур 785</div>
         <h1 style={{ fontSize: 19, fontWeight: 800, margin: '4px 0 12px' }}>{title}</h1>
         {children}
-        <a href="/" style={{ display: 'inline-block', marginTop: 16, fontSize: 12.5, fontWeight: 700 }}>← на главную</a>
+        <Link href="/" style={{ display: 'inline-block', marginTop: 16, fontSize: 12.5, fontWeight: 700 }}>← на главную</Link>
       </div>
     </div>
   );

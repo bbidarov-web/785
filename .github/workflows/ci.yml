@@ -8,6 +8,22 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: kontur785
+          POSTGRES_PASSWORD: kontur785
+          POSTGRES_DB: kontur785
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://kontur785:kontur785@localhost:5432/kontur785?schema=public
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -17,7 +33,17 @@ jobs:
       - run: npm ci
       - run: npm run build --workspace packages/shared
       - run: npx prisma generate --schema apps/api/prisma/schema.prisma
+      - run: npm run lint
       - run: npm run typecheck
       - run: npm test
+      # Coverage вместе с порогами (apps/api/vitest.config.ts) — отдельным шагом, чтобы падение
+      # по цифре покрытия было явно отличимо от падения самих тестов в шаге выше.
+      - run: npm run test:coverage --workspace apps/api
       - run: npm run build --workspace apps/api
       - run: npm run build --workspace apps/web
+      # `prisma generate` выше проверяет только сам файл схемы; здесь — применение готовой
+      # миграции (apps/api/prisma/migrations) к настоящему Postgres и дымовой цикл через
+      # Prisma-репозитории (не in-memory, которыми пользуются остальные тесты), чтобы
+      # расхождение схемы с миграцией нашлось в CI, а не при первом деплое на реальную БД.
+      - run: npx prisma migrate deploy --schema apps/api/prisma/schema.prisma
+      - run: npx tsx apps/api/src/scripts/smokeCheckDb.ts

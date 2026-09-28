@@ -4,7 +4,6 @@ import type {
   AuditLogEntry,
   ChannelRecord,
   DocumentGrantRow,
-  GrantEvent,
   OtpCode,
   OtpPurpose,
   SecondHandRequest,

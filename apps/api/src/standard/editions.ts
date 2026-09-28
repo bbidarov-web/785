@@ -2,6 +2,8 @@ import type { Repos } from '../domain/ports.js';
 import type { Account } from '../domain/types.js';
 import { assertPermission } from '../rbac/service.js';
 import { todayString } from '../shared/date.js';
+import type { ChecklistDef } from '../shared/channelShapes.js';
+import { mergeChecklists } from '../network/store.js';
 
 /**
  * Контур редакций стандарта (handoff-план, плоскости «стандарт» и «внедрение»).
@@ -195,6 +197,13 @@ export class StandardEditionService {
 
   /** Каталог для клиники: принятая редакция; пока редакций нет (данные только в живом канале) — живая версия. */
   async catalog<T>(inn: string, key: CatalogKey, fallback: T): Promise<T> {
+    const base = await this.baseCatalog<T>(inn, key, fallback);
+    // собственный стандарт сети ложится поверх эталона: чек-листы сети получают все её клиники
+    return key === 'checklists' ? ((await mergeChecklists(this.repos, inn, base as ChecklistDef[])) as T) : base;
+  }
+
+  /** Эталон методиста, принятый клиникой, БЕЗ слоя сети. */
+  async baseCatalog<T>(inn: string, key: CatalogKey, fallback: T): Promise<T> {
     const no = await this.adoptedNo(inn, key);
     if (no === null) {
       // редакции есть, но все — пилотные и клиника в них не входит: живой канал уже несёт пилотные данные, отдавать его нельзя

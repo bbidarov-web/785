@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { createMemoryRepos } from '../testUtil/memoryRepos.js';
 import { DashboardService } from './dashboardService.js';
 import { DocumentService } from '../documents/service.js';
+import { ManagerAssignmentService } from './managerAssignments.js';
 import { todayString } from '../shared/date.js';
 import type { Account } from '../domain/types.js';
 import type { CapaItem, StagePaymentState, SubscriptionState, TariffDef } from '../shared/channelShapes.js';
@@ -24,7 +25,7 @@ describe('DashboardService — каталог клиентов', () => {
 
   beforeEach(() => {
     repos = createMemoryRepos();
-    svc = new DashboardService(repos, new DocumentService(repos));
+    svc = new DashboardService(repos, new DocumentService(repos), new ManagerAssignmentService(repos));
   });
 
   it('без клиник возвращает пустой список', async () => {
@@ -91,7 +92,7 @@ describe('DashboardService — финансовый дашборд (getFinancial
 
   beforeEach(async () => {
     repos = createMemoryRepos();
-    svc = new DashboardService(repos, new DocumentService(repos));
+    svc = new DashboardService(repos, new DocumentService(repos), new ManagerAssignmentService(repos));
     await repos.channels.set('platform', null, 'tariffs', TARIFFS, { updatedBy: null });
   });
 
@@ -173,7 +174,7 @@ describe('DashboardService — каталог клиентов: тариф, фи
 
   beforeEach(async () => {
     repos = createMemoryRepos();
-    svc = new DashboardService(repos, new DocumentService(repos));
+    svc = new DashboardService(repos, new DocumentService(repos), new ManagerAssignmentService(repos));
     await repos.tenants.upsert('7712345671', 'Клиника 1');
     await repos.channels.set('platform', null, 'stage_docs', CATALOG, { updatedBy: null });
     await repos.channels.set('platform', null, 'tariffs', [{ key: 'start', name: 'Старт', price: 15000, period: 'monthly', description: '', active: true }], { updatedBy: null });
@@ -225,5 +226,41 @@ describe('DashboardService — каталог клиентов: тариф, фи
     expect(csv).toContain('ИНН');
     expect(csv).toContain('7712345671');
     expect(csv).toContain('Клиника 1');
+  });
+});
+
+describe('DashboardService — «ответственный менеджер» сужает каталог, портфель и финансы', () => {
+  let repos: ReturnType<typeof createMemoryRepos>;
+  let svc: DashboardService;
+  const methodist = makeAccount('methodist');
+  const manager = makeAccount('sales_manager');
+  const INN_A = '7712345671';
+  const INN_B = '5001007322';
+
+  beforeEach(async () => {
+    repos = createMemoryRepos();
+    svc = new DashboardService(repos, new DocumentService(repos), new ManagerAssignmentService(repos));
+    await repos.tenants.upsert(INN_A, 'Клиника А');
+    await repos.tenants.upsert(INN_B, 'Клиника Б');
+    await repos.channels.set('tenant', INN_A, 'subscription', { tariffKey: 'start', status: 'active', startedAt: null, expiresAt: null, history: [] }, { updatedBy: null });
+    await repos.channels.set('tenant', INN_B, 'subscription', { tariffKey: 'start', status: 'active', startedAt: null, expiresAt: null, history: [] }, { updatedBy: null });
+    await repos.channels.set('platform', null, 'tariffs', [{ key: 'start', name: 'Старт', price: 10000, period: 'monthly', description: '', active: true }], { updatedBy: null });
+  });
+
+  it('без закрепления менеджер, как и методист, видит обе клиники', async () => {
+    expect(await svc.listClients(manager)).toHaveLength(2);
+    expect((await svc.getPortfolio(manager, 30)).clinicsCount).toBe(2);
+    expect((await svc.getFinancials(manager)).mrr).toBe(20000);
+  });
+
+  it('закреплённый менеджер видит только свою клинику — в списке, портфеле и финансах', async () => {
+    await repos.channels.set('platform', null, 'manager_assignments', { [manager.id]: [INN_A] }, { updatedBy: null });
+    const rows = await svc.listClients(manager);
+    expect(rows.map((r) => r.inn)).toEqual([INN_A]);
+    expect((await svc.getPortfolio(manager, 30)).clinicsCount).toBe(1);
+    expect((await svc.getFinancials(manager)).mrr).toBe(10000);
+    // супервизор рядом с тем же состоянием канала по-прежнему видит всё
+    expect(await svc.listClients(methodist)).toHaveLength(2);
+    expect((await svc.getFinancials(methodist)).mrr).toBe(20000);
   });
 });

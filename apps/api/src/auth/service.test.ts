@@ -264,7 +264,7 @@ describe('AuthService', () => {
     if (!reg.ok) throw new Error('setup failed');
     await repos.accounts.update(reg.account.id, { twoFactor: true });
     await auth.login('7712345671', 'medplus', 'medplus2026', {});
-    const sentCode = repos.notifier.sentOtp.at(-1)?.code!;
+    const sentCode = repos.notifier.sentOtp.at(-1)!.code;
     repos.clock.advanceMs(OTP_TTL_MS + 1000);
     const r = await auth.verifyOtp(reg.account.id, sentCode, {});
     expect(r.ok).toBe(false);
@@ -326,7 +326,7 @@ describe('AuthService', () => {
     if (!reg.ok) throw new Error('setup');
     const req = await auth.requestReset('7712345671', 'medplus');
     expect(JSON.stringify(req)).not.toMatch(/\d{6}/);
-    const code = repos.notifier.sentReset.at(-1)?.code!;
+    const code = repos.notifier.sentReset.at(-1)!.code;
     const confirm = await auth.confirmReset(reg.account.id, code, 'newpass123', 'newpass123');
     expect(confirm.ok).toBe(true);
     const login = await auth.login('7712345671', 'medplus', 'newpass123', {});

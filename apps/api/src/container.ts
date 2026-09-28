@@ -1,6 +1,6 @@
 import type { PrismaClient } from '@prisma/client';
 import { isRole, isPlatformRole, isClinicRole, type Permission, type SecondHandAction } from '@kontur785/shared';
-import type { Repos } from './domain/ports.js';
+import type { Repos, FileStorage } from './domain/ports.js';
 import { SystemClock } from './infra/memory/systemClock.js';
 import { ConsoleNotifier } from './infra/memory/notifier.js';
 import { HttpNotifier } from './infra/providers/httpNotifier.js';
@@ -40,6 +40,8 @@ import { WorkQueueService } from './panel/workQueueService.js';
 import { ReminderService } from './clinic/reminderService.js';
 import { ReadinessService } from './clinic/readinessService.js';
 import { StandardEditionService } from './standard/editions.js';
+import { NetworkService } from './network/service.js';
+import { ManagerAssignmentService } from './panel/managerAssignments.js';
 import { addDays, todayString } from './shared/date.js';
 
 export interface SecondHandHandler {
@@ -71,6 +73,8 @@ export interface ContainerOptions {
   smsApiKey?: string;
   emailApiKey?: string;
   emailFrom: string;
+  /** По умолчанию — локальный диск (`./var/uploads`); прод собирает через `infra/files/factory.ts` по `FILES_DRIVER`. */
+  files?: FileStorage;
 }
 
 export function buildContainer(prisma: PrismaClient, opts: ContainerOptions) {
@@ -85,7 +89,7 @@ export function buildContainer(prisma: PrismaClient, opts: ContainerOptions) {
     documentGrants: new PrismaDocumentGrantRepo(prisma),
     channels: new PrismaChannelStore(prisma),
     executorMarks: new PrismaExecutorMarkRepo(prisma),
-    files: new LocalDiskFileStorage(process.env.FILES_DIR || './var/uploads'),
+    files: opts.files ?? new LocalDiskFileStorage('./var/uploads'),
     notifier: opts.smsApiKey || opts.emailApiKey ? new HttpNotifier(opts.smsApiKey, opts.emailApiKey, opts.emailFrom) : new ConsoleNotifier(),
   };
   return buildContainerFromRepos(repos);
@@ -102,6 +106,7 @@ export function buildContainerFromRepos(repos: Repos) {
   const payment = new PaymentService(repos, secondHand);
   const capa = new CapaService(repos);
   const documents = new DocumentService(repos);
+  const managerAssignments = new ManagerAssignmentService(repos);
   const catalog = new CatalogService(repos, secondHand);
   const cycle = new CycleService(repos);
   const tariff = new TariffService(repos, secondHand);
@@ -226,7 +231,7 @@ export function buildContainerFromRepos(repos: Repos) {
     selfAudit: new SelfAuditService(repos, capa),
     profile: new ProfileService(repos),
     inventory: new InventoryService(repos),
-    dashboard: new DashboardService(repos, documents),
+    dashboard: new DashboardService(repos, documents, managerAssignments),
     tariff,
     subscription,
     bulk,
@@ -234,6 +239,8 @@ export function buildContainerFromRepos(repos: Repos) {
     reminders: new ReminderService(repos),
     readiness: new ReadinessService(repos),
     standard: new StandardEditionService(repos),
+    network: new NetworkService(repos),
+    managerAssignments,
   };
 }
 

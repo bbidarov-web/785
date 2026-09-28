@@ -45,8 +45,8 @@
   --role-badge-fg: #d8a13f;
   --role-badge-bg: #241a05;
 
-  --font-ui: Manrope, "Helvetica Neue", Helvetica, sans-serif;
-  --font-mono: "IBM Plex Mono", monospace;
+  --font-ui: var(--font-manrope), "Helvetica Neue", Helvetica, sans-serif;
+  --font-mono: var(--font-plex-mono), monospace;
 
   --radius-sm: 6px;
   --radius-md: 9px;

@@ -73,7 +73,11 @@ export function DocumentGrantsTab({ clients, stages, payments, onLoadGrants, onG
   const [inn, setInn] = useState('');
   const [grants, setGrants] = useState<Record<string, GrantRow>>({});
   const reload = async (target: string) => setGrants(target ? await onLoadGrants(target) : {});
-  useEffect(() => { void reload(inn); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [inn]);
+  useEffect(() => {
+    void reload(inn);
+    // reload пересоздаётся заново на каждый рендер — включать его в зависимости значило бы гонять эффект постоянно
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inn]);
 
   const stagePaid = (code: number) => payments.some((p) => p.tenantInn === inn && p.stageCode === code && p.payment.status === 'paid');
 
