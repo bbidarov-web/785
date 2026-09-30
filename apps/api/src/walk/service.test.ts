@@ -147,6 +147,30 @@ describe('WalkService — мобильный обход (README, SERVER.md §6.5
     expect(act.ok && act.body).toContain('НАРУШЕНИЕ (Индикаторы не вклеены)');
   });
 
+  it('простая подпись (ПЭП): акт несёт, кто завершил обход, когда и sha256 пунктов на тот момент', async () => {
+    await seedPlan([{ id: 'p1', check: 'Чек-лист аудита стерилизационной', who: 'Сидорова В. В.' }]);
+    await svc.answerItem(auditor, 'p1', { index: 0, answer: 'ok' }, 'a');
+    await svc.answerItem(auditor, 'p1', { index: 1, answer: 'bad', comment: 'x' }, 'b');
+    await svc.finish(auditor, 'p1', 'f1');
+    const act = await svc.getActText(auditor, 'p1');
+    expect(act.ok && act.body).toContain('Подписано (ПЭП): Сидорова В. В.');
+    expect(act.ok && act.body).toContain('Ответственный за ВКК: ______________________');
+    // старую строку "Проверяющий: ..." подпись заменяет собой, а не дублирует
+    expect(act.ok && act.body.match(/Подписано \(ПЭП\)/g)).toHaveLength(1);
+  });
+
+  it('повторное завершение (офлайн-ретрай) не переподписывает акт заново', async () => {
+    await seedPlan([{ id: 'p1', check: 'Чек-лист аудита стерилизационной', who: 'Сидорова В. В.' }]);
+    await svc.answerItem(auditor, 'p1', { index: 0, answer: 'ok' }, 'a');
+    await svc.answerItem(auditor, 'p1', { index: 1, answer: 'ok' }, 'b');
+    await svc.finish(auditor, 'p1', 'f1');
+    const first = (await svc.getActText(auditor, 'p1'));
+    repos.clock.advanceMs(60_000);
+    await svc.finish(auditor, 'p1', 'f1-retry');
+    const second = (await svc.getActText(auditor, 'p1'));
+    expect(first.ok && second.ok && first.body === second.body).toBe(true);
+  });
+
   it('акт не формируется по незавершённому обходу', async () => {
     await seedPlan([{ id: 'p1', check: 'Чек-лист аудита стерилизационной', who: 'Сидорова В. В.' }]);
     await svc.answerItem(auditor, 'p1', { index: 0, answer: 'ok' }, 'x');

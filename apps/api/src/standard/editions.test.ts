@@ -1,9 +1,10 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryRepos } from '../testUtil/memoryRepos.js';
 import { StandardEditionService } from './editions.js';
 import { StageService } from '../clinic/stageService.js';
 import type { Account } from '../domain/types.js';
 import type { ChecklistDef, Stage } from '../shared/channelShapes.js';
+import { addDays, todayString } from '../shared/date.js';
 
 function acc(role: Account['role'], inn: string, side: Account['side'] = 'clinic'): Account {
   return {
@@ -146,7 +147,8 @@ describe('StandardEditionService — редакции стандарта и пр
       expect(await svc.catalog(A, 'checklists', [])).toEqual([cl('a', 'пилот')]);
       expect(await svc.catalog(B, 'checklists', [])).toEqual([cl('a')]);
       const row = (await svc.adoptionReport(methodist)).find((r) => r.catalog === 'checklists')!;
-      expect(row.pilot).toEqual({ no: 2, inns: [A] });
+      expect(row.pilot).toMatchObject({ no: 2, inns: [A] });
+      expect(row.pilot?.until).toBe(addDays(todayString(), 7));
       expect(row).toMatchObject({ accepted: 2, pending: 0 }); // Б на своей последней доступной
     });
 
@@ -199,6 +201,59 @@ describe('StandardEditionService — редакции стандарта и пр
       await expect(svc.rollback(auditor, 'checklists', 1)).rejects.toThrow();
       await svc.rollback(admin, 'checklists', 1);
       expect(await svc.adoptedNo(B, 'checklists')).toBe(2);
+    });
+  });
+
+  // Даты редакций (publishedAt/pilotUntil) — реальный календарь (todayString()), а не
+  // repos.clock: изданная редакция обязана нести настоящую дату публикации, а не дату
+  // тестовых часов. Поэтому здесь двигаем системное время vitest, а не repos.clock.
+  describe('автопродвижение пилота (docs «План развития продукта» §8)', () => {
+    afterEach(() => vi.useRealTimers());
+
+    it('до истечения срока автопродвижение ничего не трогает', async () => {
+      await svc.publish('checklists', [cl('a')], 'm', 'm');
+      await svc.publish('checklists', [cl('a', 'пилот')], 'm', 'm', [A]);
+      vi.useFakeTimers();
+      vi.setSystemTime(Date.now() + 6 * 86_400_000); // грация — 7 дней
+      expect(await svc.autoPromotePilots()).toEqual([]);
+      expect((await svc.index('checklists')).at(-1)?.pilot).toEqual([A]);
+    });
+
+    it('срок прошёл, возражений нет — пилот выпускается для всех сам, как по кнопке', async () => {
+      await svc.publish('checklists', [cl('a')], 'm', 'm');
+      await svc.catalog(B, 'checklists', []);
+      await svc.publish('checklists', [cl('a', 'пилот')], 'm', 'm', [A]);
+      vi.useFakeTimers();
+      vi.setSystemTime(Date.now() + 7 * 86_400_000 + 86_400_000);
+      expect(await svc.autoPromotePilots()).toEqual([{ catalog: 'checklists', no: 2 }]);
+      const meta = (await svc.index('checklists')).find((e) => e.no === 2)!;
+      expect(meta.pilot).toBeUndefined();
+      expect(meta.pilotUntil).toBeUndefined();
+      expect((await svc.recommendations(adminB)).recommendations[0]).toMatchObject({ latest: 2, status: 'pending' });
+      // повторный тик планировщика не находит уже выпущенных пилотов — идемпотентно
+      expect(await svc.autoPromotePilots()).toEqual([]);
+    });
+
+    it('пилотная клиника отказалась (decline) — автопродвижение пропускает редакцию до ручного решения методиста', async () => {
+      await svc.publish('checklists', [cl('a')], 'm', 'm');
+      await svc.catalog(A, 'checklists', []);
+      await svc.publish('checklists', [cl('a', 'пилот')], 'm', 'm', [A]);
+      await svc.decline(admin, 'checklists');
+      vi.useFakeTimers();
+      vi.setSystemTime(Date.now() + 7 * 86_400_000 + 86_400_000);
+      expect(await svc.autoPromotePilots()).toEqual([]);
+      expect((await svc.index('checklists')).at(-1)?.pilot).toEqual([A]);
+    });
+
+    it('несколько каталогов с просроченными пилотами — продвигаются оба', async () => {
+      await svc.publish('checklists', [cl('a')], 'm', 'm');
+      await svc.publish('checklists', [cl('a', 'п')], 'm', 'm', [A]);
+      await svc.publish('cycle_master', { dirs: [], capaTerms: [] }, 'm', 'm');
+      await svc.publish('cycle_master', { dirs: [{ name: 'x' }], capaTerms: [] }, 'm', 'm', [A]);
+      vi.useFakeTimers();
+      vi.setSystemTime(Date.now() + 7 * 86_400_000 + 86_400_000);
+      const promoted = await svc.autoPromotePilots();
+      expect(promoted.map((p) => p.catalog).sort()).toEqual(['checklists', 'cycle_master']);
     });
   });
 });

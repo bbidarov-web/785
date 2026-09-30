@@ -359,6 +359,8 @@ export interface FinancialSummary {
   churnRate: number;
   tariffDemand: { tariffKey: string; tariffName: string; count: number }[];
   avgRolloutDays: number | null;
+  firstAuditRate: number;
+  avgDaysToFirstDocument: number | null;
 }
 
 function fmtMoney(n: number): string {
@@ -378,6 +380,8 @@ export function FinancialSummaryCards({ financials }: { financials: FinancialSum
         <div style={cell}><span style={label}>Активных подписок</span><span style={value}>{financials.activeSubscriptions}</span></div>
         <div style={cell}><span style={label}>Отток</span><span style={value}>{Math.round(financials.churnRate * 100)}%</span></div>
         <div style={cell}><span style={label}>Срок внедрения</span><span style={value}>{financials.avgRolloutDays != null ? `${financials.avgRolloutDays} дн.` : '—'}</span></div>
+        <div style={cell}><span style={label}>Дошли до первой проверки</span><span style={value}>{Math.round(financials.firstAuditRate * 100)}%</span></div>
+        <div style={cell}><span style={label}>До первого документа</span><span style={value}>{financials.avgDaysToFirstDocument != null ? `${financials.avgDaysToFirstDocument} дн.` : '—'}</span></div>
       </div>
       {financials.tariffDemand.length > 0 && (
         <div style={cardStyle}>

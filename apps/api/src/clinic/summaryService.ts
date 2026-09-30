@@ -49,7 +49,7 @@ export class SummaryService {
       const p = (n: number) => String(n).padStart(2, '0');
       return `${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()}`;
     })();
-    const entry: SummaryFileEntry = { fileId: saved.id, fileName, date: today, uploadedBy: account.id };
+    const entry: SummaryFileEntry = { fileId: saved.id, fileName, date: today, uploadedBy: account.id, checksum: saved.checksum };
 
     for (let attempt = 0; attempt < 5; attempt++) {
       const rec = await this.repos.channels.get<Record<string, SummaryFileEntry>>('tenant', account.inn, 'summary_files', {});

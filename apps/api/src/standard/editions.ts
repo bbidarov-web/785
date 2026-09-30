@@ -1,7 +1,7 @@
 import type { Repos } from '../domain/ports.js';
 import type { Account } from '../domain/types.js';
 import { assertPermission } from '../rbac/service.js';
-import { todayString } from '../shared/date.js';
+import { addDays, daysUntil, todayString } from '../shared/date.js';
 import type { ChecklistDef } from '../shared/channelShapes.js';
 import { mergeChecklists } from '../network/store.js';
 
@@ -37,6 +37,8 @@ export interface EditionMeta {
   changes: string[];
   /** Пилотный тираж: редакция видна только этим клиникам, пока методист не выпустит её для всех. */
   pilot?: string[];
+  /** Дата (ДД.ММ.ГГГГ), после которой автопродвижение выпустит пилот для всех — если ни одна пилотная клиника не отказалась. */
+  pilotUntil?: string;
 }
 
 interface AdoptionRecord {
@@ -65,11 +67,13 @@ export interface AdoptionReportRow {
   pending: number;
   declined: number;
   tenants: { inn: string; name: string; adopted: number; status: 'current' | 'pending' | 'declined' }[];
-  /** Редакция в пилоте (ещё не выпущена для всех): номер и клиники-участники. */
-  pilot: { no: number; inns: string[] } | null;
+  /** Редакция в пилоте (ещё не выпущена для всех): номер, клиники-участники и срок автовыпуска. */
+  pilot: { no: number; inns: string[]; until: string | null } | null;
 }
 
 const idxKey = (k: CatalogKey) => `standard_edition_index:${k}`;
+/** Срок, за который пилот либо получает возражение (отказ клиники), либо продвигается сам — README «Что дальше». */
+const PILOT_GRACE_DAYS = 7;
 const dataKey = (k: CatalogKey, no: number) => `standard_edition_data:${k}:${no}`;
 const ADOPTION = 'standard_adoption';
 
@@ -137,7 +141,10 @@ export class StandardEditionService {
       // данные редакции пишутся ОДИН раз (expectedVersion 0) — так изданная редакция неизменяема
       const d = await this.repos.channels.set('platform', null, dataKey(key, no), JSON.parse(JSON.stringify(data)), { expectedVersion: 0, updatedBy: byId });
       if (!d.ok) { bump++; continue; }
-      const meta: EditionMeta = { no, publishedAt: todayString(), byId, requestedBy, changes, ...(pilot?.length ? { pilot } : {}) };
+      const meta: EditionMeta = {
+        no, publishedAt: todayString(), byId, requestedBy, changes,
+        ...(pilot?.length ? { pilot, pilotUntil: addDays(todayString(), PILOT_GRACE_DAYS) } : {}),
+      };
       const res = await this.repos.channels.set('platform', null, idxKey(key), [...idx.data, meta], { expectedVersion: idx.version, updatedBy: byId });
       if (res.ok) return meta;
     }
@@ -264,7 +271,7 @@ export class StandardEditionService {
       const latest = idx.at(-1)?.no;
       if (!latest) continue;
       const pilotMeta = idx.find((e) => e.pilot);
-      const row: AdoptionReportRow = { catalog: key, label: CATALOGS[key], latest, accepted: 0, pending: 0, declined: 0, tenants: [], pilot: pilotMeta ? { no: pilotMeta.no, inns: pilotMeta.pilot! } : null };
+      const row: AdoptionReportRow = { catalog: key, label: CATALOGS[key], latest, accepted: 0, pending: 0, declined: 0, tenants: [], pilot: pilotMeta ? { no: pilotMeta.no, inns: pilotMeta.pilot!, until: pilotMeta.pilotUntil ?? null } : null };
       for (const t of tenants) {
         const rec = (await this.getAdoption(t.inn)).data[key];
         const tenantLatest = this.visibleLatest(idx, t.inn)?.no ?? latest;
@@ -294,7 +301,7 @@ export class StandardEditionService {
       const meta = idx.data.find((e) => e.no === no);
       if (!meta) return { ok: false, error: 'Редакция не найдена' };
       if (!meta.pilot) return { ok: false, error: 'Редакция уже выпущена для всех' };
-      const next = idx.data.map((e) => (e.no === no ? { ...e, pilot: undefined } : e));
+      const next = idx.data.map((e) => (e.no === no ? { ...e, pilot: undefined, pilotUntil: undefined } : e));
       const res = await this.repos.channels.set('platform', null, idxKey(key), JSON.parse(JSON.stringify(next)), { expectedVersion: idx.version, updatedBy: account.id });
       if (res.ok) {
         await this.repos.auditLog.append({ actorId: account.id, actorRole: account.role, tenantInn: null, action: 'standard:released', target: key, meta: { edition: no }, allowed: true });
@@ -326,5 +333,39 @@ export class StandardEditionService {
     const adopted = await this.adoptedNo(account.inn, key);
     if (adopted === null) return [];
     return (await this.index(key)).filter((e) => e.no < adopted && (!e.pilot || e.pilot.includes(account.inn)));
+  }
+
+  /**
+   * Автопродвижение пилота (docs «План развития продукта» §8: «после срока без замечаний»).
+   * Системное действие планировщика (`scheduler.ts`), не запрос человека — поэтому без
+   * `assertPermission` и с `actorId: null` в журнале, по образцу `ReminderService.run`.
+   * Возражение — явный отказ пилотной клиники (`decline`/`rollback` в эту редакцию); пока его
+   * нет ни у одной клиники пилота и срок прошёл, редакция выходит для всех сама, как по кнопке
+   * «Выпустить для всех». Если возражение есть — редакция остаётся пилотом до ручного решения
+   * методиста; повторные тики просто пропускают её, не трогая данные.
+   */
+  async autoPromotePilots(): Promise<{ catalog: CatalogKey; no: number }[]> {
+    const promoted: { catalog: CatalogKey; no: number }[] = [];
+    for (const key of Object.keys(CATALOGS) as CatalogKey[]) {
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const idx = await this.repos.channels.get<EditionMeta[]>('platform', null, idxKey(key), []);
+        const due = idx.data.find((e) => e.pilot?.length && e.pilotUntil && daysUntil(e.pilotUntil) <= 0);
+        if (!due) break; // в этом каталоге сейчас нечего продвигать
+        let hasObjection = false;
+        for (const inn of due.pilot!) {
+          const rec = (await this.getAdoption(inn)).data[key];
+          if (rec?.declined === due.no) { hasObjection = true; break; }
+        }
+        if (hasObjection) break; // ждём ручного решения методиста, следующую редакцию этого каталога не трогаем
+        const next = idx.data.map((e) => (e.no === due.no ? { ...e, pilot: undefined, pilotUntil: undefined } : e));
+        const res = await this.repos.channels.set('platform', null, idxKey(key), JSON.parse(JSON.stringify(next)), { expectedVersion: idx.version, updatedBy: null });
+        if (res.ok) {
+          await this.repos.auditLog.append({ actorId: null, actorRole: null, tenantInn: null, action: 'standard:auto-released', target: key, meta: { edition: due.no, pilotDays: PILOT_GRACE_DAYS }, allowed: true });
+          promoted.push({ catalog: key, no: due.no });
+          break; // индекс каталога перечитаем заново на случай ещё одного просроченного пилота
+        }
+      }
+    }
+    return promoted;
   }
 }

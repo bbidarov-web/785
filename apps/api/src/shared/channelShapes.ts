@@ -39,6 +39,8 @@ export interface WalkResultItem {
   answer: '' | 'ok' | 'bad';
   comment: string;
   photoFileId: string | null;
+  /** sha256 фото — видно, что приложенный снимок тот самый, что был сделан на месте; старые записи без неё. */
+  photoChecksum?: string | null;
 }
 
 /** Результат обхода по одной проверке плана (SERVER.md §3: `k785_walk_results_ИНН`). */
@@ -61,6 +63,13 @@ export interface WalkResultEntry {
   /** Номер акта «А-ГГГГ-NNN» — присваивается при завершении обхода, сквозная нумерация по клинике за год. */
   actNo?: string;
   finishedAt?: string;
+  /**
+   * Простая электронная подпись проверяющего под актом (docs «Горизонт 1»: «Signature —
+   * подпись поверх версии файла... простая, с задела под УКЭП») — кто завершил обход и когда,
+   * плюс sha256 пунктов на момент завершения: правка items задним числом (если бы кто-то
+   * обошёл неизменяемость через прямой доступ к каналу) не совпадёт с этой суммой.
+   */
+  signature?: { byId: string; byFio: string; at: string; itemsHash: string } | null;
 }
 
 /** Каталог чек-листов методиста (`k785_checklists`, платформенный канал). */
@@ -282,6 +291,8 @@ export interface SummaryFileEntry {
   fileName: string;
   date: string;
   uploadedBy: string;
+  /** sha256 содержимого (docs «Горизонт 1»: «файл с контрольной суммой») — видно, что файл тот самый; старые записи без неё. */
+  checksum?: string;
 }
 
 /**

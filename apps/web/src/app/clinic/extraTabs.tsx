@@ -342,7 +342,7 @@ export interface SummaryRow {
   name: string;
   note: string;
   required: boolean;
-  file: { fileName: string; date: string } | null;
+  file: { fileName: string; date: string; checksum?: string } | null;
 }
 
 export function SummaryTab({ rows, canManage, onUpload, onRemove }: {
@@ -363,6 +363,11 @@ export function SummaryTab({ rows, canManage, onUpload, onRemove }: {
           <div style={{ marginTop: 8, fontSize: 12, fontWeight: 600, color: r.file ? 'var(--accent-hover)' : 'var(--warn)' }}>
             {r.file ? `Загружен: ${r.file.fileName} · ${r.file.date}` : 'Не загружен'}
           </div>
+          {r.file?.checksum && (
+            <div style={{ marginTop: 2, fontSize: 10.5, fontFamily: 'var(--font-mono)', color: 'var(--text-caption)' }} title="Контрольная сумма файла (sha256) — подтверждает, что это тот же файл, что был загружен">
+              sha256 {r.file.checksum.slice(0, 16)}…
+            </div>
+          )}
           {canManage && (
             <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap', alignItems: 'center' }}>
               <label className="k785-tap-target" style={{ ...outlineBtn, cursor: 'pointer' }}>

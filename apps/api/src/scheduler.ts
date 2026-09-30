@@ -28,6 +28,16 @@ export function startScheduler(container: Container): () => void {
       // eslint-disable-next-line no-console
       console.error('[scheduler] сбой рассылки напоминаний по срокам:', err);
     }
+    try {
+      const promoted = await container.standard.autoPromotePilots();
+      if (promoted.length) {
+        // eslint-disable-next-line no-console
+        console.log('[scheduler] пилот выпущен для всех без возражений:', promoted);
+      }
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[scheduler] сбой автопродвижения пилотов стандарта:', err);
+    }
   };
   // eslint-disable-next-line no-console
   container.bulk.failInterruptedJobs().catch((err) => console.error('[scheduler] не удалось пометить прерванные пачки:', err));

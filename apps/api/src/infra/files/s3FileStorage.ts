@@ -1,5 +1,5 @@
 import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type { FileStorage } from '../../domain/ports.js';
 
 export interface S3FileStorageOptions {
@@ -46,20 +46,23 @@ export class S3FileStorage implements FileStorage {
     return `${tenantInn}/${id}`;
   }
 
-  async save(tenantInn: string, contentType: string, data: Buffer): Promise<{ id: string; sizeBytes: number }> {
+  async save(tenantInn: string, contentType: string, data: Buffer): Promise<{ id: string; sizeBytes: number; checksum: string }> {
     const id = randomUUID();
+    const checksum = createHash('sha256').update(data).digest('hex');
     await this.client.send(
       new PutObjectCommand({
         Bucket: this.opts.bucket,
         Key: this.key(tenantInn, id),
         Body: data,
         ContentType: contentType,
+        // произвольные метаданные объекта (x-amz-meta-*) — S3 отдаёт их назад ключом в нижнем регистре
+        Metadata: { checksum },
       }),
     );
-    return { id, sizeBytes: data.byteLength };
+    return { id, sizeBytes: data.byteLength, checksum };
   }
 
-  async read(tenantInn: string, id: string): Promise<{ contentType: string; data: Buffer } | null> {
+  async read(tenantInn: string, id: string): Promise<{ contentType: string; data: Buffer; checksum: string } | null> {
     // id — UUID, сгенерированный этим же классом; форма проверяется на входе, как и в
     // LocalDiskFileStorage, — не потому что S3-ключ уязвим к обходу каталога так же, как
     // путь на диске, а чтобы дефект в вызывающем коде не ушёл на реальный запрос к S3.
@@ -68,7 +71,10 @@ export class S3FileStorage implements FileStorage {
       const res = await this.client.send(new GetObjectCommand({ Bucket: this.opts.bucket, Key: this.key(tenantInn, id) }));
       if (!res.Body) return null;
       const bytes = await res.Body.transformToByteArray();
-      return { contentType: res.ContentType ?? 'application/octet-stream', data: Buffer.from(bytes) };
+      const data = Buffer.from(bytes);
+      // объект без нашей метки (загружен в обход этого адаптера) — считаем контрольную сумму на лету
+      const checksum = res.Metadata?.checksum ?? createHash('sha256').update(data).digest('hex');
+      return { contentType: res.ContentType ?? 'application/octet-stream', data, checksum };
     } catch (err) {
       if ((err as { name?: string } | null)?.name === 'NoSuchKey') return null;
       throw err;

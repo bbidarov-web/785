@@ -21,12 +21,21 @@ export interface ClientRow {
   readinessPct: number;
   /** Последний вход любого сотрудника клиники (ДД.ММ.ГГГГ) — null, если ни разу не заходили. */
   lastActivityAt: string | null;
-  /** Подписка истекла/отменена, либо истекает в ближайшие 14 дней (reference/prototype: «Риск оттока»). */
+  /**
+   * Подписка истекла/отменена, либо истекает в ближайшие 14 дней, либо клиника старше
+   * READINESS_CHURN_AFTER_DAYS и всё ещё не набрала READINESS_CHURN_THRESHOLD_PCT готовности
+   * (reference/docs «План развития продукта» §8: «Готовность через 30 дней» — предиктор
+   * оттока по факту внедрения, а не только по факту оплаты).
+   */
   churnRisk: boolean;
 }
 
 const EMPTY_SUBSCRIPTION: SubscriptionState = { tariffKey: null, status: 'none', startedAt: null, expiresAt: null, history: [] };
 const CHURN_RISK_WINDOW_DAYS = 14;
+// Предиктор по факту внедрения (docs «План развития продукта» §8): клиника платит,
+// но за месяц так и не набрала готовности — типичный сигнал ухода до истечения подписки.
+const READINESS_CHURN_AFTER_DAYS = 30;
+const READINESS_CHURN_THRESHOLD_PCT = 40;
 
 export interface TariffDemandRow {
   tariffKey: string;
@@ -42,6 +51,10 @@ export interface FinancialSummary {
   churnRate: number; // доля отменённых/истёкших среди когда-либо подписанных, 0..1
   tariffDemand: TariffDemandRow[];
   avgRolloutDays: number | null; // среднее число дней от заказа первого этапа до приёмки последнего принятого этапа
+  /** Доля клиник (из видимых аккаунту), у которых есть хоть один завершённый обход — воронка «дошли до первой проверки». */
+  firstAuditRate: number;
+  /** Среднее число дней от регистрации клиники до первой выдачи документа; null — ни одной выдачи ни у кого. */
+  avgDaysToFirstDocument: number | null;
 }
 
 /** Карточки «Портфель» на дашборде (reference/prototype/Админ-панель.dc.html «Дашборд»). */
@@ -80,9 +93,12 @@ export class DashboardService {
     return new Map(tariffs.map((t) => [t.key, t]));
   }
 
-  private isChurnRisk(sub: SubscriptionState): boolean {
+  private isChurnRisk(sub: SubscriptionState, tenantAgeDays: number, readinessPct: number): boolean {
     if (sub.status === 'expired' || sub.status === 'cancelled') return true;
-    if ((sub.status === 'active' || sub.status === 'trial') && sub.expiresAt) return daysUntil(sub.expiresAt) <= CHURN_RISK_WINDOW_DAYS;
+    if ((sub.status === 'active' || sub.status === 'trial') && sub.expiresAt && daysUntil(sub.expiresAt) <= CHURN_RISK_WINDOW_DAYS) return true;
+    // тенант старше clock.now(), а не todayString()/new Date() — иначе тестовые часы
+    // (TestClock от 2026-01-01) и реальная дата разъедутся и дадут ложный сигнал
+    if (tenantAgeDays >= READINESS_CHURN_AFTER_DAYS && readinessPct < READINESS_CHURN_THRESHOLD_PCT) return true;
     return false;
   }
 
@@ -110,6 +126,8 @@ export class DashboardService {
       ]);
       const lastLogin = accounts.reduce<Date | null>((max, a) => (a.lastLoginAt && (!max || a.lastLoginAt > max) ? a.lastLoginAt : max), null);
       const tariff = subscription.data.tariffKey ? tariffByKey.get(subscription.data.tariffKey) : undefined;
+      const readinessPct = catalogDocCount > 0 ? Math.round((Object.keys(grants).length / catalogDocCount) * 100) : 0;
+      const tenantAgeDays = Math.floor((this.repos.clock.now().getTime() - t.createdAt.getTime()) / 86_400_000);
       rows.push({
         inn: t.inn,
         name: t.name,
@@ -121,9 +139,9 @@ export class DashboardService {
         tariffKey: subscription.data.tariffKey,
         tariffName: tariff?.name ?? null,
         subscriptionStatus: subscription.data.status,
-        readinessPct: catalogDocCount > 0 ? Math.round((Object.keys(grants).length / catalogDocCount) * 100) : 0,
+        readinessPct,
         lastActivityAt: lastLogin ? formatDate(lastLogin) : null,
-        churnRisk: this.isChurnRisk(subscription.data),
+        churnRisk: this.isChurnRisk(subscription.data, tenantAgeDays, readinessPct),
       });
     }
     return rows;
@@ -198,15 +216,19 @@ export class DashboardService {
     let activeCount = 0;
     let everSubscribed = 0;
     let churnedCount = 0;
+    let clinicsWithFirstAudit = 0;
     const demand = new Map<string, number>();
     const rolloutDurations: number[] = [];
+    const daysToFirstDocument: number[] = [];
 
     for (const t of tenants) {
-      // Оба чтения по клинике независимы — запускаем параллельно, а не ждём
-      // подписку перед этапами (было бы 2×N последовательных round-trip).
-      const [subRec, stagePaidRec] = await Promise.all([
+      // Независимые чтения по клинике — запускаем параллельно, а не ждём одно за другим
+      // (было бы 4×N последовательных round-trip вместо одного параллельного).
+      const [subRec, stagePaidRec, walkResultsRec, grants] = await Promise.all([
         this.repos.channels.get<SubscriptionState>('tenant', t.inn, 'subscription', EMPTY_SUBSCRIPTION),
         this.repos.channels.get<Record<number, StagePaymentState>>('tenant', t.inn, 'stage_paid', {}),
+        this.repos.channels.get<Record<string, WalkResultEntry>>('tenant', t.inn, 'walk_results', {}),
+        this.repos.documentGrants.listForTenant(t.inn),
       ]);
       const sub = subRec.data;
       if (sub.history.length > 0) everSubscribed++;
@@ -229,6 +251,11 @@ export class DashboardService {
         const end = Math.max(...accepted);
         if (end >= start) rolloutDurations.push(Math.round((end - start) / 86_400_000));
       }
+
+      if (Object.values(walkResultsRec.data).some((w) => w.finished)) clinicsWithFirstAudit++;
+
+      const firstGrantAt = grants.filter((g) => g.event === 'grant').map((g) => g.at.getTime()).sort((a, b) => a - b)[0];
+      if (firstGrantAt !== undefined) daysToFirstDocument.push(Math.max(0, Math.round((firstGrantAt - t.createdAt.getTime()) / 86_400_000)));
     }
 
     const tariffDemand: TariffDemandRow[] = [...demand.entries()]
@@ -242,6 +269,8 @@ export class DashboardService {
       churnRate: everSubscribed > 0 ? churnedCount / everSubscribed : 0,
       tariffDemand,
       avgRolloutDays: rolloutDurations.length ? Math.round(rolloutDurations.reduce((a, b) => a + b, 0) / rolloutDurations.length) : null,
+      firstAuditRate: tenants.length ? clinicsWithFirstAudit / tenants.length : 0,
+      avgDaysToFirstDocument: daysToFirstDocument.length ? Math.round(daysToFirstDocument.reduce((a, b) => a + b, 0) / daysToFirstDocument.length) : null,
     };
   }
 }

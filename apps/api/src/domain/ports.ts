@@ -101,8 +101,9 @@ export interface ChannelStore {
  * сигнатурой (см. infra/files/localDisk.ts).
  */
 export interface FileStorage {
-  save(tenantInn: string, contentType: string, data: Buffer): Promise<{ id: string; sizeBytes: number }>;
-  read(tenantInn: string, id: string): Promise<{ contentType: string; data: Buffer } | null>;
+  /** checksum — sha256 в hex, считается адаптером от переданных байтов (docs «Горизонт 1»: «файл с контрольной суммой»). */
+  save(tenantInn: string, contentType: string, data: Buffer): Promise<{ id: string; sizeBytes: number; checksum: string }>;
+  read(tenantInn: string, id: string): Promise<{ contentType: string; data: Buffer; checksum: string } | null>;
 }
 
 export interface ExecutorMarkRepo {

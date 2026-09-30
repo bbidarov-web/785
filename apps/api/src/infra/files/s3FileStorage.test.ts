@@ -1,6 +1,9 @@
+import { createHash } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 import type { S3Client } from '@aws-sdk/client-s3';
 import { S3FileStorage } from './s3FileStorage.js';
+
+const sha256 = (s: string) => createHash('sha256').update(Buffer.from(s)).digest('hex');
 
 function fakeClient(send: (cmd: { constructor: { name: string }; input: Record<string, unknown> }) => unknown) {
   return { send } as unknown as S3Client;
@@ -18,22 +21,37 @@ describe('S3FileStorage', () => {
     const r = await store.save('7712345671', 'image/jpeg', Buffer.from('hello'));
 
     expect(r.sizeBytes).toBe(5);
+    expect(r.checksum).toBe(sha256('hello'));
     expect(calls).toHaveLength(1);
     expect(calls[0]!.name).toBe('PutObjectCommand');
-    expect(calls[0]!.input).toMatchObject({ Bucket: 'my-bucket', Key: `7712345671/${r.id}`, ContentType: 'image/jpeg' });
+    expect(calls[0]!.input).toMatchObject({ Bucket: 'my-bucket', Key: `7712345671/${r.id}`, ContentType: 'image/jpeg', Metadata: { checksum: r.checksum } });
   });
 
-  it('read по UUID из своего tenantInn возвращает contentType и данные', async () => {
+  it('read по UUID из своего tenantInn возвращает contentType, данные и контрольную сумму из метаданных объекта', async () => {
     const id = '11111111-1111-1111-1111-111111111111';
     const client = fakeClient(() => ({
       ContentType: 'application/pdf',
+      Metadata: { checksum: 'stored-checksum' },
       Body: { transformToByteArray: async () => new Uint8Array(Buffer.from('pdf-bytes')) },
     }));
     const store = new S3FileStorage({ bucket: 'b' }, client);
 
     const r = await store.read('7712345671', id);
 
-    expect(r).toEqual({ contentType: 'application/pdf', data: Buffer.from('pdf-bytes') });
+    expect(r).toEqual({ contentType: 'application/pdf', data: Buffer.from('pdf-bytes'), checksum: 'stored-checksum' });
+  });
+
+  it('read объекта без нашей метки (загружен в обход адаптера) считает контрольную сумму на лету', async () => {
+    const id = '44444444-4444-4444-4444-444444444444';
+    const client = fakeClient(() => ({
+      ContentType: 'application/pdf',
+      Body: { transformToByteArray: async () => new Uint8Array(Buffer.from('legacy-bytes')) },
+    }));
+    const store = new S3FileStorage({ bucket: 'b' }, client);
+
+    const r = await store.read('7712345671', id);
+
+    expect(r?.checksum).toBe(sha256('legacy-bytes'));
   });
 
   it('read отклоняет id, не похожий на UUID, не обращаясь к S3', async () => {

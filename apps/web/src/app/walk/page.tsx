@@ -179,6 +179,15 @@ export default function MobileWalkPage() {
     }
   }, [loadList, say]);
 
+  // PWA только на этом экране (README «Что дальше»: «мобильный обход как PWA») — регистрация
+  // здесь, а не в layout.tsx, чтобы установка приложения не касалась остальных кабинетов.
+  // Сервис-воркер (public/sw.js) ничего не кэширует, нужен только для установки на экран.
+  useEffect(() => {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(() => {}); // недоступность SW не мешает работе страницы
+    }
+  }, []);
+
   useEffect(() => {
     (async () => {
       const r = await api.get<{ ok: true; session: SessionInfo | null }>('/api/auth/session');

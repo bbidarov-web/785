@@ -98,7 +98,7 @@ describe('DashboardService — финансовый дашборд (getFinancial
 
   it('без клиник — нулевая сводка, без деления на ноль', async () => {
     const f = await svc.getFinancials(methodist);
-    expect(f).toEqual({ mrr: 0, arpa: 0, activeSubscriptions: 0, churnRate: 0, tariffDemand: [], avgRolloutDays: null });
+    expect(f).toEqual({ mrr: 0, arpa: 0, activeSubscriptions: 0, churnRate: 0, tariffDemand: [], avgRolloutDays: null, firstAuditRate: 0, avgDaysToFirstDocument: null });
   });
 
   it('исполнитель клиники не видит финансовый дашборд (нет money:read)', async () => {
@@ -164,6 +164,31 @@ describe('DashboardService — финансовый дашборд (getFinancial
     const f = await svc.getFinancials(methodist);
     expect(f.avgRolloutDays).toBeNull();
   });
+
+  it('доля дошедших до первой проверки — по факту завершённого обхода, а не по назначению', async () => {
+    await repos.tenants.upsert('7712345671', 'Клиника 1');
+    await repos.tenants.upsert('5001007322', 'Клиника 2');
+    await repos.channels.set('tenant', '7712345671', 'walk_results', { p1: { finished: true } }, { updatedBy: null });
+    await repos.channels.set('tenant', '5001007322', 'walk_results', { p1: { finished: false } }, { updatedBy: null });
+    const f = await svc.getFinancials(methodist);
+    expect(f.firstAuditRate).toBe(0.5);
+  });
+
+  it('среднее число дней до первой выдачи документа — от регистрации клиники до самой ранней выдачи', async () => {
+    await repos.tenants.upsert('7712345671', 'Клиника 1');
+    repos.clock.advanceMs(5 * 86_400_000);
+    await repos.documentGrants.appendEvent({ tenantInn: '7712345671', stage: '1', code: 'doc1', name: 'Документ 1', event: 'grant', byAccountId: 'a', byRole: 'methodist', paid: true });
+    repos.clock.advanceMs(5 * 86_400_000);
+    await repos.documentGrants.appendEvent({ tenantInn: '7712345671', stage: '1', code: 'doc2', name: 'Документ 2', event: 'grant', byAccountId: 'a', byRole: 'methodist', paid: true });
+    const f = await svc.getFinancials(methodist);
+    expect(f.avgDaysToFirstDocument).toBe(5); // самая ранняя выдача, а не последняя и не среднее по обеим
+  });
+
+  it('без ни одной выдачи ни у кого — avgDaysToFirstDocument null, а не 0', async () => {
+    await repos.tenants.upsert('7712345671', 'Клиника 1');
+    const f = await svc.getFinancials(methodist);
+    expect(f.avgDaysToFirstDocument).toBeNull();
+  });
 });
 
 describe('DashboardService — каталог клиентов: тариф, филиалы, готовность, активность, риск оттока', () => {
@@ -212,6 +237,26 @@ describe('DashboardService — каталог клиентов: тариф, фи
   it('риск оттока: подписка истекла или отменена, либо истекает в ближайшие 14 дней', async () => {
     await repos.channels.set('tenant', '7712345671', 'subscription', { tariffKey: 'start', status: 'expired', startedAt: null, expiresAt: null, history: [] }, { updatedBy: null });
     expect((await svc.listClients(methodist))[0]?.churnRisk).toBe(true);
+  });
+
+  it('риск оттока: свежая клиника с низкой готовностью — не риск, порог начинает действовать только после 30 дней', async () => {
+    const rows = await svc.listClients(methodist);
+    expect(rows[0]).toMatchObject({ readinessPct: 0, churnRisk: false });
+  });
+
+  it('риск оттока: клиника старше 30 дней и готовность ниже 40% — сигнал даже при активной подписке', async () => {
+    await repos.channels.set('tenant', '7712345671', 'subscription', { tariffKey: 'start', status: 'active', startedAt: '01.01.2026', expiresAt: '01.01.2027', history: [] }, { updatedBy: null });
+    repos.clock.advanceMs(31 * 86_400_000);
+    const rows = await svc.listClients(methodist);
+    expect(rows[0]).toMatchObject({ readinessPct: 0, churnRisk: true });
+  });
+
+  it('риск оттока: клиника старше 30 дней, но готовность 40% и выше — риска нет', async () => {
+    await repos.channels.set('tenant', '7712345671', 'subscription', { tariffKey: 'start', status: 'active', startedAt: '01.01.2026', expiresAt: '01.01.2027', history: [] }, { updatedBy: null });
+    await repos.documentGrants.appendEvent({ tenantInn: '7712345671', stage: '1', code: 'Док 1', name: 'Док 1', event: 'grant', byAccountId: 'a', byRole: 'methodist', paid: true });
+    repos.clock.advanceMs(31 * 86_400_000);
+    const rows = await svc.listClients(methodist);
+    expect(rows[0]).toMatchObject({ readinessPct: 50, churnRisk: false });
   });
 
   it('портфель считает клиник, MRR, среднюю готовность и обходы за период', async () => {

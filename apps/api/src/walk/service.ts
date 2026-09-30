@@ -1,8 +1,9 @@
+import { createHash } from 'node:crypto';
 import { StandardEditionService } from '../standard/editions.js';
 import type { Repos } from '../domain/ports.js';
 import type { Account } from '../domain/types.js';
 import { assertPermission, visibleToBranch } from '../rbac/service.js';
-import { todayString } from '../shared/date.js';
+import { formatDateTime, todayString } from '../shared/date.js';
 import { buildStaffPositionMap, formatOwner, isMine, normalizeChecklistName } from '../shared/assignment.js';
 import { decodeDataUrl } from '../shared/fileUpload.js';
 import type { AuditPlanItem, ChecklistDef, ClientStateShape, StaffMember, WalkResultEntry } from '../shared/channelShapes.js';
@@ -166,12 +167,14 @@ export class WalkService {
     if (input.index < 0 || input.index >= resolved.items.length) return { ok: false, error: 'Пункт чек-листа не найден' };
 
     let photoFileId: string | null | undefined;
+    let photoChecksum: string | null | undefined;
     if (input.photoBase64) {
       const decoded = decodeDataUrl(input.photoBase64);
       if (!decoded) return { ok: false, error: 'Не удалось прочитать снимок' };
       if (decoded.data.byteLength > MAX_PHOTO_BYTES) return { ok: false, error: 'Снимок слишком большой — сожмите перед отправкой' };
       const saved = await this.repos.files.save(inn, decoded.contentType, decoded.data);
       photoFileId = saved.id;
+      photoChecksum = saved.checksum;
     }
 
     // конфликт версий по этому каналу означает, что кто-то ещё поменял walk_results
@@ -183,13 +186,14 @@ export class WalkService {
       const current = all[planId];
       const items: WalkResultEntry['items'] = current?.items?.length
         ? current.items.slice()
-        : resolved.items.map((text) => ({ text, answer: '' as const, comment: '', photoFileId: null }));
+        : resolved.items.map((text) => ({ text, answer: '' as const, comment: '', photoFileId: null, photoChecksum: null }));
       const prevItem = items[input.index];
       items[input.index] = {
         text: resolved.items[input.index] ?? prevItem?.text ?? '',
         answer: input.answer,
         comment: input.comment ?? prevItem?.comment ?? '',
         photoFileId: photoFileId !== undefined ? photoFileId : (prevItem?.photoFileId ?? null),
+        photoChecksum: photoFileId !== undefined ? photoChecksum ?? null : (prevItem?.photoChecksum ?? null),
       };
       const answered = items.filter((it) => it.answer).length;
       const bad = items.filter((it) => it.answer === 'bad').length;
@@ -236,7 +240,14 @@ export class WalkService {
       const year = new Date().getFullYear();
       const used = Object.values(rec.data).map((e) => /^А-(\d{4})-(\d+)$/.exec(e.actNo ?? '')).filter((m): m is RegExpExecArray => !!m && Number(m[1]) === year).map((m) => Number(m[2]));
       const actNo = current.actNo ?? `А-${year}-${String(Math.max(0, ...used) + 1).padStart(3, '0')}`;
-      const entry: WalkResultEntry = { ...current, finished: true, actNo, finishedAt: current.finishedAt ?? todayString() };
+      // подпись — один раз, при первом успешном завершении: повторное (офлайн-ретрай) её не переписывает
+      const signature = current.signature ?? {
+        byId: account.id,
+        byFio: account.fio,
+        at: this.repos.clock.now().toISOString(),
+        itemsHash: createHash('sha256').update(JSON.stringify(current.items)).digest('hex'),
+      };
+      const entry: WalkResultEntry = { ...current, finished: true, actNo, finishedAt: current.finishedAt ?? todayString(), signature };
       const next = { ...rec.data, [planId]: entry };
       const res = await this.repos.channels.set('tenant', inn, 'walk_results', next, { expectedVersion: rec.version, updatedBy: account.id, opId });
       if (res.ok) return { ok: true, bad: entry.bad, total: entry.total };
@@ -270,9 +281,14 @@ export class WalkService {
       `Дата завершения: ${e.finishedAt ?? e.date}`,
       `Результат: пунктов ${e.total}, нарушений ${e.bad}`,
       '',
-      ...e.items.map((it, i) => `${i + 1}. ${it.text} — ${it.answer === 'ok' ? 'соответствует' : it.answer === 'bad' ? 'НАРУШЕНИЕ' : 'не отмечено'}${it.answer === 'bad' && it.comment ? ` (${it.comment})` : ''}${it.photoFileId ? ' [фото в системе]' : ''}`),
+      ...e.items.map((it, i) => `${i + 1}. ${it.text} — ${it.answer === 'ok' ? 'соответствует' : it.answer === 'bad' ? 'НАРУШЕНИЕ' : 'не отмечено'}${it.answer === 'bad' && it.comment ? ` (${it.comment})` : ''}${it.photoFileId ? ` [фото в системе, sha256 ${it.photoChecksum ? it.photoChecksum.slice(0, 12) : 'неизвестна'}]` : ''}`),
       '',
-      'Проверяющий: ______________________    Ответственный за ВКК: ______________________',
+      // простая ЭП (docs «Горизонт 1»: «задел под УКЭП») — кто завершил обход, когда и sha256
+      // пунктов на тот момент, вместо пустой строки под подпись от руки
+      e.signature
+        ? `Подписано (ПЭП): ${e.signature.byFio} · ${formatDateTime(e.signature.at)} · sha256 пунктов ${e.signature.itemsHash.slice(0, 12)}`
+        : `Проверяющий: ${e.who || '______________________'}`,
+      'Ответственный за ВКК: ______________________',
     ];
     return { ok: true, title: `Акт № ${e.actNo}`, body: lines.join('\n') };
   }

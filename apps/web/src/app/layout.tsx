@@ -14,6 +14,7 @@ export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   viewportFit: 'cover',
+  themeColor: '#0f1f1e',
 };
 
 // next/font вместо <link> на fonts.googleapis.com (README «Дизайн-токены»): те же начертания,

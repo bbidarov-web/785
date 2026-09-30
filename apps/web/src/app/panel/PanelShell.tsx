@@ -61,7 +61,7 @@ interface AdoptionRow {
   pending: number;
   declined: number;
   tenants: { inn: string; name: string; adopted: number; status: 'current' | 'pending' | 'declined' }[];
-  pilot: { no: number; inns: string[] } | null;
+  pilot: { no: number; inns: string[]; until: string | null } | null;
 }
 
 interface StaffAccount {
@@ -841,7 +841,12 @@ function AdoptionTab({ rows, pilotInns, setPilotInns, canRelease, onRelease }: {
               <button onClick={() => setOpen(open === r.catalog ? null : r.catalog)} style={outlineBtn}>{open === r.catalog ? 'Скрыть клиники' : 'По клиникам'}</button>
             </div>
           </div>
-          {r.pilot && <div style={{ fontSize: 11.5, color: 'var(--warn)', fontWeight: 700, marginTop: 6 }}>Ред. {r.pilot.no} в пилоте: {r.pilot.inns.join(', ')}</div>}
+          {r.pilot && (
+            <div style={{ fontSize: 11.5, color: 'var(--warn)', fontWeight: 700, marginTop: 6 }}>
+              Ред. {r.pilot.no} в пилоте: {r.pilot.inns.join(', ')}
+              {r.pilot.until && <> · если ни одна клиника не откажется, сама выйдет для всех {r.pilot.until}</>}
+            </div>
+          )}
           {open === r.catalog && (
             <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 4 }}>
               {r.tenants.map((t) => (

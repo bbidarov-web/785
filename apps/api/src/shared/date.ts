@@ -9,6 +9,13 @@ export function formatDate(d: Date): string {
   return `${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()}`;
 }
 
+/** ДД.ММ.ГГГГ ЧЧ:ММ — для отметок времени, где важна не только дата (например, подпись под актом). */
+export function formatDateTime(iso: string): string {
+  const d = new Date(iso);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${formatDate(d)} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
 export function parseDate(s: string): Date {
   const [d, m, y] = s.split('.').map(Number);
   return new Date(y!, (m ?? 1) - 1, d ?? 1);
